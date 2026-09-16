@@ -1,0 +1,167 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #0b0f17;
+    --foreground: #f8fafc;
+    --font-bitter: 'Bitter', Georgia, Cambria, serif;
+    --font-mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  }
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  overflow-x: hidden;
+}
+
+/* ==========================================================================
+   TACTILE CLIMBING DESIGN SYSTEM (KCLMC & LUBE)
+   ========================================================================== */
+
+/* Topographic Contour Background */
+.topo-pattern {
+  background-image: radial-gradient(rgba(255, 189, 89, 0.12) 1px, transparent 1px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cpath d='M0 20c40-10 60 20 100 10s40-30 60-20M0 60c30 0 70 30 110 10s30-20 50-10M0 100c50-20 70 20 120 0s30 10 40 20M0 140c20 10 60-20 100 0s40 10 60 0' fill='none' stroke='rgba(255,189,89,0.08)' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-size: 24px 24px, 160px 160px;
+}
+
+/* Concrete & Chalk Powder Texture */
+.chalk-texture {
+  background-image: 
+    radial-gradient(circle at 50% 30%, rgba(245, 245, 240, 0.08) 0%, transparent 60%),
+    radial-gradient(circle at 85% 75%, rgba(0, 255, 102, 0.04) 0%, transparent 40%),
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+}
+
+/* Gym Route Setter Tape */
+.route-tape {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.65rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.2rem 0.6rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.25);
+  transform: rotate(-1.5deg);
+  position: relative;
+  user-select: none;
+}
+.route-tape::before, .route-tape::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.2) 2px, rgba(0,0,0,0.2) 4px);
+}
+.route-tape::before { left: 0; }
+.route-tape::after { right: 0; }
+
+.tape-start { background-color: #FF5500; color: #FFFFFF; }
+.tape-zone { background-color: #38BDF8; color: #0A0A0A; }
+.tape-top { background-color: #00FF66; color: #0A0A0A; }
+.tape-chalk { background-color: #F5F5F0; color: #0A0A0A; }
+
+/* Expedition Field Book Card */
+.expedition-card {
+  position: relative;
+  border: 1px dashed rgba(255, 189, 89, 0.35);
+  background-color: rgba(8, 71, 70, 0.65);
+  backdrop-filter: blur(8px);
+  border-radius: 4px;
+}
+.expedition-card::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  border: 1px solid rgba(255, 189, 89, 0.15);
+  pointer-events: none;
+}
+
+/* Brass Rivet / Eyelet Detail */
+.brass-rivet {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #FFE0A3, #FFBD59 60%, #9A6818 100%);
+  box-shadow: inset 0 1px 1px rgba(0,0,0,0.6), 0 1px 2px rgba(0,0,0,0.4);
+}
+
+/* Braided Climbing Rope Seam */
+.rope-seam {
+  background: repeating-linear-gradient(
+    135deg,
+    #FFBD59 0px,
+    #FFBD59 6px,
+    #052322 6px,
+    #052322 10px,
+    #00FF66 10px,
+    #00FF66 16px,
+    #0A0A0A 16px,
+    #0A0A0A 20px
+  );
+  box-shadow: 0 0 15px rgba(0,0,0,0.8);
+}
+
+/* Expedition Luggage Tag Button */
+.btn-expedition-tag {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.85rem 2rem;
+  font-family: var(--font-mono), monospace;
+  font-weight: 900;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: #052322;
+  background: linear-gradient(135deg, #FFBD59 0%, #E5A844 100%);
+  border: 1.5px solid #FFE0A3;
+  clip-path: polygon(10px 0%, calc(100% - 10px) 0%, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0% calc(100% - 10px), 0% 10px);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(255, 189, 89, 0.25);
+}
+.btn-expedition-tag:hover {
+  background: #FFE0A3;
+  box-shadow: 0 0 25px rgba(255, 189, 89, 0.55);
+  transform: translateY(-2px);
+}
+
+/* Underground Comp Wristband Button */
+.btn-wristband {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.85rem 2rem;
+  font-family: var(--font-mono), monospace;
+  font-weight: 900;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: #F5F5F0;
+  background: #0A0A0A;
+  border: 2px solid #F5F5F0;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+}
+.btn-wristband:hover {
+  background: #00FF66;
+  color: #0A0A0A;
+  border-color: #00FF66;
+  box-shadow: 0 0 30px rgba(0, 255, 102, 0.5);
+  transform: translateY(-2px);
+}
+
