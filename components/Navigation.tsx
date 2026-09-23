@@ -2,137 +2,108 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { ROLE_NAMES, Role } from '@/lib/auth';
+import { usePathname, useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 
 export default function Navigation() {
   const pathname = usePathname();
-  const [role, setRole] = useState<Role>(0);
-  const [showRoleMenu, setShowRoleMenu] = useState(false);
+  const router = useRouter();
+  const supabase = createClient();
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    const cookies = document.cookie.split(';').reduce((acc, c) => {
-      const [k, v] = c.trim().split('=');
-      if (k && v) acc[k] = decodeURIComponent(v);
-      return acc;
-    }, {} as Record<string, string>);
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
 
-    if (cookies['user_role_override']) {
-      const parsed = parseInt(cookies['user_role_override'], 10);
-      if (parsed === 0 || parsed === 1 || parsed === 2) setRole(parsed as Role);
-    }
-  }, [pathname]);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
 
-  const handleSwitchRole = (newRole: Role) => {
-    setRole(newRole);
-    document.cookie = `user_role_override=${newRole}; path=/; max-age=86400`;
-    setShowRoleMenu(false);
-    window.location.reload();
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    router.push('/');
+    router.refresh();
   };
 
-  const isLube = pathname.startsWith('/lube') || pathname.startsWith('/scoring') || pathname.startsWith('/comps') || pathname.startsWith('/leaderboard') || pathname.startsWith('/drops/lube');
-
   return (
-    <nav className="bg-[#0D0F14] text-white py-3 px-6 md:px-8 flex flex-wrap justify-between items-center border-b border-white/10 sticky top-0 z-40 backdrop-blur-md bg-opacity-95">
+    <nav className="bg-[#041F1E] text-white py-3 px-6 md:px-8 flex flex-wrap justify-between items-center border-b border-[#FFBD59]/20 sticky top-0 z-40 backdrop-blur-md bg-opacity-95 font-sans">
       <div className="flex flex-wrap space-x-4 md:space-x-6 items-center">
-        <Link href="/" className="font-black text-sm tracking-wider hover:opacity-80 transition-opacity">
-          HUB
+        <Link href="/" className="font-serif font-black text-sm tracking-wider text-[#FFBD59] hover:opacity-80 transition-opacity">
+          KCLMC
         </Link>
         
-        <div className="w-px h-4 bg-white/20"></div>
+        <div className="w-px h-4 bg-[#FFBD59]/30"></div>
 
-        {/* KCLMC Group */}
+        {/* Club Navigation Links */}
         <Link 
-          href="/club" 
-          className={`font-bold text-sm transition-colors ${
-            pathname.startsWith('/club') || pathname.startsWith('/kclmc') || pathname.startsWith('/trips') || pathname.startsWith('/guides')
-              ? 'text-[#FFBD59]'
-              : 'text-zinc-300 hover:text-[#FFBD59]'
-          }`}
+          href="/trips" 
+          className={`text-xs transition-colors ${pathname.startsWith('/trips') ? 'text-[#FFBD59]' : 'text-zinc-400 hover:text-[#FFBD59]'}`}
         >
-          CLUB
-        </Link>
-        <Link href="/trips" className={`text-xs transition-colors ${pathname.startsWith('/trips') ? 'text-[#FFBD59]' : 'text-zinc-400 hover:text-[#FFBD59]'}`}>
           Trips
         </Link>
-        <Link href="/guides" className={`text-xs transition-colors ${pathname.startsWith('/guides') ? 'text-[#FFBD59]' : 'text-zinc-400 hover:text-[#FFBD59]'}`}>
+        <Link 
+          href="/guides" 
+          className={`text-xs transition-colors ${pathname.startsWith('/guides') ? 'text-[#FFBD59]' : 'text-zinc-400 hover:text-[#FFBD59]'}`}
+        >
           Guides
         </Link>
-        <Link href="/drops/kclmc" className={`text-xs transition-colors ${pathname.startsWith('/drops/kclmc') ? 'text-[#FFBD59]' : 'text-zinc-400 hover:text-[#FFBD59]'}`}>
-          Club Drops
-        </Link>
-
-        <div className="w-px h-4 bg-white/20"></div>
-
-        {/* LUBE Group */}
         <Link 
-          href="/lube" 
-          className={`font-bold text-sm tracking-wide transition-colors ${
-            isLube ? 'text-[#F5F5F0]' : 'text-zinc-400 hover:text-[#F5F5F0]'
-          }`}
+          href="/drops/kclmc" 
+          className={`text-xs transition-colors ${pathname.startsWith('/drops/kclmc') ? 'text-[#FFBD59]' : 'text-zinc-400 hover:text-[#FFBD59]'}`}
         >
-          LUBE
+          Merch Drops
         </Link>
-        <Link href="/comps" className="text-xs text-zinc-400 hover:text-[#F5F5F0] transition-colors">
-          Comps
-        </Link>
-        <Link href="/leaderboard" className="text-xs text-zinc-400 hover:text-[#F5F5F0] transition-colors">
-          Rankings
-        </Link>
-        <Link href="/drops/lube" className="text-xs text-zinc-400 hover:text-[#F5F5F0] transition-colors">
-          Chalk Drop
+        <Link 
+          href="/membership" 
+          className={`text-xs transition-colors font-semibold ${pathname.startsWith('/membership') ? 'text-[#FFBD59]' : 'text-emerald-400 hover:text-emerald-300'}`}
+        >
+          ★ Membership
         </Link>
       </div>
 
-      {/* Admin & RBAC Identity Pill */}
-      <div className="flex items-center space-x-3 mt-2 sm:mt-0">
+      {/* Auth & Admin Controls */}
+      <div className="flex items-center space-x-3 mt-2 sm:mt-0 font-mono text-xs">
         <Link 
           href="/admin" 
-          className={`text-xs font-bold px-2.5 py-1 rounded transition-colors ${
+          className={`px-2.5 py-1 rounded transition-colors ${
             pathname.startsWith('/admin')
-              ? 'bg-blue-600 text-white'
+              ? 'bg-blue-600 text-white font-bold'
               : 'text-blue-400 hover:bg-blue-950/60 border border-blue-800/60'
           }`}
         >
-          ADMIN
+          Admin
         </Link>
 
-        {/* Identity Badge with Switcher */}
-        <div className="relative">
-          <button
-            onClick={() => setShowRoleMenu(!showRoleMenu)}
-            className={`text-[11px] font-mono px-2 py-0.5 rounded border flex items-center gap-1.5 transition-colors ${
-              role === 2
-                ? 'bg-red-950/80 border-red-700 text-red-300'
-                : role === 1
-                ? 'bg-blue-950/80 border-blue-700 text-blue-300'
-                : 'bg-zinc-800 border-zinc-700 text-zinc-400'
-            }`}
+        {user ? (
+          <div className="flex items-center space-x-2">
+            <Link
+              href="/membership"
+              className="text-[11px] px-2.5 py-1 rounded bg-[#084746] border border-[#FFBD59]/40 text-[#FFBD59] hover:bg-[#084746]/80 transition-colors"
+            >
+              {user.email?.split('@')[0]}
+            </Link>
+            <button
+              onClick={handleSignOut}
+              className="text-[11px] text-zinc-400 hover:text-red-400 transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
+        ) : (
+          <Link
+            href="/login"
+            className="px-3 py-1 bg-[#FFBD59] text-[#052322] font-bold rounded hover:bg-[#FFE0A3] transition-colors shadow"
           >
-            <span>{ROLE_NAMES[role]}</span>
-            <span className="text-[9px]">▾</span>
-          </button>
-
-          {showRoleMenu && (
-            <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-1 z-50 text-xs font-sans">
-              <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-zinc-500 border-b border-zinc-800">
-                Simulate Role
-              </div>
-              {([0, 1, 2] as Role[]).map(r => (
-                <button
-                  key={r}
-                  onClick={() => handleSwitchRole(r)}
-                  className={`w-full text-left px-2 py-1.5 rounded hover:bg-zinc-800 flex justify-between items-center ${
-                    role === r ? 'font-bold text-white bg-zinc-800/80' : 'text-zinc-400'
-                  }`}
-                >
-                  <span>{ROLE_NAMES[r]}</span>
-                  {role === r && <span className="text-emerald-400">✓</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+            Sign In
+          </Link>
+        )}
       </div>
     </nav>
   );

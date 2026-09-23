@@ -1,115 +1,161 @@
+import React from 'react';
 import Link from 'next/link';
 
 export default function HomePage() {
   return (
-    <main className="min-h-[calc(100vh-57px)] flex flex-col md:flex-row relative overflow-hidden bg-[#0A0A0A]">
-      {/* =========================================================================
-          LEFT PANEL: KCLMC — THE ALPINE EXPEDITION FIELD GUIDE
-          ========================================================================= */}
-      <section className="flex-1 bg-[#041F1E] text-[#F7F7F7] p-8 md:p-16 flex flex-col justify-between relative overflow-hidden group transition-all duration-500 topo-pattern">
-        {/* Ambient Topo Glow */}
-        <div className="absolute -top-32 -left-32 w-96 h-96 bg-[#FFBD59]/15 rounded-full blur-3xl pointer-events-none group-hover:bg-[#FFBD59]/25 transition-all"></div>
-        <div className="absolute -bottom-32 -right-32 w-80 h-80 bg-[#084746]/40 rounded-full blur-3xl pointer-events-none"></div>
+    <main className="min-h-screen bg-[#041F1E] text-[#F7F7F7] p-6 md:p-12 relative overflow-hidden topo-pattern font-sans">
+      {/* Ambient Topo Glow */}
+      <div className="absolute -top-32 -left-32 w-96 h-96 bg-[#FFBD59]/15 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="absolute -bottom-32 -right-32 w-80 h-80 bg-[#084746]/40 rounded-full blur-3xl pointer-events-none"></div>
 
-        {/* Top Field Badge & Coordinates */}
-        <div className="relative z-10 flex flex-wrap justify-between items-center gap-4 text-xs">
-          <div className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded bg-[#084746]/80 border border-[#FFBD59]/30 text-[#FFBD59] font-mono tracking-wider">
-            <span className="w-2 h-2 rounded-full bg-[#FFBD59] animate-pulse"></span>
-            EXPEDITION LOG // EST. 1928
+      <div className="relative z-10 max-w-6xl mx-auto">
+        {/* Top Header Badge & Field Coordinates */}
+        <div className="flex flex-wrap justify-between items-center gap-4 mb-8 pb-4 border-b border-[#FFBD59]/20 text-xs font-mono">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#084746] border border-[#FFBD59]/50 flex items-center justify-center text-lg shadow-sm">
+              🏔️
+            </div>
+            <div>
+              <div className="text-[10px] font-mono tracking-widest text-[#FFBD59] uppercase">King's College London</div>
+              <div className="text-sm font-serif font-bold text-white tracking-wide">Mountaineering &amp; Climbing Club</div>
+            </div>
           </div>
-          <div className="text-[11px] font-mono text-[#FFBD59]/80 hidden sm:block tracking-widest">
-            51.5115° N, 0.1160° W • ELEV. 18M
+          <div className="text-[#FFBD59]/80 flex items-center gap-3">
+            <span className="inline-block w-2 h-2 rounded-full bg-[#FFBD59] animate-pulse"></span>
+            <span>STRAND CAMPUS: 51.5115° N, 0.1160° W</span>
+            <span className="hidden sm:inline text-zinc-500">|</span>
+            <span className="hidden sm:inline">ELEV. 18M</span>
           </div>
         </div>
 
-        {/* Center Hero Block */}
-        <div className="relative z-10 my-12 md:my-16 max-w-lg">
-          <div className="flex items-center gap-3 mb-4">
-            <span className="text-2xl">🏔️</span>
-            <span className="text-xs uppercase font-mono tracking-widest text-[#FFBD59] bg-[#084746] px-2 py-0.5 border border-[#FFBD59]/30">
-              Alpine Heritage
-            </span>
+        {/* Hero Title with Serif Heading */}
+        <div className="mb-12 max-w-3xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 mb-4 bg-[#084746] border border-[#FFBD59]/40 text-[#FFBD59] text-[11px] font-mono uppercase tracking-widest rounded-full">
+            Expedition Field Guide // Est. 1928
           </div>
-          
-          <h1 className="text-5xl sm:text-6xl md:text-7xl font-serif font-black tracking-tight text-white mb-4 leading-none">
-            KCL<span className="text-[#FFBD59]">MC</span>
+          <h1 className="text-4xl sm:text-6xl md:text-7xl font-serif font-black text-white mb-4 tracking-tight leading-tight">
+            The Alpine Heritage <span className="text-[#FFBD59] italic">&amp; Outdoor Beta</span>
           </h1>
-
           <p className="text-base sm:text-lg text-zinc-300 font-sans leading-relaxed mb-8">
-            The Alpine Expedition Field Guide. Join us for weekend Peak District trad, sandstone boulders in Fontainebleau, and Scottish winter mountaineering.
+            From weekly training across London walls to wilderness trad, winter mountaineering in Scotland, and high-altitude European alpine routes.
           </p>
 
-          {/* Expedition Pass Button */}
-          <div>
-            <Link href="/club" className="btn-expedition-tag">
-              <span>Enter Club Field Guide</span>
+          <div className="flex flex-wrap gap-4 items-center">
+            <Link href="/membership" className="btn-expedition-tag">
+              <span>Get Digital Member Pass</span>
               <span>↗</span>
             </Link>
-          </div>
-        </div>
-
-        {/* Bottom Beta Ticker */}
-        <div className="relative z-10 pt-4 border-t border-[#FFBD59]/20 flex flex-wrap justify-between items-center text-[11px] font-mono text-zinc-400 gap-2">
-          <span>WEEKLY: MON @ VAUXWALL • WED @ THE CASTLE</span>
-          <span className="text-[#FFBD59] font-bold">NEXT MEET: PEAK DISTRICT TRAD</span>
-        </div>
-      </section>
-
-      {/* =========================================================================
-          CENTER SEAM: BRAIDED CLIMBING ROPE DIVIDER
-          ========================================================================= */}
-      <div className="w-full h-2.5 md:w-3 md:h-auto rope-seam relative z-20 flex-shrink-0"></div>
-
-      {/* =========================================================================
-          RIGHT PANEL: LUBE — THE UNDERGROUND LONDON CHALK ZINE
-          ========================================================================= */}
-      <section className="flex-1 bg-[#0A0A0A] text-[#F5F5F0] p-8 md:p-16 flex flex-col justify-between relative overflow-hidden group transition-all duration-500 chalk-texture">
-        {/* Route Setter's Tape Accents (Top Right) */}
-        <div className="relative z-10 flex flex-wrap justify-between items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="route-tape tape-start">START HOLD</span>
-            <span className="route-tape tape-top">TOP // 25 PTS</span>
-          </div>
-          <div className="text-[11px] font-mono text-zinc-500 tracking-widest hidden sm:block">
-            ||||||||||||| LUBE-SERIES-26
-          </div>
-        </div>
-
-        {/* Center Hero Block */}
-        <div className="relative z-10 my-12 md:my-16 max-w-lg">
-          <div className="flex items-center gap-4 mb-4">
-            <img src="/images/lube-logo.png" alt="LUBE" className="h-16 brightness-0 invert object-contain" />
-            <span className="route-tape tape-chalk text-[10px]">
-              CIRCUIT 25/26
-            </span>
-          </div>
-
-          <h2 className="text-5xl sm:text-6xl md:text-7xl font-mono font-black tracking-tighter uppercase text-white mb-4 leading-none">
-            LUBE<span className="text-[#00FF66]">.</span>
-          </h2>
-
-          <p className="text-base sm:text-lg text-zinc-300 font-sans leading-relaxed mb-8">
-            London University Bouldering Events. The underground chalk aesthetic uniting inter-collegiate climbing crews in packed railway arches across the city.
-          </p>
-
-          {/* Comp Wristband Button */}
-          <div>
-            <Link href="/lube" className="btn-wristband">
-              <span>Enter Bouldering Circuit</span>
-              <span className="text-[#00FF66] font-mono">[ 02 ]</span>
+            <Link
+              href="/trips"
+              className="px-5 py-3 rounded-lg border border-[#FFBD59]/40 text-[#FFBD59] hover:bg-[#FFBD59]/10 font-mono text-xs uppercase tracking-wider transition-colors"
+            >
+              Explore 2026 Meets →
             </Link>
           </div>
         </div>
 
-        {/* Bottom Status Ticker */}
-        <div className="relative z-10 pt-4 border-t border-zinc-800 flex flex-wrap justify-between items-center text-[11px] font-mono text-zinc-400 gap-2">
-          <span className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#00FF66] animate-ping"></span>
-            BOULDERING COMP SERIES
-          </span>
-          <span className="text-zinc-300 font-bold">ROUND 01 • VAUXWALL</span>
+        {/* Tactile Expedition Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+          {/* Card 1: Weekly Training */}
+          <div className="expedition-card p-6 flex flex-col justify-between group bg-[#084746]/70 backdrop-blur-md rounded-2xl border border-[#FFBD59]/25 shadow-lg">
+            <div className="flex justify-between items-start mb-4">
+              <span className="brass-rivet"></span>
+              <span className="text-[10px] font-mono text-[#FFBD59] uppercase tracking-widest bg-[#041F1E] px-2 py-0.5 border border-[#FFBD59]/20">01 / LOG</span>
+            </div>
+            <div>
+              <h2 className="text-xl font-serif font-bold text-white mb-1">Weekly Training</h2>
+              <p className="text-zinc-300 text-xs font-sans mb-4">Central London climbing sessions.</p>
+              <div className="space-y-2 text-xs font-mono border-t border-[#FFBD59]/20 pt-3">
+                <div className="flex justify-between text-zinc-300">
+                  <span>Mondays</span>
+                  <span className="text-[#FFBD59] font-bold">VauxWall East</span>
+                </div>
+                <div className="flex justify-between text-zinc-300">
+                  <span>Wednesdays</span>
+                  <span className="text-[#FFBD59] font-bold">The Castle</span>
+                </div>
+                <div className="flex justify-between text-zinc-400 text-[11px] pt-1">
+                  <span>Coaching</span>
+                  <span className="text-emerald-400">@catalystclimbing</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Trips */}
+          <Link href="/trips" className="expedition-card p-6 flex flex-col justify-between group hover:border-[#FFBD59] transition-all bg-[#084746]/70 backdrop-blur-md rounded-2xl border border-[#FFBD59]/25 shadow-lg">
+            <div className="flex justify-between items-start mb-4">
+              <span className="brass-rivet"></span>
+              <span className="text-[10px] font-mono text-[#FFBD59] uppercase tracking-widest bg-[#041F1E] px-2 py-0.5 border border-[#FFBD59]/20">02 / MEETS</span>
+            </div>
+            <div>
+              <h2 className="text-xl font-serif font-bold text-white mb-1 group-hover:text-[#FFBD59] transition-colors">Trips Calendar</h2>
+              <p className="text-zinc-300 text-xs font-sans mb-4">Peak District, Highlands &amp; Font expeditions.</p>
+              <div className="text-xs font-mono text-[#FFBD59] bg-[#041F1E]/80 p-2.5 border border-[#FFBD59]/20 rounded-sm">
+                Next: Peak Trad Meet
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-[#FFBD59]/20 flex justify-between items-center text-xs font-mono text-[#FFBD59]">
+              <span>OPEN CALENDAR</span>
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
+            </div>
+          </Link>
+
+          {/* Card 3: Guides */}
+          <Link href="/guides" className="expedition-card p-6 flex flex-col justify-between group hover:border-[#FFBD59] transition-all bg-[#084746]/70 backdrop-blur-md rounded-2xl border border-[#FFBD59]/25 shadow-lg">
+            <div className="flex justify-between items-start mb-4">
+              <span className="brass-rivet"></span>
+              <span className="text-[10px] font-mono text-[#FFBD59] uppercase tracking-widest bg-[#041F1E] px-2 py-0.5 border border-[#FFBD59]/20">03 / BETA</span>
+            </div>
+            <div>
+              <h2 className="text-xl font-serif font-bold text-white mb-1 group-hover:text-[#FFBD59] transition-colors">Crags &amp; Walls</h2>
+              <p className="text-zinc-300 text-xs font-sans mb-4">Student discounts and local sandstone beta.</p>
+              <div className="text-xs font-mono text-zinc-300 bg-[#041F1E]/80 p-2.5 border border-[#FFBD59]/20 rounded-sm">
+                Up to 30% off London entry
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-[#FFBD59]/20 flex justify-between items-center text-xs font-mono text-[#FFBD59]">
+              <span>VIEW WALL BETA</span>
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
+            </div>
+          </Link>
+
+          {/* Card 4: Drops */}
+          <Link href="/drops/kclmc" className="expedition-card p-6 flex flex-col justify-between group hover:border-[#FFBD59] transition-all bg-[#084746]/70 backdrop-blur-md rounded-2xl border border-[#FFBD59]/25 shadow-lg">
+            <div className="flex justify-between items-start mb-4">
+              <span className="brass-rivet"></span>
+              <span className="text-[10px] font-mono text-[#FFBD59] uppercase tracking-widest bg-[#041F1E] px-2 py-0.5 border border-[#FFBD59]/20">04 / GEAR</span>
+            </div>
+            <div>
+              <h2 className="text-xl font-serif font-bold text-white mb-1 group-hover:text-[#FFBD59] transition-colors">Club Merch</h2>
+              <p className="text-zinc-300 text-xs font-sans mb-4">Official 2026 Gold &amp; Green apparel stash.</p>
+              <div className="text-xs font-mono text-[#FFBD59] bg-[#041F1E]/80 p-2.5 border border-[#FFBD59]/20 rounded-sm">
+                Group Buy MOQ Active
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-[#FFBD59]/20 flex justify-between items-center text-xs font-mono text-[#FFBD59]">
+              <span>ORDER PASS</span>
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
+            </div>
+          </Link>
         </div>
-      </section>
+
+        {/* Field Notes Ticker */}
+        <div className="p-4 bg-[#084746]/60 border border-[#FFBD59]/30 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 text-xs font-mono">
+          <div className="flex items-center gap-3">
+            <span className="text-[#FFBD59] font-bold">FIELD NOTE:</span>
+            <span className="text-zinc-300">All equipment hire (helmets, harnesses, ropes) is free for club members on official meets.</span>
+          </div>
+          <a
+            href="https://www.instagram.com/kclmc/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#FFBD59] hover:underline underline-offset-4 flex-shrink-0"
+          >
+            @kclmc Instagram Dispatch ↗
+          </a>
+        </div>
+      </div>
     </main>
   );
 }
