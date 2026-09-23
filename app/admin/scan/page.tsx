@@ -20,7 +20,7 @@ export default function ScanPage() {
 
     try {
       let lookupCode = trimmed;
-      // Handle scanned URLs like https://.../api/verify/K25008223
+      // Handle scanned URLs like https://.../api/verify/K1234567
       if (lookupCode.includes('/verify/')) {
         const parts = lookupCode.split('/verify/');
         lookupCode = parts[parts.length - 1].replace(/\/+$/, '');
