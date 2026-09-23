@@ -106,3 +106,43 @@ export interface TelemetryEvent {
   user_id: string | null;
   created_at: string;
 }
+
+export interface KclsuRosterRow {
+  id: string;
+  card_number: string;
+  full_name: string;
+  raw_purchaser: string;
+  tier: 'social' | 'recreational';
+  product_name: string;
+  transaction_id: string;
+  purchase_date: string | null;
+  academic_year: string;
+  user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KclsuRosterInsert {
+  card_number: string;
+  full_name: string;
+  raw_purchaser: string;
+  tier: 'social' | 'recreational';
+  product_name: string;
+  transaction_id: string;
+  purchase_date?: string | null;
+  academic_year?: string;
+  user_id?: string | null;
+}
+
+export interface KclsuRosterUpdate {
+  full_name?: string;
+  raw_purchaser?: string;
+  tier?: 'social' | 'recreational';
+  product_name?: string;
+  transaction_id?: string;
+  purchase_date?: string | null;
+  academic_year?: string;
+  user_id?: string | null;
+  updated_at?: string;
+}
+
