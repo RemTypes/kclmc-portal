@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Next.js
+/.next/
+/out/
+
+# Production
+/build
+
+# Environment & local credentials
+.DS_Store
+*.pem
+.env*.local
+.env
+!sample.env
+
+# Cloudflare & Vercel
+.vercel
+.open-next/
+.wrangler/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Local caches & editor
+.idea/
+.vscode/
+*.log
