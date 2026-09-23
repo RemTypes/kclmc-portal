@@ -1,6 +1,6 @@
 -- ============================================================
--- 001_initial_schema.sql
--- KCLMC Club Beta — Core Tables
+-- KCLMC Platform — Consolidated Supabase Setup Migration
+-- Fully Idempotent (safe to re-run multiple times)
 -- ============================================================
 
 -- Enable UUID generation
@@ -9,7 +9,7 @@ create extension if not exists "uuid-ossp";
 -- ============================================================
 -- PROFILES (extends auth.users)
 -- ============================================================
-create table public.profiles (
+create table if not exists public.profiles (
   id            uuid primary key references auth.users(id) on delete cascade,
   full_name     text not null default '',
   student_id    text,                          -- KCL student number for verification
@@ -39,11 +39,13 @@ begin
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'full_name', '')
-  );
+  )
+  on conflict (id) do nothing;
   return new;
 end;
 $$;
 
+drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
@@ -51,7 +53,7 @@ create trigger on_auth_user_created
 -- ============================================================
 -- MEMBERSHIPS
 -- ============================================================
-create table public.memberships (
+create table if not exists public.memberships (
   id                uuid primary key default uuid_generate_v4(),
   user_id           uuid not null references public.profiles(id) on delete cascade,
   membership_number text not null unique,       -- e.g. KCLMC-25-0042
@@ -60,17 +62,17 @@ create table public.memberships (
   valid_from        date not null default current_date,
   valid_until       date not null,
   payment_reference text,                       -- KCLSU receipt number
-  is_active         boolean generated always as (current_date between valid_from and valid_until) stored,
+  is_active         boolean not null default true,
   created_at        timestamptz not null default now()
 );
 
-create index idx_memberships_user on public.memberships(user_id);
-create index idx_memberships_number on public.memberships(membership_number);
+create index if not exists idx_memberships_user on public.memberships(user_id);
+create index if not exists idx_memberships_number on public.memberships(membership_number);
 
 -- ============================================================
 -- TRIPS
 -- ============================================================
-create table public.trips (
+create table if not exists public.trips (
   id               uuid primary key default uuid_generate_v4(),
   title            text not null,
   description      text not null default '',
@@ -90,13 +92,13 @@ create table public.trips (
   updated_at       timestamptz not null default now()
 );
 
-create index idx_trips_date on public.trips(date_start);
-create index idx_trips_status on public.trips(status);
+create index if not exists idx_trips_date on public.trips(date_start);
+create index if not exists idx_trips_status on public.trips(status);
 
 -- ============================================================
 -- TRIP REGISTRATIONS
 -- ============================================================
-create table public.trip_registrations (
+create table if not exists public.trip_registrations (
   id               uuid primary key default uuid_generate_v4(),
   trip_id          uuid not null references public.trips(id) on delete cascade,
   user_id          uuid not null references public.profiles(id) on delete cascade,
@@ -112,7 +114,7 @@ create table public.trip_registrations (
 -- ============================================================
 -- GUIDES (Crags & Gym Discounts)
 -- ============================================================
-create table public.guides (
+create table if not exists public.guides (
   id            uuid primary key default uuid_generate_v4(),
   title         text not null,
   description   text not null default '',
@@ -131,7 +133,7 @@ create table public.guides (
 -- ============================================================
 -- SHOP ITEMS (Active Merch Drops)
 -- ============================================================
-create table public.shop_items (
+create table if not exists public.shop_items (
   id            uuid primary key default uuid_generate_v4(),
   name          text not null,
   brand         text not null check (brand in ('KCL', 'LUBE')),
@@ -146,7 +148,7 @@ create table public.shop_items (
 -- ============================================================
 -- MERCH ORDERS
 -- ============================================================
-create table public.merch_orders (
+create table if not exists public.merch_orders (
   id              uuid primary key default uuid_generate_v4(),
   user_id         uuid references public.profiles(id) on delete set null,
   order_code      text not null unique,         -- e.g. KCL-1234
@@ -161,13 +163,13 @@ create table public.merch_orders (
   updated_at      timestamptz not null default now()
 );
 
-create index idx_merch_orders_code on public.merch_orders(order_code);
-create index idx_merch_orders_user on public.merch_orders(user_id);
+create index if not exists idx_merch_orders_code on public.merch_orders(order_code);
+create index if not exists idx_merch_orders_user on public.merch_orders(user_id);
 
 -- ============================================================
--- TELEMETRY EVENTS (Passive ML Data Collection)
+-- TELEMETRY EVENTS (Passive Data Collection)
 -- ============================================================
-create table public.telemetry_events (
+create table if not exists public.telemetry_events (
   id          uuid primary key default uuid_generate_v4(),
   event_type  text not null,
   payload     jsonb not null default '{}',
@@ -176,11 +178,11 @@ create table public.telemetry_events (
   created_at  timestamptz not null default now()
 );
 
-create index idx_telemetry_type on public.telemetry_events(event_type);
-create index idx_telemetry_created on public.telemetry_events(created_at);
+create index if not exists idx_telemetry_type on public.telemetry_events(event_type);
+create index if not exists idx_telemetry_created on public.telemetry_events(created_at);
+
 -- ============================================================
--- 002_rls_policies.sql
--- RLS for all public tables
+-- ROW LEVEL SECURITY (RLS) POLICIES
 -- ============================================================
 
 -- Helper: get current user's role from profiles
@@ -201,22 +203,26 @@ $$;
 -- ────────────────────────────────────────
 alter table public.profiles enable row level security;
 
+drop policy if exists "Users can read own profile" on public.profiles;
 create policy "Users can read own profile"
   on public.profiles for select
   using (id = auth.uid());
 
+drop policy if exists "Committee can read all profiles" on public.profiles;
 create policy "Committee can read all profiles"
   on public.profiles for select
   using (public.get_user_role() >= 1);
 
+drop policy if exists "Users can update own profile" on public.profiles;
 create policy "Users can update own profile"
   on public.profiles for update
   using (id = auth.uid())
   with check (
     id = auth.uid()
-    and role = (select role from public.profiles where id = auth.uid())  -- cannot self-promote
+    and role = (select role from public.profiles where id = auth.uid())
   );
 
+drop policy if exists "SuperAdmin can update any profile" on public.profiles;
 create policy "SuperAdmin can update any profile"
   on public.profiles for update
   using (public.get_user_role() = 2);
@@ -226,31 +232,37 @@ create policy "SuperAdmin can update any profile"
 -- ────────────────────────────────────────
 alter table public.memberships enable row level security;
 
+drop policy if exists "Users can read own memberships" on public.memberships;
 create policy "Users can read own memberships"
   on public.memberships for select
   using (user_id = auth.uid());
 
+drop policy if exists "Committee can read all memberships" on public.memberships;
 create policy "Committee can read all memberships"
   on public.memberships for select
   using (public.get_user_role() >= 1);
 
+drop policy if exists "Committee can insert memberships" on public.memberships;
 create policy "Committee can insert memberships"
   on public.memberships for insert
   with check (public.get_user_role() >= 1);
 
+drop policy if exists "Committee can update memberships" on public.memberships;
 create policy "Committee can update memberships"
   on public.memberships for update
   using (public.get_user_role() >= 1);
 
 -- ────────────────────────────────────────
--- TRIPS (public read, committee write)
+-- TRIPS
 -- ────────────────────────────────────────
 alter table public.trips enable row level security;
 
+drop policy if exists "Anyone can read published trips" on public.trips;
 create policy "Anyone can read published trips"
   on public.trips for select
   using (status != 'draft' or public.get_user_role() >= 1);
 
+drop policy if exists "Committee can manage trips" on public.trips;
 create policy "Committee can manage trips"
   on public.trips for all
   using (public.get_user_role() >= 1);
@@ -260,44 +272,52 @@ create policy "Committee can manage trips"
 -- ────────────────────────────────────────
 alter table public.trip_registrations enable row level security;
 
+drop policy if exists "Users can read own registrations" on public.trip_registrations;
 create policy "Users can read own registrations"
   on public.trip_registrations for select
   using (user_id = auth.uid());
 
+drop policy if exists "Committee can read all registrations" on public.trip_registrations;
 create policy "Committee can read all registrations"
   on public.trip_registrations for select
   using (public.get_user_role() >= 1);
 
+drop policy if exists "Authenticated users can register" on public.trip_registrations;
 create policy "Authenticated users can register"
   on public.trip_registrations for insert
   with check (auth.uid() is not null and user_id = auth.uid());
 
+drop policy if exists "Users can cancel own registration" on public.trip_registrations;
 create policy "Users can cancel own registration"
   on public.trip_registrations for update
   using (user_id = auth.uid());
 
 -- ────────────────────────────────────────
--- GUIDES (public read, committee write)
+-- GUIDES
 -- ────────────────────────────────────────
 alter table public.guides enable row level security;
 
+drop policy if exists "Anyone can read published guides" on public.guides;
 create policy "Anyone can read published guides"
   on public.guides for select
   using (is_published = true or public.get_user_role() >= 1);
 
+drop policy if exists "Committee can manage guides" on public.guides;
 create policy "Committee can manage guides"
   on public.guides for all
   using (public.get_user_role() >= 1);
 
 -- ────────────────────────────────────────
--- SHOP ITEMS (public read, committee write)
+-- SHOP ITEMS
 -- ────────────────────────────────────────
 alter table public.shop_items enable row level security;
 
+drop policy if exists "Anyone can read active shop items" on public.shop_items;
 create policy "Anyone can read active shop items"
   on public.shop_items for select
   using (is_active = true or public.get_user_role() >= 1);
 
+drop policy if exists "Committee can manage shop items" on public.shop_items;
 create policy "Committee can manage shop items"
   on public.shop_items for all
   using (public.get_user_role() >= 1);
@@ -307,68 +327,111 @@ create policy "Committee can manage shop items"
 -- ────────────────────────────────────────
 alter table public.merch_orders enable row level security;
 
+drop policy if exists "Users can read own orders" on public.merch_orders;
 create policy "Users can read own orders"
   on public.merch_orders for select
   using (user_id = auth.uid() or customer_email = auth.email());
 
+drop policy if exists "Anyone can create orders" on public.merch_orders;
 create policy "Anyone can create orders"
   on public.merch_orders for insert
-  with check (true);  -- guest checkout allowed
+  with check (true);
 
+drop policy if exists "Committee can read all orders" on public.merch_orders;
 create policy "Committee can read all orders"
   on public.merch_orders for select
   using (public.get_user_role() >= 1);
 
+drop policy if exists "Committee can update order status" on public.merch_orders;
 create policy "Committee can update order status"
   on public.merch_orders for update
   using (public.get_user_role() >= 1);
 
 -- ────────────────────────────────────────
--- TELEMETRY EVENTS (insert-only for users, read for superadmin)
+-- TELEMETRY EVENTS
 -- ────────────────────────────────────────
 alter table public.telemetry_events enable row level security;
 
+drop policy if exists "Anyone can insert telemetry" on public.telemetry_events;
 create policy "Anyone can insert telemetry"
   on public.telemetry_events for insert
   with check (true);
 
+drop policy if exists "SuperAdmin can read telemetry" on public.telemetry_events;
 create policy "SuperAdmin can read telemetry"
   on public.telemetry_events for select
   using (public.get_user_role() = 2);
+
 -- ============================================================
--- 003_seed_data.sql
--- Starter content for the KCLMC Club Beta
+-- STARTER SEED DATA
 -- ============================================================
 
 -- Guides: Indoor Walls
-insert into public.guides (title, description, category, location, discount_info, sort_order) values
-  ('Mile End Climbing Wall', 'Community wall in Tower Hamlets. Great for after-lecture sessions. Bouldering and top-rope.', 'indoor', 'Mile End, E3', '20% off with KCL student ID', 1),
-  ('VauxWall East', 'Premier bouldering in Vauxhall railway arches. Comp-grade setting and excellent training boards.', 'indoor', 'Vauxhall, SE11', '£2 off day pass with KCLMC membership card', 2),
-  ('The Castle Climbing Centre', 'Iconic converted Victorian water tower. Lead, top-rope, and bouldering across all grades.', 'indoor', 'Manor House, N4', 'Free intro session for new KCL members', 3),
-  ('Arch Climbing Wall', 'Three London locations. Modern commercial walls with auto-belays and competition bouldering.', 'indoor', 'Bermondsey / Brentford / North Greenwich', null, 4);
+insert into public.guides (title, description, category, location, discount_info, sort_order)
+select 'Mile End Climbing Wall', 'Community wall in Tower Hamlets. Great for after-lecture sessions. Bouldering and top-rope.', 'indoor', 'Mile End, E3', '20% off with KCL student ID', 1
+where not exists (select 1 from public.guides where title = 'Mile End Climbing Wall');
+
+insert into public.guides (title, description, category, location, discount_info, sort_order)
+select 'VauxWall East', 'Premier bouldering in Vauxhall railway arches. Comp-grade setting and excellent training boards.', 'indoor', 'Vauxhall, SE11', '£2 off day pass with KCLMC membership card', 2
+where not exists (select 1 from public.guides where title = 'VauxWall East');
+
+insert into public.guides (title, description, category, location, discount_info, sort_order)
+select 'The Castle Climbing Centre', 'Iconic converted Victorian water tower. Lead, top-rope, and bouldering across all grades.', 'indoor', 'Manor House, N4', 'Free intro session for new KCL members', 3
+where not exists (select 1 from public.guides where title = 'The Castle Climbing Centre');
+
+insert into public.guides (title, description, category, location, discount_info, sort_order)
+select 'Arch Climbing Wall', 'Three London locations. Modern commercial walls with auto-belays and competition bouldering.', 'indoor', 'Bermondsey / Brentford / North Greenwich', null, 4
+where not exists (select 1 from public.guides where title = 'Arch Climbing Wall');
 
 -- Guides: Outdoor Crags
-insert into public.guides (title, description, category, location, grade_range, sort_order) values
-  ('Harrison''s Rocks', 'Southern Sandstone classic. Top-rope only. Perfect weekend trip from London Bridge (50 min train).', 'crag', 'Groombridge, Kent', 'VDiff to E3', 1),
-  ('Bowles Rocks', 'Nearby alternative to Harrison''s with a wider range of easier routes and good group logistics.', 'crag', 'Eridge, East Sussex', 'Mod to HVS', 2),
-  ('Portland', 'Sea-cliff limestone sport climbing on the Jurassic Coast. Weekend trip destination.', 'crag', 'Dorset', 'F4 to F7c', 3),
-  ('Stanage Edge', 'Peak District gritstone. The UK''s most famous crag. Trad climbing at its finest.', 'crag', 'Sheffield, Peak District', 'VDiff to E7', 4);
+insert into public.guides (title, description, category, location, grade_range, sort_order)
+select 'Harrison''s Rocks', 'Southern Sandstone classic. Top-rope only. Perfect weekend trip from London Bridge (50 min train).', 'crag', 'Groombridge, Kent', 'VDiff to E3', 1
+where not exists (select 1 from public.guides where title = 'Harrison''s Rocks');
+
+insert into public.guides (title, description, category, location, grade_range, sort_order)
+select 'Bowles Rocks', 'Nearby alternative to Harrison''s with a wider range of easier routes and good group logistics.', 'crag', 'Eridge, East Sussex', 'Mod to HVS', 2
+where not exists (select 1 from public.guides where title = 'Bowles Rocks');
+
+insert into public.guides (title, description, category, location, grade_range, sort_order)
+select 'Portland', 'Sea-cliff limestone sport climbing on the Jurassic Coast. Weekend trip destination.', 'crag', 'Dorset', 'F4 to F7c', 3
+where not exists (select 1 from public.guides where title = 'Portland');
+
+insert into public.guides (title, description, category, location, grade_range, sort_order)
+select 'Stanage Edge', 'Peak District gritstone. The UK''s most famous crag. Trad climbing at its finest.', 'crag', 'Sheffield, Peak District', 'VDiff to E7', 4
+where not exists (select 1 from public.guides where title = 'Stanage Edge');
 
 -- Trips: Upcoming season
-insert into public.trips (title, description, trip_type, location, date_start, date_end, difficulty_grade, max_capacity, gear_requirements, status, price_pence) values
-  ('Weekly Social Wall — Mile End', 'Drop-in Tuesday evening session. No booking required. Meet at reception 6:30pm.', 'social', 'Mile End Climbing Wall, E3', '2026-10-01', null, 'All levels', 30, '{}', 'open', 0),
-  ('Harrison''s Rocks Day Trip', 'Southern Sandstone top-roping. Transport arranged from Waterloo. All gear provided.', 'trad', 'Groombridge, Kent', '2026-10-12', '2026-10-12', 'VDiff to HVS', 16, '{"helmet","harness"}', 'open', 1500),
-  ('Peak District Weekend', 'Two days on Stanage Edge and Burbage. Wild camping option. Trad lead and second pairs.', 'trad', 'Hathersage, Peak District', '2026-10-25', '2026-10-26', 'Severe to E1', 12, '{"helmet","harness","trad rack","sleeping bag"}', 'open', 4500),
-  ('Scottish Winter Mountaineering', 'Grade I-III winter routes in Glencoe. Crampon and ice axe skills required. Pre-trip training mandatory.', 'winter', 'Glencoe, Scotland', '2026-12-14', '2026-12-17', 'Grade I to III', 8, '{"crampons","ice axe","helmet","harness","winter boots"}', 'draft', 15000);
+insert into public.trips (title, description, trip_type, location, date_start, date_end, difficulty_grade, max_capacity, gear_requirements, status, price_pence)
+select 'Weekly Social Wall — Mile End', 'Drop-in Tuesday evening session. No booking required. Meet at reception 6:30pm.', 'social', 'Mile End Climbing Wall, E3', '2026-10-01', null, 'All levels', 30, '{}', 'open', 0
+where not exists (select 1 from public.trips where title = 'Weekly Social Wall — Mile End');
+
+insert into public.trips (title, description, trip_type, location, date_start, date_end, difficulty_grade, max_capacity, gear_requirements, status, price_pence)
+select 'Harrison''s Rocks Day Trip', 'Southern Sandstone top-roping. Transport arranged from Waterloo. All gear provided.', 'trad', 'Groombridge, Kent', '2026-10-12', '2026-10-12', 'VDiff to HVS', 16, '{"helmet","harness"}', 'open', 1500
+where not exists (select 1 from public.trips where title = 'Harrison''s Rocks Day Trip');
+
+insert into public.trips (title, description, trip_type, location, date_start, date_end, difficulty_grade, max_capacity, gear_requirements, status, price_pence)
+select 'Peak District Weekend', 'Two days on Stanage Edge and Burbage. Wild camping option. Trad lead and second pairs.', 'trad', 'Hathersage, Peak District', '2026-10-25', '2026-10-26', 'Severe to E1', 12, '{"helmet","harness","trad rack","sleeping bag"}', 'open', 4500
+where not exists (select 1 from public.trips where title = 'Peak District Weekend');
+
+insert into public.trips (title, description, trip_type, location, date_start, date_end, difficulty_grade, max_capacity, gear_requirements, status, price_pence)
+select 'Scottish Winter Mountaineering', 'Grade I-III winter routes in Glencoe. Crampon and ice axe skills required. Pre-trip training mandatory.', 'winter', 'Glencoe, Scotland', '2026-12-14', '2026-12-17', 'Grade I to III', 8, '{"crampons","ice axe","helmet","harness","winter boots"}', 'draft', 15000
+where not exists (select 1 from public.trips where title = 'Scottish Winter Mountaineering');
 
 -- Shop Items: Active KCL drop
-insert into public.shop_items (name, brand, price_pence, garment_types, current_moq, target_moq) values
-  ('KCLMC Alpine Tee 2026', 'KCL', 1800, 'T-Shirt', 12, 30),
-  ('KCLMC Summit Hoodie', 'KCL', 3500, 'Hoodie', 8, 25),
-  ('KCLMC Expedition Sweater', 'KCL', 2800, 'Sweater', 5, 20);
+insert into public.shop_items (name, brand, price_pence, garment_types, current_moq, target_moq)
+select 'KCLMC Alpine Tee 2026', 'KCL', 1800, 'T-Shirt', 12, 30
+where not exists (select 1 from public.shop_items where name = 'KCLMC Alpine Tee 2026');
+
+insert into public.shop_items (name, brand, price_pence, garment_types, current_moq, target_moq)
+select 'KCLMC Summit Hoodie', 'KCL', 3500, 'Hoodie', 8, 25
+where not exists (select 1 from public.shop_items where name = 'KCLMC Summit Hoodie');
+
+insert into public.shop_items (name, brand, price_pence, garment_types, current_moq, target_moq)
+select 'KCLMC Expedition Sweater', 'KCL', 2800, 'Sweater', 5, 20
+where not exists (select 1 from public.shop_items where name = 'KCLMC Expedition Sweater');
+
 -- ============================================================
--- 004_kclsu_roster.sql
--- KCLMC Club Beta — Official KCLSU Member Roster & Synchronization
+-- OFFICIAL KCLSU ROSTER & MEMBERSHIP SYNCHRONIZATION
 -- ============================================================
 
 -- Table for official Student Union membership purchases
@@ -397,17 +460,20 @@ create index if not exists idx_kclsu_roster_year on public.kclsu_roster(academic
 alter table public.kclsu_roster enable row level security;
 
 -- Public can verify membership cards (e.g. wall scanners, QR codes)
+drop policy if exists "Anyone can verify membership roster" on public.kclsu_roster;
 create policy "Anyone can verify membership roster"
   on public.kclsu_roster for select
   using (true);
 
 -- Authenticated users can claim/link their verified student ID to their profile
+drop policy if exists "Users can link own card_number" on public.kclsu_roster;
 create policy "Users can link own card_number"
   on public.kclsu_roster for update
   using (user_id is null or user_id = auth.uid())
   with check (user_id = auth.uid());
 
 -- Committee (role >= 1) can insert, update, or delete roster entries
+drop policy if exists "Committee can manage roster" on public.kclsu_roster;
 create policy "Committee can manage roster"
   on public.kclsu_roster for all
   using (public.get_user_role() >= 1);
