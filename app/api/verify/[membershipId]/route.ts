@@ -14,29 +14,36 @@ export async function GET(
 
   const cleanId = decodeURIComponent(membershipId).trim().toUpperCase();
 
-  // 1. First check the official KCLSU member roster by card_number (e.g. K25008223)
-  const rosterRecord = findMemberByCardNumber(cleanId);
-  if (rosterRecord) {
-    return NextResponse.json({
-      valid: true,
-      member: {
-        name: rosterRecord.name,
-        tier: rosterRecord.tier,
-        membership_number: rosterRecord.cardNumber,
-        student_id: rosterRecord.cardNumber,
-        expires: '2027-08-31',
-        transaction_id: rosterRecord.transactionId,
-        product_name: rosterRecord.productName,
-        source: 'KCLSU Official Record',
-      },
-    });
-  }
-
-  // 2. If Supabase is configured, check live database
+  // 1. If Supabase is configured, check live database first
   if (isSupabaseConfigured()) {
     try {
       const supabase = await createClient();
 
+      // Check official kclsu_roster table
+      const { data: rosterData } = await supabase
+        .from('kclsu_roster')
+        .select('*')
+        .eq('card_number', cleanId)
+        .maybeSingle();
+
+      if (rosterData) {
+        return NextResponse.json({
+          valid: true,
+          member: {
+            name: rosterData.full_name,
+            tier: rosterData.tier,
+            membership_number: rosterData.card_number,
+            student_id: rosterData.card_number,
+            expires: '2027-08-31',
+            transaction_id: rosterData.transaction_id,
+            product_name: rosterData.product_name,
+            source: 'Supabase KCLSU Database',
+            userId: rosterData.user_id,
+          },
+        });
+      }
+
+      // Check legacy/registered memberships table
       let query = supabase
         .from('memberships')
         .select(`
@@ -80,6 +87,24 @@ export async function GET(
     } catch (err: any) {
       console.error('Error verifying membership:', err);
     }
+  }
+
+  // 3. Local fallback check if offline or not yet synced to Supabase
+  const fallbackRecord = findMemberByCardNumber(cleanId);
+  if (fallbackRecord) {
+    return NextResponse.json({
+      valid: true,
+      member: {
+        name: fallbackRecord.name,
+        tier: fallbackRecord.tier,
+        membership_number: fallbackRecord.cardNumber,
+        student_id: fallbackRecord.cardNumber,
+        expires: '2027-08-31',
+        transaction_id: fallbackRecord.transactionId,
+        product_name: fallbackRecord.productName,
+        source: 'KCLSU Official Roster (Local)',
+      },
+    });
   }
 
   return NextResponse.json({

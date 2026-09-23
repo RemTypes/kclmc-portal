@@ -30,11 +30,52 @@ export default function MembershipDashboard() {
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Helper to load member by card_number
-  const applyStudentId = (idToLookup: string) => {
+  const applyStudentId = async (idToLookup: string, currentProfile?: Profile | null) => {
     const cleanId = idToLookup.trim().toUpperCase();
     if (!cleanId) return;
 
-    const matched = findMemberByCardNumber(cleanId);
+    let matched: KclsuMemberRecord | undefined | null = null;
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { data } = await supabase
+          .from('kclsu_roster')
+          .select('*')
+          .eq('card_number', cleanId)
+          .maybeSingle();
+
+        if (data) {
+          matched = {
+            cardNumber: data.card_number,
+            name: data.full_name,
+            rawPurchaser: data.raw_purchaser,
+            tier: data.tier,
+            productName: data.product_name,
+            transactionId: data.transaction_id,
+            purchaseDate: data.purchase_date || '',
+          };
+
+          const activeProf = currentProfile || profile;
+          if (activeProf && activeProf.id !== 'demo-user') {
+            await supabase
+              .from('kclsu_roster')
+              .update({ user_id: activeProf.id, updated_at: new Date().toISOString() })
+              .eq('card_number', cleanId);
+            await supabase
+              .from('profiles')
+              .update({ student_id: cleanId, full_name: matched.name })
+              .eq('id', activeProf.id);
+          }
+        }
+      } catch (err) {
+        console.error('Error querying Supabase roster:', err);
+      }
+    }
+
+    if (!matched) {
+      matched = findMemberByCardNumber(cleanId);
+    }
+
     if (matched) {
       setSuRecord(matched);
       setSearchError('');
@@ -123,9 +164,21 @@ export default function MembershipDashboard() {
           setEmergencyPhone(profData.emergency_contact_phone || '');
           setDietary(profData.dietary_requirements || '');
 
-          if (profData.student_id) {
-            setInputStudentId(profData.student_id);
-            applyStudentId(profData.student_id);
+          let activeStudentId = profData.student_id;
+          if (!activeStudentId) {
+            const { data: linkedRoster } = await supabase
+              .from('kclsu_roster')
+              .select('card_number')
+              .eq('user_id', user.id)
+              .maybeSingle();
+            if (linkedRoster) {
+              activeStudentId = linkedRoster.card_number;
+            }
+          }
+
+          if (activeStudentId) {
+            setInputStudentId(activeStudentId);
+            await applyStudentId(activeStudentId, profData);
           }
         }
       } catch (err) {

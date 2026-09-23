@@ -324,3 +324,71 @@ export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
 
   return records;
 }
+
+export async function fetchMemberFromSupabase(
+  cardNumber: string,
+  supabaseClient: any
+): Promise<KclsuMemberRecord | null> {
+  if (!cardNumber || !supabaseClient) return null;
+  const cleanId = cardNumber.trim().toUpperCase();
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('kclsu_roster')
+      .select('*')
+      .eq('card_number', cleanId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    return {
+      cardNumber: data.card_number,
+      name: data.full_name,
+      rawPurchaser: data.raw_purchaser,
+      tier: data.tier,
+      productName: data.product_name,
+      transactionId: data.transaction_id,
+      purchaseDate: data.purchase_date || '',
+    };
+  } catch (err) {
+    console.error('Error fetching member from Supabase:', err);
+    return null;
+  }
+}
+
+export async function upsertRosterToSupabase(
+  records: KclsuMemberRecord[],
+  supabaseClient: any
+): Promise<{ count: number; error: any }> {
+  if (!supabaseClient || !records.length) return { count: 0, error: 'No records or client' };
+
+  try {
+    const inserts = records.map(r => ({
+      card_number: r.cardNumber,
+      full_name: r.name,
+      raw_purchaser: r.rawPurchaser,
+      tier: r.tier,
+      product_name: r.productName,
+      transaction_id: r.transactionId,
+      purchase_date: r.purchaseDate,
+      academic_year: '2026/27',
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { data, error } = await supabaseClient
+      .from('kclsu_roster')
+      .upsert(inserts, { onConflict: 'card_number' })
+      .select();
+
+    if (error) {
+      console.error('Supabase roster upsert error:', error);
+      return { count: 0, error };
+    }
+
+    return { count: data?.length || inserts.length, error: null };
+  } catch (err: any) {
+    console.error('Unexpected error upserting roster:', err);
+    return { count: 0, error: err.message };
+  }
+}
+
