@@ -107,38 +107,7 @@ export default function MembershipDashboard() {
     async function loadUserData() {
       try {
         if (!isSupabaseConfigured()) {
-          // Default initial load: Demo with Remy Preston from the official SU list
-          const defaultRecord = findMemberByCardNumber('K25008223');
-          if (defaultRecord) {
-            setSuRecord(defaultRecord);
-            setInputStudentId(defaultRecord.cardNumber);
-            setProfile({
-              id: 'demo-user',
-              full_name: defaultRecord.name,
-              student_id: defaultRecord.cardNumber,
-              university: 'King\'s College London',
-              phone: '+44 7700 900123',
-              emergency_contact_name: 'Parent / Emergency Contact',
-              emergency_contact_phone: '+44 7700 900456',
-              dietary_requirements: 'None',
-              medical_notes: null,
-              role: 0,
-              avatar_url: null,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            });
-            setMembership({
-              id: defaultRecord.cardNumber,
-              user_id: 'demo-user',
-              membership_number: defaultRecord.cardNumber,
-              tier: defaultRecord.tier,
-              valid_from: '2026-09-01',
-              valid_until: '2027-08-31',
-              payment_reference: defaultRecord.transactionId,
-              is_active: true,
-              created_at: new Date().toISOString(),
-            });
-          }
+          // Supabase is not configured yet; don't preload any private filler data
           setLoading(false);
           return;
         }
@@ -146,7 +115,8 @@ export default function MembershipDashboard() {
         const { data: { user } } = await supabase.auth.getUser();
 
         if (!user) {
-          router.push('/login?next=/membership');
+          // Public visitor: allow viewing the verification portal in clean locked state
+          setLoading(false);
           return;
         }
 
@@ -233,6 +203,10 @@ export default function MembershipDashboard() {
     if (isSupabaseConfigured()) {
       await supabase.auth.signOut();
     }
+    setProfile(null);
+    setSuRecord(null);
+    setMembership(null);
+    setInputStudentId('');
     router.push('/');
     router.refresh();
   };
@@ -264,12 +238,21 @@ export default function MembershipDashboard() {
               Your verified climbing pass. Card tier and details are locked according to your official KCLSU purchase record.
             </p>
           </div>
-          <button
-            onClick={handleSignOut}
-            className="px-4 py-2 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 text-xs font-mono transition-colors self-start sm:self-auto"
-          >
-            Sign Out
-          </button>
+          {profile ? (
+            <button
+              onClick={handleSignOut}
+              className="px-4 py-2 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 text-xs font-mono transition-colors self-start sm:self-auto"
+            >
+              Sign Out
+            </button>
+          ) : (
+            <Link
+              href="/login?next=/membership"
+              className="px-4 py-2 rounded-lg bg-[#FFBD59] text-[#052322] font-bold hover:bg-[#FFE0A3] text-xs font-mono transition-colors self-start sm:self-auto shadow"
+            >
+              Sign In
+            </Link>
+          )}
         </div>
 
         {/* Student ID Lookup & Verification Bar */}
@@ -289,7 +272,7 @@ export default function MembershipDashboard() {
                 required
                 value={inputStudentId}
                 onChange={e => setInputStudentId(e.target.value.toUpperCase())}
-                placeholder="e.g. K25008223"
+                placeholder="e.g. K1234567"
                 className="bg-[#041F1E] border border-[#FFBD59]/40 rounded-xl px-4 py-2.5 text-white font-mono text-sm tracking-wider uppercase focus:outline-none focus:border-[#FFBD59] w-full md:w-56"
               />
               <button
@@ -391,8 +374,12 @@ export default function MembershipDashboard() {
               <h2 className="text-2xl font-black font-serif text-white">
                 Climber Safety &amp; Expedition Notes
               </h2>
-              <span className="text-[10px] font-mono text-[#FFBD59] bg-[#041F1E] px-2 py-0.5 rounded border border-[#FFBD59]/30">
-                Card Locked
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                suRecord 
+                  ? 'text-emerald-400 bg-emerald-950/60 border-emerald-500/40' 
+                  : 'text-[#FFBD59] bg-[#041F1E] border-[#FFBD59]/30'
+              }`}>
+                {suRecord ? 'Verified Member' : 'Card Locked'}
               </span>
             </div>
             <p className="text-xs text-zinc-300 mb-6 font-sans leading-relaxed">
@@ -415,8 +402,9 @@ export default function MembershipDashboard() {
                   <input
                     type="text"
                     disabled
-                    value={suRecord?.name || profile?.full_name || 'KCL Climber'}
-                    className="w-full bg-[#041F1E]/60 border border-zinc-700 rounded-xl p-3 text-zinc-300 cursor-not-allowed text-xs font-semibold"
+                    value={suRecord?.name || profile?.full_name || ''}
+                    placeholder="Verify Student ID above"
+                    className="w-full bg-[#041F1E]/60 border border-zinc-700 rounded-xl p-3 text-zinc-300 cursor-not-allowed text-xs font-semibold placeholder:text-zinc-600"
                   />
                 </div>
                 <div>
@@ -427,8 +415,9 @@ export default function MembershipDashboard() {
                   <input
                     type="text"
                     disabled
-                    value={suRecord?.cardNumber || profile?.student_id || 'K-STUDENT'}
-                    className="w-full bg-[#041F1E]/60 border border-zinc-700 rounded-xl p-3 text-[#FFBD59] cursor-not-allowed text-xs font-mono font-bold"
+                    value={suRecord?.cardNumber || profile?.student_id || ''}
+                    placeholder="Verify Student ID above"
+                    className="w-full bg-[#041F1E]/60 border border-zinc-700 rounded-xl p-3 text-[#FFBD59] cursor-not-allowed text-xs font-mono font-bold placeholder:text-zinc-600"
                   />
                 </div>
               </div>
@@ -441,7 +430,7 @@ export default function MembershipDashboard() {
                   type="tel"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
-                  placeholder="+44 7123 456789"
+                  placeholder="+44 7000 000000"
                   className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
                 />
               </div>
@@ -457,7 +446,7 @@ export default function MembershipDashboard() {
                       type="text"
                       value={emergencyName}
                       onChange={e => setEmergencyName(e.target.value)}
-                      placeholder="e.g. Sarah Honnold (Parent)"
+                      placeholder="e.g. Next of Kin / Parent"
                       className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
                     />
                   </div>
@@ -467,7 +456,7 @@ export default function MembershipDashboard() {
                       type="tel"
                       value={emergencyPhone}
                       onChange={e => setEmergencyPhone(e.target.value)}
-                      placeholder="+44 7987 654321"
+                      placeholder="+44 7000 000000"
                       className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
                     />
                   </div>
@@ -489,10 +478,14 @@ export default function MembershipDashboard() {
 
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving || (!suRecord && !profile)}
                 className="w-full py-3 bg-[#FFBD59] text-[#052322] font-black rounded-xl hover:bg-[#FFE0A3] transition-colors font-mono uppercase tracking-wider disabled:opacity-50 text-xs shadow-lg"
               >
-                {saving ? 'Saving...' : 'Update Emergency Details'}
+                {saving 
+                  ? 'Saving...' 
+                  : (!suRecord && !profile) 
+                    ? 'Verify Student ID to Unlock Notes' 
+                    : 'Update Emergency Details'}
               </button>
             </form>
           </div>
