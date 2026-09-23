@@ -7,7 +7,7 @@ export const ROLE_NAMES: Record<Role, string> = {
 };
 
 export function getSuperAdminEmail(): string {
-  return process.env.SUPERADMIN_EMAIL || 'remy.preston@outlook.com';
+  return process.env.SUPERADMIN_EMAIL || 'admin@kclmc.org';
 }
 
 export function getUserRole(email: string | null | undefined, roleOverride?: string | null): Role {

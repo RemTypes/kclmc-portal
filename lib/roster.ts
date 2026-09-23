@@ -1,6 +1,6 @@
 export interface KclsuMemberRecord {
-  cardNumber: string; // KCL ID e.g. K25008223
-  name: string;       // Formatted name e.g. "Remy Preston"
+  cardNumber: string; // KCL ID e.g. K1234567
+  name: string;       // Formatted name e.g. "Alex Honnold"
   rawPurchaser: string;
   tier: 'recreational' | 'social';
   productName: string;
@@ -10,7 +10,7 @@ export interface KclsuMemberRecord {
 
 export function formatPurchaserName(raw: string): string {
   if (!raw) return '';
-  // Handle formats like "BALTENSPERGER, David", "PRESTON, Remy", "D/O GULWANT SINGH, Hasvinjit"
+  // Handle formats like "SMITH, Jane", "DOE, John"
   const clean = raw.replace(/^"|"$/g, '').trim();
   if (clean.includes(',')) {
     const [last, first] = clean.split(',').map(s => s.trim());
