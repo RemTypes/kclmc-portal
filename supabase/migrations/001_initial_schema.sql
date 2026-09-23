@@ -60,7 +60,7 @@ create table public.memberships (
   valid_from        date not null default current_date,
   valid_until       date not null,
   payment_reference text,                       -- KCLSU receipt number
-  is_active         boolean generated always as (current_date between valid_from and valid_until) stored,
+  is_active         boolean not null default true,
   created_at        timestamptz not null default now()
 );
 
