@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -12,6 +12,8 @@ export default function Navigation() {
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
     });
@@ -21,7 +23,7 @@ export default function Navigation() {
     });
 
     return () => {
-      subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
   }, [supabase]);
 
