@@ -374,9 +374,9 @@ insert into public.shop_items (name, brand, price_pence, garment_types, current_
 -- Table for official Student Union membership purchases
 create table if not exists public.kclsu_roster (
   id              uuid primary key default uuid_generate_v4(),
-  card_number     text not null unique,               -- KCL Student ID e.g. 'K25008223'
-  full_name       text not null,                      -- Formatted name e.g. 'Remy Preston'
-  raw_purchaser   text not null,                      -- Raw SU name e.g. 'PRESTON, Remy'
+  card_number     text not null unique,               -- KCL Student ID e.g. 'K1234567'
+  full_name       text not null,                      -- Formatted name e.g. 'Jane Doe'
+  raw_purchaser   text not null,                      -- Raw SU name e.g. 'DOE, Jane'
   tier            text not null check (tier in ('social', 'recreational')),
   product_name    text not null,                      -- Official SU product title
   transaction_id  text not null,                      -- KCLSU transaction ID
