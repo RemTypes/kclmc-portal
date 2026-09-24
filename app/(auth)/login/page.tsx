@@ -3,7 +3,7 @@
 import React, { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
 function LoginForm() {
   const router = useRouter();
@@ -27,6 +27,12 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
+
+    if (!isSupabaseConfigured()) {
+      setErrorMsg('Supabase credentials are not connected yet. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Cloudflare Settings > Variables and Secrets, then trigger a new deployment.');
+      setLoading(false);
+      return;
+    }
 
     try {
       if (mode === 'magic_link') {
