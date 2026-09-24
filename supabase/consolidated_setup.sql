@@ -1,23 +1,11 @@
 -- ============================================================
 -- KCLMC Platform — Consolidated Supabase Setup Migration
 -- Fully Idempotent with Explicit Row Level Security (RLS)
+-- Topological Order: Tables created before dependent functions/policies
 -- ============================================================
 
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
-
--- Helper: get current user's role from profiles (0=public, 1=committee, 2=superadmin)
-create or replace function public.get_user_role()
-returns smallint
-language sql
-stable
-security definer set search_path = ''
-as $$
-  select coalesce(
-    (select role from public.profiles where id = auth.uid()),
-    0
-  );
-$$;
 
 -- ============================================================
 -- 1. PROFILES (extends auth.users)
@@ -62,9 +50,27 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- Enable RLS & Policies on profiles
+-- Enable RLS on profiles
 alter table public.profiles enable row level security;
 
+-- ============================================================
+-- HELPER FUNCTION: get_user_role() (Defined AFTER profiles exists)
+-- ============================================================
+create or replace function public.get_user_role()
+returns smallint
+language plpgsql
+stable
+security definer set search_path = ''
+as $$
+declare
+  user_role smallint;
+begin
+  select role into user_role from public.profiles where id = auth.uid();
+  return coalesce(user_role, 0);
+end;
+$$;
+
+-- Policies for profiles
 drop policy if exists "Users can read own profile" on public.profiles;
 create policy "Users can read own profile"
   on public.profiles for select
