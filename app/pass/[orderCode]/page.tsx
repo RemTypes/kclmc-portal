@@ -126,8 +126,8 @@ export default function DigitalPass() {
             <Link href="/" className="text-zinc-400 hover:text-white underline">
               ← Return Home
             </Link>
-            <Link href="/drops/lube" className="text-zinc-400 hover:text-white underline">
-              Browse Drops
+            <Link href="/drops/kclmc" className="text-[#FFBD59] hover:underline font-bold">
+              Browse Club Merch →
             </Link>
           </div>
         </div>
