@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
-    "build:worker": "opennextjs-cloudflare",
-    "deploy:cloudflare": "opennextjs-cloudflare && wrangler deploy",
+    "build:worker": "opennextjs-cloudflare build",
+    "deploy:cloudflare": "opennextjs-cloudflare build && wrangler deploy",
     "start": "next start",
     "lint": "next lint",
     "test": "echo \"Error: no test specified\" && exit 1"
