@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import type { Trip } from '@/types/database';
@@ -73,12 +73,12 @@ const SEED_TRIPS: (Trip & { itinerary: string[]; leader: string; mapUrl: string 
     status: 'open',
     price_pence: 4500,
     itinerary: [
-      'Friday 18:00 — Minibus departs Guy\'s Campus',
+      'Friday 18:00 — Train from St Pancras / Carpools depart London',
       'Friday 22:00 — Arrive Peak District campsite',
       'Saturday 08:30 — Stanage Popular End trad pairs',
       'Saturday 19:00 — Pub dinner in Hathersage',
       'Sunday 09:00 — Burbage South bouldering & routes',
-      'Sunday 17:00 — Minibus return to London'
+      'Sunday 17:00 — Return travel to London'
     ],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -116,22 +116,37 @@ export default function TripsPage() {
   const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
   const [registeredTrips, setRegisteredTrips] = useState<string[]>([]);
   const [registrationMsg, setRegistrationMsg] = useState('');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
-    async function fetchTrips() {
+    async function loadData() {
       if (!isSupabaseConfigured()) {
         setLoading(false);
         return;
       }
       try {
-        const supabase = createClient();
+        // Fetch current user and user's registrations
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setCurrentUser(user);
+          const { data: regs } = await supabase
+            .from('trip_registrations')
+            .select('trip_id')
+            .eq('user_id', user.id);
+          if (regs && regs.length > 0) {
+            setRegisteredTrips(regs.map(r => r.trip_id));
+          }
+        }
+
+        // Fetch trips
         const { data, error } = await supabase
           .from('trips')
           .select('*')
           .order('date_start', { ascending: true });
 
         if (!error && data && data.length > 0) {
-          // Merge database data with rich metadata
           const merged = data.map(d => {
             const seed = SEED_TRIPS.find(s => s.id === d.id || s.title === d.title);
             return {
@@ -150,13 +165,45 @@ export default function TripsPage() {
         setLoading(false);
       }
     }
-    fetchTrips();
-  }, []);
+    loadData();
+  }, [supabase]);
 
-  const handleRegister = (tripId: string) => {
-    if (registeredTrips.includes(tripId)) return;
+  const handleRegister = async (tripId: string) => {
+    const isCurrentlyRegistered = registeredTrips.includes(tripId);
+
+    if (isCurrentlyRegistered) {
+      if (currentUser && isSupabaseConfigured()) {
+        await supabase
+          .from('trip_registrations')
+          .delete()
+          .eq('trip_id', tripId)
+          .eq('user_id', currentUser.id);
+      }
+      setRegisteredTrips(registeredTrips.filter(id => id !== tripId));
+      setRegistrationMsg('Registration removed from your member schedule.');
+      setTimeout(() => setRegistrationMsg(''), 4000);
+      return;
+    }
+
+    if (!currentUser && isSupabaseConfigured()) {
+      setRegistrationMsg('✔ Spot reserved locally! Sign in with your student account to permanently sync with the trip leader.');
+    } else if (currentUser && isSupabaseConfigured()) {
+      const { error } = await supabase
+        .from('trip_registrations')
+        .insert({
+          trip_id: tripId,
+          user_id: currentUser.id,
+          status: 'confirmed',
+        });
+      if (error) {
+        console.warn('Registration insert error:', error.message);
+      }
+      setRegistrationMsg('✔ Official Meet RSVP confirmed! Details added to your member schedule.');
+    } else {
+      setRegistrationMsg('✔ Meet RSVP confirmed! Details added to your member schedule.');
+    }
+
     setRegisteredTrips([...registeredTrips, tripId]);
-    setRegistrationMsg('✔ Meet RSVP confirmed! Details added to your member schedule.');
     setTimeout(() => setRegistrationMsg(''), 4000);
   };
 
@@ -166,7 +213,7 @@ export default function TripsPage() {
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#084746] border border-[#FFBD59]/40 text-[#FFBD59] text-xs font-mono uppercase tracking-widest mb-4">
           Outdoor Expeditions &amp; Social Meets
         </div>
-        <h1 className="text-4xl md:text-5xl font-black font-serif text-[#FFBD59] mb-3">
+        <h1 className="text-4xl md:text-5xl font-black font-heading uppercase tracking-tight text-[#FFBD59] mb-3">
           Trips Calendar
         </h1>
         <p className="text-zinc-300 text-sm md:text-base mb-8 max-w-xl leading-relaxed">
@@ -220,7 +267,7 @@ export default function TripsPage() {
                       </span>
                     )}
                   </div>
-                  <h3 className="text-2xl font-bold font-serif text-white group-hover:text-[#FFBD59] transition-colors">
+                  <h3 className="text-2xl font-bold font-heading uppercase tracking-wide text-white group-hover:text-[#FFBD59] transition-colors">
                     {trip.title}
                   </h3>
                   <p className="text-zinc-300 text-xs mt-1 font-sans">{trip.description}</p>
@@ -280,7 +327,7 @@ export default function TripsPage() {
                   Leader: {selectedTrip.leader}
                 </span>
               </div>
-              <h2 className="text-3xl font-black font-serif text-white mb-2">
+              <h2 className="text-3xl font-black font-heading uppercase tracking-wide text-white mb-2">
                 {selectedTrip.title}
               </h2>
               <p className="text-xs text-zinc-300 font-sans leading-relaxed">
@@ -371,7 +418,7 @@ export default function TripsPage() {
                 }`}
               >
                 {registeredTrips.includes(selectedTrip.id)
-                  ? '✔ Registered for Meet'
+                  ? '✔ Registered (Click to Cancel)'
                   : 'RSVP / Register for Meet →'}
               </button>
             </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
@@ -10,7 +10,7 @@ import type { Profile, Membership } from '@/types/database';
 
 export default function MembershipDashboard() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -231,7 +231,7 @@ export default function MembershipDashboard() {
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#084746] border border-[#FFBD59]/40 text-[#FFBD59] text-xs font-mono uppercase tracking-widest mb-3">
               Official KCLMC Pass // Season 2026/27
             </div>
-            <h1 className="text-4xl md:text-5xl font-black font-serif text-[#FFBD59]">
+            <h1 className="text-4xl md:text-5xl font-black font-heading uppercase tracking-tight text-[#FFBD59]">
               Membership Portal
             </h1>
             <p className="text-zinc-300 text-sm mt-1">
@@ -324,7 +324,7 @@ export default function MembershipDashboard() {
                 <div className="w-12 h-12 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-2xl">
                   🔒
                 </div>
-                <h3 className="text-xl font-bold font-serif text-white">Pass Locked</h3>
+                <h3 className="text-xl font-bold font-heading uppercase tracking-wide text-white">Pass Locked</h3>
                 <p className="text-xs text-zinc-300 leading-relaxed max-w-sm mx-auto">
                   Please enter a valid KCL Student ID that holds a 2026/27 KCLSU Mountaineering &amp; Climbing Club purchase to unlock your card.
                 </p>
@@ -371,7 +371,7 @@ export default function MembershipDashboard() {
           {/* Right Column: Locked Climber Safety Profile */}
           <div className="lg:col-span-6 bg-[#084746]/70 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl p-6 md:p-8 shadow-xl">
             <div className="flex justify-between items-start mb-2">
-              <h2 className="text-2xl font-black font-serif text-white">
+              <h2 className="text-2xl font-black font-heading uppercase tracking-wide text-white">
                 Climber Safety &amp; Expedition Notes
               </h2>
               <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
@@ -497,7 +497,7 @@ export default function MembershipDashboard() {
             <span className="text-[10px] font-mono uppercase tracking-widest text-[#FFBD59] bg-[#041F1E] px-2.5 py-1 rounded border border-[#FFBD59]/30">
               Official KCLMC Guide
             </span>
-            <h2 className="text-3xl font-black font-serif text-white mt-3 mb-2">
+            <h2 className="text-3xl font-black font-heading uppercase tracking-tight text-white mt-3 mb-2">
               Social vs. Recreational Membership: What's the Difference?
             </h2>
             <p className="text-xs sm:text-sm text-zinc-300 font-sans leading-relaxed">
@@ -510,7 +510,7 @@ export default function MembershipDashboard() {
             <div className="bg-[#041F1E]/95 border-2 border-[#FFBD59]/40 rounded-2xl p-6 relative flex flex-col justify-between shadow-lg">
               <div>
                 <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-xl font-bold font-serif text-[#FFBD59]">
+                  <h3 className="text-xl font-bold font-heading uppercase tracking-wide text-[#FFBD59]">
                     Social Membership
                   </h3>
                   <span className="text-xs font-mono uppercase bg-[#084746] text-[#FFBD59] px-2.5 py-1 rounded font-bold border border-[#FFBD59]/40">
@@ -577,7 +577,7 @@ export default function MembershipDashboard() {
             <div className="bg-[#041F1E]/95 border-2 border-emerald-500/50 rounded-2xl p-6 relative flex flex-col justify-between shadow-lg">
               <div>
                 <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-xl font-bold font-serif text-emerald-400">
+                  <h3 className="text-xl font-bold font-heading uppercase tracking-wide text-emerald-400">
                     Full Recreational Membership
                   </h3>
                   <span className="text-xs font-mono uppercase bg-emerald-950 text-emerald-300 px-2.5 py-1 rounded font-bold border border-emerald-500/40">
@@ -625,9 +625,9 @@ export default function MembershipDashboard() {
                   <li className="flex items-start gap-2.5">
                     <span className="text-emerald-400 font-bold text-sm">✔</span>
                     <div>
-                      <strong className="text-white">BMC Membership Included:</strong>
+                      <strong className="text-white">UK Mountain Hut &amp; Bunkhouse Access:</strong>
                       <p className="text-zinc-400 mt-0.5">
-                        Annual British Mountaineering Council membership with discounted rescue insurance, training courses, and alpine hut access. (We'll help get existing BMC dues refunded).
+                        Stay at authentic mountaineering huts and bunkhouses across North Wales, the Lake District, and the Scottish Highlands on official club meets.
                       </p>
                     </div>
                   </li>

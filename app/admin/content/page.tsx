@@ -1,6 +1,7 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabaseMock } from '@/lib/supabase';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
 type TabName = 'trips' | 'guides' | 'rounds' | 'leaderboard' | 'drops' | 'scorecards';
 
@@ -26,19 +27,62 @@ export default function ContentAdminPage() {
   const [newInd, setNewInd] = useState({ rank: 1, name: '', uni: '', category: 'Men', points: 0 });
   const [newShopItem, setNewShopItem] = useState({ name: '', brand: 'KCL', currentMoq: 0, targetMoq: 100, price: 20 });
 
+  const supabase = useMemo(() => createClient(), []);
+
   useEffect(() => {
     fetchData();
   }, []);
 
   async function fetchData() {
     setLoading(true);
+
+    let tripsData: any[] = [];
+    let guidesData: any[] = [];
+    let shopData: any[] = [];
+
+    if (isSupabaseConfigured()) {
+      try {
+        const [
+          { data: liveTrips },
+          { data: liveGuides },
+          { data: liveShop },
+        ] = await Promise.all([
+          supabase.from('trips').select('*').order('date_start', { ascending: true }),
+          supabase.from('guides').select('*').order('sort_order', { ascending: true }),
+          supabase.from('shop_items').select('*'),
+        ]);
+
+        if (liveTrips && liveTrips.length > 0) {
+          tripsData = liveTrips.map(t => ({
+            ...t,
+            date: t.date_start,
+            type: t.trip_type,
+          }));
+        }
+        if (liveGuides && liveGuides.length > 0) {
+          guidesData = liveGuides;
+        }
+        if (liveShop && liveShop.length > 0) {
+          shopData = liveShop.map(s => ({
+            ...s,
+            price: s.price_pence ? s.price_pence / 100 : 20,
+            currentMoq: s.current_moq,
+            targetMoq: s.target_moq,
+          }));
+        }
+      } catch (err) {
+        console.error('CMS Supabase fetch error:', err);
+      }
+    }
+
+    // Mock fallbacks for competitions / unconfigured
     const [
-      { data: tripsData }, 
-      { data: guidesData },
+      { data: mockTrips }, 
+      { data: mockGuides },
       { data: roundsData },
       { data: teamsData },
       { data: indData },
-      { data: shopData },
+      { data: mockShop },
       { data: scorecardsData }
     ] = await Promise.all([
       supabaseMock.from('trips').select(),
@@ -50,25 +94,71 @@ export default function ContentAdminPage() {
       supabaseMock.from('scorecards').select()
     ]);
     
-    setTrips(tripsData || []);
-    setGuides(guidesData || []);
+    setTrips(tripsData.length > 0 ? tripsData : (mockTrips || []));
+    setGuides(guidesData.length > 0 ? guidesData : (mockGuides || []));
     setRounds(roundsData || []);
     setTeams(teamsData || []);
     setIndividuals(indData || []);
-    setShopItems(shopData || []);
+    setShopItems(shopData.length > 0 ? shopData : (mockShop || []));
     setScorecards(scorecardsData || []);
     setLoading(false);
   }
 
   // Generic Handlers
   async function handleAdd(table: any, payload: any, resetter: () => void) {
-    await supabaseMock.from(table).insert(payload);
+    if (isSupabaseConfigured() && ['trips', 'guides', 'shop_items'].includes(table)) {
+      try {
+        if (table === 'trips') {
+          const typeVal = (payload.type || 'bouldering').toLowerCase();
+          const cleanType = typeVal.includes('winter') ? 'winter' : typeVal.includes('sport') ? 'sport' : typeVal.includes('trad') ? 'trad' : 'social';
+          await supabase.from('trips').insert({
+            title: payload.title,
+            description: `${payload.title} — Official club meet`,
+            trip_type: cleanType,
+            location: 'London / Crag Venue',
+            date_start: payload.date || new Date().toISOString().split('T')[0],
+            status: 'open',
+            price_pence: 0,
+          });
+        } else if (table === 'guides') {
+          await supabase.from('guides').insert({
+            title: payload.title,
+            description: payload.description,
+            category: payload.category || 'indoor',
+            is_published: true,
+            sort_order: guides.length + 1,
+          });
+        } else if (table === 'shop_items') {
+          await supabase.from('shop_items').insert({
+            name: payload.name,
+            brand: payload.brand || 'KCL',
+            price_pence: (payload.price || 20) * 100,
+            garment_types: 'Apparel',
+            current_moq: payload.currentMoq || 0,
+            target_moq: payload.targetMoq || 30,
+            is_active: true,
+          });
+        }
+      } catch (err) {
+        console.error('Error inserting into Supabase:', err);
+      }
+    } else {
+      await supabaseMock.from(table).insert(payload);
+    }
     resetter();
     fetchData();
   }
 
   async function handleDelete(table: any, id: string) {
-    await supabaseMock.from(table).delete().eq('id', id);
+    if (isSupabaseConfigured() && ['trips', 'guides', 'shop_items'].includes(table)) {
+      try {
+        await supabase.from(table).delete().eq('id', id);
+      } catch (err) {
+        console.error('Error deleting from Supabase:', err);
+      }
+    } else {
+      await supabaseMock.from(table).delete().eq('id', id);
+    }
     fetchData();
   }
 

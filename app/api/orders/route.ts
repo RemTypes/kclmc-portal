@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import type { MerchOrder } from '@/types/database';
 
 // In-memory fallback cache for development before live Supabase is provisioned
@@ -37,9 +37,9 @@ export async function GET(request: Request) {
   const code = searchParams.get('code');
 
   try {
-    const supabase = await createClient();
     if (code) {
-      const { data, error } = await supabase
+      const adminClient = createAdminClient();
+      const { data, error } = await adminClient
         .from('merch_orders')
         .select('*')
         .eq('order_code', code)
@@ -74,14 +74,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    const { data } = await supabase
+    const admin = createAdminClient();
+    const { data } = await admin
       .from('merch_orders')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(50);
 
     if (data && data.length > 0) {
-      return NextResponse.json(data.map(d => ({
+      return NextResponse.json(data.map((d: any) => ({
         id: d.id,
         orderCode: d.order_code,
         customerName: d.customer_name,
@@ -140,8 +141,8 @@ export async function POST(request: Request) {
   };
 
   try {
-    const supabase = await createClient();
-    const { error } = await supabase.from('merch_orders').insert({
+    const admin = createAdminClient();
+    const { error } = await admin.from('merch_orders').insert({
       order_code: newOrder.order_code,
       customer_name: newOrder.customer_name,
       customer_email: newOrder.customer_email,
@@ -152,6 +153,7 @@ export async function POST(request: Request) {
     });
 
     if (error) {
+      console.warn('Order insert error:', error.message);
       fallbackOrders.push(newOrder);
     }
   } catch {
@@ -172,8 +174,8 @@ export async function PUT(request: Request) {
   const normalizedStatus = status.toLowerCase();
 
   try {
-    const supabase = await createClient();
-    await supabase
+    const admin = createAdminClient();
+    await admin
       .from('merch_orders')
       .update({ status: normalizedStatus, updated_at: new Date().toISOString() })
       .eq('order_code', code);

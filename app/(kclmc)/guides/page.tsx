@@ -83,7 +83,7 @@ const SEED_GUIDES: EnhancedGuide[] = [
     category: 'crag',
     location: 'Groombridge, East Sussex',
     grade_range: 'VDiff to E3',
-    discount_info: 'Free crag access (BMC owned)',
+    discount_info: 'Open public crag access',
     website_url: 'https://www.thebmc.co.uk/modules/rad/viewcrag.aspx?id=18',
     map_url: 'https://maps.google.com/?q=Harrisons+Rocks+Groombridge',
     topo_url: 'https://www.ukclimbing.com/logbook/crags/harrisons_rocks-18/',
@@ -188,7 +188,7 @@ export default async function GuidesPage() {
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#084746] border border-[#FFBD59]/40 text-[#FFBD59] text-xs font-mono uppercase tracking-widest mb-4">
           Local Beta &amp; Discounts
         </div>
-        <h1 className="text-4xl md:text-5xl font-black font-serif text-[#FFBD59] mb-3">
+        <h1 className="text-4xl md:text-5xl font-black font-heading uppercase tracking-tight text-[#FFBD59] mb-3">
           Crag &amp; Gym Guides
         </h1>
         <p className="text-zinc-300 text-sm md:text-base mb-8 max-w-xl font-sans leading-relaxed">
@@ -202,7 +202,7 @@ export default async function GuidesPage() {
               <div className="flex items-center gap-3 mb-6 border-b border-[#FFBD59]/20 pb-4">
                 <span className="text-2xl">🧗‍♂️</span>
                 <div>
-                  <h2 className="text-2xl font-bold font-serif text-white">Indoor Walls</h2>
+                  <h2 className="text-2xl font-bold font-heading uppercase tracking-wide text-white">Indoor Walls</h2>
                   <p className="text-xs text-[#FFBD59] font-mono">London Student Concessions</p>
                 </div>
               </div>
@@ -211,7 +211,7 @@ export default async function GuidesPage() {
                 {indoor.map((g, i) => (
                   <li key={g.id} className={i !== indoor.length - 1 ? "border-b border-white/10 pb-6" : ""}>
                     <div className="flex justify-between items-start gap-2 mb-1">
-                      <h3 className="font-bold text-lg text-[#FFBD59] font-serif">{g.title}</h3>
+                      <h3 className="font-bold text-lg text-[#FFBD59] font-heading uppercase tracking-wide">{g.title}</h3>
                     </div>
                     
                     <p className="text-xs text-zinc-300 mb-3 leading-relaxed">{g.description}</p>
@@ -263,7 +263,7 @@ export default async function GuidesPage() {
               <div className="flex items-center gap-3 mb-6 border-b border-[#FFBD59]/20 pb-4">
                 <span className="text-2xl">🪨</span>
                 <div>
-                  <h2 className="text-2xl font-bold font-serif text-white">Outdoor Crags</h2>
+                  <h2 className="text-2xl font-bold font-heading uppercase tracking-wide text-white">Outdoor Crags</h2>
                   <p className="text-xs text-[#FFBD59] font-mono">UK Trad &amp; Sport Destinations</p>
                 </div>
               </div>
@@ -272,7 +272,7 @@ export default async function GuidesPage() {
                 {outdoor.map((g, i) => (
                   <li key={g.id} className={i !== outdoor.length - 1 ? "border-b border-white/10 pb-6" : ""}>
                     <div className="flex justify-between items-start gap-2 mb-1">
-                      <h3 className="font-bold text-lg text-[#FFBD59] font-serif">{g.title}</h3>
+                      <h3 className="font-bold text-lg text-[#FFBD59] font-heading uppercase tracking-wide">{g.title}</h3>
                       {g.grade_range && (
                         <span className="text-[10px] font-mono text-[#FFBD59] bg-[#041F1E] px-2 py-0.5 rounded border border-[#FFBD59]/30 shrink-0">
                           {g.grade_range}

@@ -128,7 +128,7 @@ export default function DropsKclmc() {
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#084746] border border-[#FFBD59]/40 text-[#FFBD59] text-xs font-mono uppercase tracking-widest mb-4">
           Official Apparel &amp; Pre-Orders
         </div>
-        <h1 className="text-4xl md:text-5xl font-black font-serif text-[#FFBD59] mb-3">
+        <h1 className="text-4xl md:text-5xl font-black font-heading uppercase tracking-tight text-[#FFBD59] mb-3">
           Club Merch Drops
         </h1>
         <p className="text-zinc-300 text-sm md:text-base mb-8 max-w-xl">
@@ -148,7 +148,7 @@ export default function DropsKclmc() {
           <>
             {/* Live MOQ Progress */}
             <div className="mb-8 p-6 border border-[#FFBD59]/25 rounded-2xl bg-[#084746]/70 backdrop-blur-md shadow-lg">
-              <h2 className="text-xl font-bold mb-2 text-white font-serif">
+              <h2 className="text-xl font-bold mb-2 text-white font-heading uppercase tracking-wide">
                 Live MOQ Progress: <span className="text-[#FFBD59]">{selectedItem?.name}</span>
               </h2>
               <div className="w-full bg-[#041F1E] h-4 rounded-full overflow-hidden border border-[#FFBD59]/20">
@@ -168,7 +168,7 @@ export default function DropsKclmc() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Garment Customizer Form */}
               <div className="p-6 bg-[#084746]/70 border border-[#FFBD59]/25 rounded-2xl backdrop-blur-md shadow-lg">
-                <h2 className="text-2xl font-black mb-4 text-white font-serif">Customize Garment</h2>
+                <h2 className="text-2xl font-black mb-4 text-white font-heading uppercase tracking-wide">Customize Garment</h2>
                 
                 <label className="block mb-2 text-xs font-mono uppercase tracking-wider text-zinc-300">Garment Type</label>
                 <select
@@ -229,7 +229,7 @@ export default function DropsKclmc() {
               {orderCode && (
                 <div className="p-6 bg-[#084746] border border-[#FFBD59]/50 rounded-2xl flex flex-col items-center justify-center text-center shadow-xl">
                   <span className="text-4xl mb-3">🎉</span>
-                  <h2 className="text-2xl font-black mb-2 text-white font-serif">Order Created!</h2>
+                  <h2 className="text-2xl font-black mb-2 text-white font-heading uppercase tracking-wide">Order Created!</h2>
                   <p className="text-xs mb-3 text-zinc-300 font-mono">Your Unique Order Code:</p>
                   <div className="text-3xl font-mono font-black bg-[#041F1E] text-[#FFBD59] border border-[#FFBD59]/40 py-2.5 px-6 rounded-xl mb-4 tracking-widest">
                     {orderCode}
