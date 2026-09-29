@@ -101,6 +101,16 @@ export const modulesConfig: Record<string, ModuleDefinition> = {
     requiredRole: 0,
     category: 'drops',
   },
+  adminContent: {
+    id: 'adminContent',
+    name: 'CMS Content Manager',
+    description: 'Manage trips, crag & gym guides, rankings, and merch drops',
+    route: '/admin/content',
+    brand: 'admin',
+    enabled: true,
+    requiredRole: 1,
+    category: 'admin',
+  },
   adminReconcile: {
     id: 'adminReconcile',
     name: 'Payment Reconciliation',
