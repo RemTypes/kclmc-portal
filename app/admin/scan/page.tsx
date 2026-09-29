@@ -38,7 +38,7 @@ export default function ScanPage() {
           setData(json);
           setResultType('membership');
         } else {
-          setError(json.error || 'Membership not found');
+          setError(json.error || 'Membership not found in KCLSU database');
         }
       } else {
         // Assume it's a merch order pass
@@ -59,7 +59,7 @@ export default function ScanPage() {
           }
         }
       }
-    } catch (err) {
+    } catch {
       setError('Network error verifying code');
     } finally {
       setLoading(false);
@@ -83,131 +83,139 @@ export default function ScanPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6 md:p-12 flex flex-col items-center justify-center font-mono">
-      <div className="w-full max-w-md flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold font-serif text-[#FFBD59]">Pass &amp; ID Scanner</h1>
-        <Link href="/admin" className="text-xs text-zinc-400 hover:text-white underline">
-          ← Admin Hub
-        </Link>
-      </div>
-
-      {!data ? (
-        <div className="w-full max-w-md aspect-square bg-black border-4 border-gray-800 rounded-3xl mb-8 flex items-center justify-center relative overflow-hidden shadow-2xl">
-          <div className="absolute inset-0 border-2 border-emerald-500 m-8 rounded-2xl opacity-40"></div>
-          <div className="absolute w-full h-1 bg-emerald-400 shadow-[0_0_20px_#10b981] animate-[scan_2s_ease-in-out_infinite]"></div>
-          <div className="text-center z-10 bg-black/70 px-4 py-3 rounded-xl border border-zinc-800">
-            <p className="text-xs text-zinc-300 font-bold">Awaiting Camera / Input</p>
-            <p className="text-[10px] text-zinc-500 mt-1">Scan QR or enter pass code below</p>
+    <div className="min-h-screen bg-[#041F1E] text-slate-100 p-6 md:p-10 font-sans flex flex-col items-center justify-center relative overflow-hidden topo-pattern">
+      <div className="w-full max-w-md relative z-10">
+        <div className="flex justify-between items-center mb-6 border-b border-[#084746] pb-3">
+          <div>
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#FFBD59]">At The Wall</span>
+            <h1 className="text-2xl font-black font-heading uppercase text-white tracking-wide">
+              Pass &amp; ID Scanner
+            </h1>
           </div>
+          <Link href="/admin" className="text-xs font-mono text-zinc-400 hover:text-[#FFBD59] transition-colors">
+            ← Dashboard
+          </Link>
         </div>
-      ) : resultType === 'membership' ? (
-        /* Membership verification card */
-        <div className="w-full max-w-md bg-zinc-900 rounded-3xl mb-8 overflow-hidden border border-zinc-700 shadow-2xl">
-          <div className={`p-4 text-center font-bold text-lg ${
-            data.valid ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
-          }`}>
-            {data.valid ? '✔ ACTIVE KCLMC MEMBER' : '✖ EXPIRED / INVALID MEMBERSHIP'}
-          </div>
-          <div className="p-6 space-y-4">
-            <div>
-              <span className="text-[10px] uppercase text-zinc-400">Climber Name</span>
-              <h2 className="text-2xl font-bold text-white font-sans">{data.member.name}</h2>
+
+        {!data ? (
+          <div className="w-full aspect-square bg-[#052322] border-2 border-[#084746] rounded-3xl mb-6 flex items-center justify-center relative overflow-hidden shadow-2xl">
+            <div className="absolute inset-0 border-2 border-[#FFBD59]/30 m-8 rounded-2xl opacity-40"></div>
+            <div className="absolute w-full h-1 bg-[#FFBD59] shadow-[0_0_20px_#FFBD59] animate-[scan_2s_ease-in-out_infinite]"></div>
+            <div className="text-center z-10 bg-[#041F1E]/90 px-5 py-4 rounded-2xl border border-[#084746]">
+              <span className="text-2xl block mb-1">📷</span>
+              <p className="text-xs text-white font-heading font-bold uppercase tracking-wider">Awaiting Input</p>
+              <p className="text-[11px] text-zinc-400 font-mono mt-1">Scan QR or enter pass code below</p>
             </div>
-
-            <div className="grid grid-cols-2 gap-4 text-xs">
-              <div>
-                <span className="text-[10px] uppercase text-zinc-400">Membership No</span>
-                <p className="font-bold text-[#FFBD59]">{data.member.membership_number}</p>
-              </div>
-              <div>
-                <span className="text-[10px] uppercase text-zinc-400">Tier</span>
-                <p className="font-bold uppercase text-emerald-400">{data.member.tier}</p>
-              </div>
-              <div>
-                <span className="text-[10px] uppercase text-zinc-400">Student ID</span>
-                <p className="text-zinc-200">{data.member.student_id || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="text-[10px] uppercase text-zinc-400">Valid Until</span>
-                <p className="text-zinc-200">{data.member.expires}</p>
-              </div>
+          </div>
+        ) : resultType === 'membership' ? (
+          /* Membership verification card */
+          <div className="w-full bg-[#052322] rounded-3xl mb-6 overflow-hidden border-2 border-[#084746] shadow-2xl">
+            <div className={`p-4 text-center font-heading font-black text-sm uppercase tracking-wider ${
+              data.valid ? 'bg-emerald-700 text-white' : 'bg-red-700 text-white'
+            }`}>
+              {data.valid ? '✔ ACTIVE KCLMC MEMBER' : '✖ EXPIRED / INVALID MEMBERSHIP'}
             </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <span className="text-[10px] uppercase font-mono text-zinc-400">Climber Name</span>
+                <h2 className="text-2xl font-bold text-white font-heading tracking-wide">{data.member.name}</h2>
+              </div>
 
-            <button
-              onClick={() => { setData(null); setCode(''); }}
-              className="w-full mt-4 bg-zinc-800 hover:bg-zinc-700 text-white py-2.5 rounded-xl font-bold transition-colors text-xs"
-            >
-              Scan Another Code
-            </button>
-          </div>
-        </div>
-      ) : (
-        /* Merch order verification card */
-        <div className="w-full max-w-md bg-zinc-900 rounded-3xl mb-8 overflow-hidden border border-zinc-700 shadow-2xl">
-          <div className={`p-4 text-center font-bold text-lg ${
-            data.status === 'COLLECTED' ? 'bg-blue-600 text-white' :
-            data.status === 'PAID' ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white'
-          }`}>
-            ORDER STATUS: {data.status}
-          </div>
-          <div className="p-6">
-            <h2 className="text-2xl font-mono mb-1 text-white">{data.orderCode}</h2>
-            <p className="text-zinc-400 text-xs mb-6">{data.customerName}</p>
+              <div className="grid grid-cols-2 gap-4 text-xs font-mono">
+                <div className="bg-[#084746]/40 p-2.5 rounded-xl border border-[#0D5F5E]">
+                  <span className="text-[10px] uppercase text-zinc-400 block mb-0.5">Membership No</span>
+                  <p className="font-bold text-[#FFBD59]">{data.member.membership_number}</p>
+                </div>
+                <div className="bg-[#084746]/40 p-2.5 rounded-xl border border-[#0D5F5E]">
+                  <span className="text-[10px] uppercase text-zinc-400 block mb-0.5">Tier</span>
+                  <p className="font-bold uppercase text-emerald-400">{data.member.tier}</p>
+                </div>
+                <div className="bg-[#084746]/40 p-2.5 rounded-xl border border-[#0D5F5E]">
+                  <span className="text-[10px] uppercase text-zinc-400 block mb-0.5">Student ID</span>
+                  <p className="text-zinc-200">{data.member.student_id || 'N/A'}</p>
+                </div>
+                <div className="bg-[#084746]/40 p-2.5 rounded-xl border border-[#0D5F5E]">
+                  <span className="text-[10px] uppercase text-zinc-400 block mb-0.5">Valid Until</span>
+                  <p className="text-zinc-200">{data.member.expires}</p>
+                </div>
+              </div>
 
-            <h3 className="font-bold mb-2 text-xs text-zinc-400 uppercase tracking-wider">Line Items</h3>
-            <ul className="mb-6 space-y-2">
-              {data.items?.map((item: any, i: number) => (
-                <li key={i} className="flex justify-between bg-black/60 p-3 rounded-xl border border-zinc-800 text-xs">
-                  <span>{item.name}</span>
-                  <span className="font-bold text-amber-400">Size: {item.size}</span>
-                </li>
-              ))}
-            </ul>
-
-            {data.status === 'PAID' && (
               <button
-                onClick={markCollected}
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-colors text-xs uppercase tracking-wider mb-3"
+                onClick={() => { setData(null); setCode(''); }}
+                className="w-full mt-4 bg-[#084746] hover:bg-[#0D5F5E] text-white py-3 rounded-xl font-heading font-bold text-xs uppercase tracking-wider transition-colors"
               >
-                Mark as Collected
+                Scan Another Code
               </button>
-            )}
-
-            <button
-              onClick={() => { setData(null); setCode(''); }}
-              className="w-full bg-zinc-800 hover:bg-zinc-700 text-white py-2.5 rounded-xl font-bold transition-colors text-xs"
-            >
-              Scan Another Code
-            </button>
+            </div>
           </div>
-        </div>
-      )}
+        ) : (
+          /* Merch order verification card */
+          <div className="w-full bg-[#052322] rounded-3xl mb-6 overflow-hidden border-2 border-[#084746] shadow-2xl">
+            <div className={`p-4 text-center font-heading font-black text-sm uppercase tracking-wider ${
+              data.status === 'COLLECTED' ? 'bg-[#084746] text-[#FFBD59]' :
+              data.status === 'PAID' ? 'bg-emerald-700 text-white' : 'bg-amber-600 text-white'
+            }`}>
+              ORDER STATUS: {data.status}
+            </div>
+            <div className="p-6">
+              <h2 className="text-2xl font-mono font-bold text-[#FFBD59] mb-1">{data.orderCode}</h2>
+              <p className="text-zinc-300 text-sm mb-6">{data.customerName}</p>
 
-      {!data && (
-        <div className="w-full max-w-md">
-          <p className="text-center text-zinc-400 text-xs mb-3">
-            Or enter Pass / Order Code manually:
-          </p>
-          <div className="flex">
-            <input
-              type="text"
-              value={code}
-              onChange={e => setCode(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && lookup()}
-              className="flex-1 bg-zinc-900 border border-zinc-700 rounded-l-xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-[#FFBD59] uppercase"
-              placeholder="e.g. KCLMC-25-0042 or KCL-1234"
-            />
-            <button
-              onClick={lookup}
-              disabled={loading}
-              className="bg-[#FFBD59] text-[#052322] px-6 py-3 rounded-r-xl font-bold hover:bg-[#FFE0A3] transition-colors disabled:opacity-50 text-xs uppercase"
-            >
-              {loading ? '...' : 'Verify'}
-            </button>
+              <h3 className="font-heading font-bold mb-2 text-xs text-zinc-400 uppercase tracking-wider">Line Items</h3>
+              <ul className="mb-6 space-y-2">
+                {data.items?.map((item: any, i: number) => (
+                  <li key={i} className="flex justify-between bg-[#041F1E] p-3 rounded-xl border border-[#084746] text-xs font-mono">
+                    <span className="text-white">{item.name}</span>
+                    <span className="font-bold text-[#FFBD59]">Size: {item.size}</span>
+                  </li>
+                ))}
+              </ul>
+
+              {data.status === 'PAID' && (
+                <button
+                  onClick={markCollected}
+                  className="w-full bg-[#FFBD59] hover:bg-[#FFE0A3] text-[#052322] font-heading font-black py-3 rounded-xl transition-colors text-xs uppercase tracking-wider mb-3 shadow-md"
+                >
+                  Mark as Collected
+                </button>
+              )}
+
+              <button
+                onClick={() => { setData(null); setCode(''); }}
+                className="w-full bg-[#084746] hover:bg-[#0D5F5E] text-white py-2.5 rounded-xl font-heading font-bold transition-colors text-xs uppercase tracking-wider"
+              >
+                Scan Another Code
+              </button>
+            </div>
           </div>
-          {error && <p className="text-red-400 text-center text-xs mt-3">{error}</p>}
-        </div>
-      )}
+        )}
+
+        {!data && (
+          <div className="w-full">
+            <p className="text-center text-zinc-400 text-xs font-mono mb-3">
+              Or enter Pass / Order Code / Student ID manually:
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={code}
+                onChange={e => setCode(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && lookup()}
+                className="flex-1 bg-[#052322] border border-[#084746] rounded-xl px-4 py-3 text-sm font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] uppercase"
+                placeholder="e.g. K25008223 or KCLMC-25-0042"
+              />
+              <button
+                onClick={lookup}
+                disabled={loading}
+                className="bg-[#FFBD59] hover:bg-[#FFE0A3] text-[#052322] px-5 py-3 rounded-xl font-heading font-black transition-colors disabled:opacity-50 text-xs uppercase tracking-wider shadow-md"
+              >
+                {loading ? '...' : 'Verify'}
+              </button>
+            </div>
+            {error && <p className="text-red-400 text-center text-xs mt-3 font-mono">{error}</p>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

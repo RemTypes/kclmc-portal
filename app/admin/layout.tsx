@@ -2,6 +2,7 @@ import React from 'react';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getUserRole } from '@/lib/auth';
+import AdminNav from '@/components/AdminNav';
 
 export default async function AdminLayout({
   children,
@@ -33,12 +34,15 @@ export default async function AdminLayout({
 
     // Clearance check: Must be at least Committee (role >= 1)
     if (role < 1) {
-      redirect('/403?req=committee');
+      redirect('/403?req=committee&from=/admin');
     }
 
     return (
-      <div className="min-h-screen bg-gray-950 text-white">
-        {children}
+      <div className="min-h-screen bg-[#041F1E] text-slate-100 flex flex-col font-sans">
+        <AdminNav userRole={role} />
+        <div className="flex-1">
+          {children}
+        </div>
       </div>
     );
   } catch (err: any) {

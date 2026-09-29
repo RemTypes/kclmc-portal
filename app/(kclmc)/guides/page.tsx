@@ -86,7 +86,7 @@ const SEED_GUIDES: EnhancedGuide[] = [
     discount_info: 'Open public crag access',
     website_url: 'https://www.thebmc.co.uk/modules/rad/viewcrag.aspx?id=18',
     map_url: 'https://maps.google.com/?q=Harrisons+Rocks+Groombridge',
-    topo_url: 'https://www.ukclimbing.com/logbook/crags/harrisons_rocks-18/',
+    topo_url: 'https://www.ukclimbing.com/logbook/crags/harrisons_rocks-57/',
     image_url: null,
     sort_order: 1,
     is_published: true,
@@ -102,7 +102,7 @@ const SEED_GUIDES: EnhancedGuide[] = [
     discount_info: '£5 day permit at centre reception',
     website_url: 'https://bowles.rocks/outdoor-climbing/',
     map_url: 'https://maps.google.com/?q=Bowles+Outdoor+Centre',
-    topo_url: 'https://www.ukclimbing.com/logbook/crags/bowles_rocks-21/',
+    topo_url: 'https://www.ukclimbing.com/logbook/crags/bowles_rocks-54/',
     image_url: null,
     sort_order: 2,
     is_published: true,
@@ -118,7 +118,7 @@ const SEED_GUIDES: EnhancedGuide[] = [
     discount_info: 'Free crag access (Bolt Fund supported)',
     website_url: 'https://www.thebmc.co.uk/modules/rad/viewcrag.aspx?id=86',
     map_url: 'https://maps.google.com/?q=Isle+of+Portland+Dorset',
-    topo_url: 'https://www.ukclimbing.com/logbook/crags/portland-86/',
+    topo_url: 'https://www.ukclimbing.com/logbook/crags/portland-21959/',
     image_url: null,
     sort_order: 3,
     is_published: true,
@@ -134,7 +134,7 @@ const SEED_GUIDES: EnhancedGuide[] = [
     discount_info: 'Free access (Peak District National Park)',
     website_url: 'https://www.peakdistrict.gov.uk/',
     map_url: 'https://maps.google.com/?q=Stanage+Edge+Popular+End',
-    topo_url: 'https://www.ukclimbing.com/logbook/crags/stanage_popular-10/',
+    topo_url: 'https://www.ukclimbing.com/logbook/crags/stanage_popular-104/',
     image_url: null,
     sort_order: 4,
     is_published: true,
@@ -163,14 +163,19 @@ export default async function GuidesPage() {
       if (!error && data && data.length > 0) {
         // Merge database records with seed metadata
         guides = data.map((d: any) => {
-          const seed = SEED_GUIDES.find(s => s.id === d.id || s.title === d.title);
+          const seed = SEED_GUIDES.find(s => 
+            s.id === d.id || 
+            s.title.toLowerCase() === d.title.toLowerCase() ||
+            d.title.toLowerCase().includes(s.title.toLowerCase()) || 
+            s.title.toLowerCase().includes(d.title.toLowerCase())
+          );
           return {
             ...seed,
             ...d,
             website_url: d.website_url || seed?.website_url || null,
             map_url: seed?.map_url || `https://maps.google.com/?q=${encodeURIComponent(d.title + ' ' + (d.location || ''))}`,
-            topo_url: seed?.topo_url,
-            tube_station: seed?.tube_station,
+            topo_url: d.topo_url || seed?.topo_url,
+            tube_station: d.tube_station || seed?.tube_station,
           };
         });
       }
