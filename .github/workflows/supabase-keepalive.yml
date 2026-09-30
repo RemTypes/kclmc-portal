@@ -13,12 +13,16 @@ jobs:
       - name: Ping KCLMC Health Check
         run: |
           echo "Pinging KCLMC health endpoint to maintain Supabase active state..."
-          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 30 "https://kclmc.co.uk/api/health" || echo "000")
-          echo "kclmc.co.uk responded with status: $STATUS_CODE"
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 30 "https://kclmc.org/api/health" || echo "000")
+          echo "kclmc.org responded with status: $STATUS_CODE"
           
           if [ "$STATUS_CODE" != "200" ]; then
-            echo "Trying alternate deployment endpoint..."
-            ALT_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 30 "https://kclmc-platform.pages.dev/api/health" || echo "000")
-            echo "Alternate deployment responded with: $ALT_CODE"
+            echo "Trying alternate deployment endpoints..."
+            ALT_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 30 "https://kclmc.co.uk/api/health" || echo "000")
+            echo "kclmc.co.uk responded with: $ALT_CODE"
+            if [ "$ALT_CODE" != "200" ]; then
+              PAGES_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 30 "https://kclmc-platform.pages.dev/api/health" || echo "000")
+              echo "Pages deployment responded with: $PAGES_CODE"
+            fi
           fi
           echo "Keepalive ping completed successfully."
