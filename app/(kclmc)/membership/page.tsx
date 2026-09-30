@@ -13,12 +13,15 @@ export default function MembershipDashboard() {
   const supabase = useMemo(() => createClient(), []);
 
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [membership, setMembership] = useState<Membership | null>(null);
   const [suRecord, setSuRecord] = useState<KclsuMemberRecord | null>(null);
+  const [boundStudentId, setBoundStudentId] = useState<string | null>(null);
 
-  // Student ID search / linking state
+  // Student ID linking state (for authenticated accounts not yet bound)
   const [inputStudentId, setInputStudentId] = useState('');
+  const [linkLoading, setLinkLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
 
   // Form states for safety notes
@@ -29,85 +32,10 @@ export default function MembershipDashboard() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Helper to load member by card_number
-  const applyStudentId = async (idToLookup: string, currentProfile?: Profile | null) => {
-    const cleanId = idToLookup.trim().toUpperCase();
-    if (!cleanId) return;
-
-    let matched: KclsuMemberRecord | undefined | null = null;
-
-    if (isSupabaseConfigured()) {
-      try {
-        const { data } = await supabase
-          .from('kclsu_roster')
-          .select('*')
-          .eq('card_number', cleanId)
-          .maybeSingle();
-
-        if (data) {
-          matched = {
-            cardNumber: data.card_number,
-            name: data.full_name,
-            rawPurchaser: data.raw_purchaser,
-            tier: data.tier,
-            productName: data.product_name,
-            transactionId: data.transaction_id,
-            purchaseDate: data.purchase_date || '',
-          };
-
-          const activeProf = currentProfile || profile;
-          if (activeProf && activeProf.id !== 'demo-user') {
-            await supabase
-              .from('kclsu_roster')
-              .update({ user_id: activeProf.id, updated_at: new Date().toISOString() })
-              .eq('card_number', cleanId);
-            await supabase
-              .from('profiles')
-              .update({ student_id: cleanId, full_name: matched.name })
-              .eq('id', activeProf.id);
-          }
-        }
-      } catch (err) {
-        console.error('Error querying Supabase roster:', err);
-      }
-    }
-
-    if (!matched) {
-      matched = findMemberByCardNumber(cleanId);
-    }
-
-    if (matched) {
-      setSuRecord(matched);
-      setSearchError('');
-      setMembership({
-        id: matched.cardNumber,
-        user_id: profile?.id || 'guest',
-        membership_number: matched.cardNumber,
-        tier: matched.tier,
-        valid_from: '2026-09-01',
-        valid_until: '2027-08-31',
-        payment_reference: matched.transactionId,
-        is_active: true,
-        created_at: new Date().toISOString(),
-      });
-      if (profile) {
-        setProfile({
-          ...profile,
-          full_name: matched.name,
-          student_id: matched.cardNumber,
-        });
-      }
-    } else {
-      setSearchError(`Student ID "${cleanId}" was not found in the official KCLSU purchase list.`);
-      setSuRecord(null);
-    }
-  };
-
   useEffect(() => {
     async function loadUserData() {
       try {
         if (!isSupabaseConfigured()) {
-          // Supabase is not configured yet; don't preload any private filler data
           setLoading(false);
           return;
         }
@@ -115,10 +43,12 @@ export default function MembershipDashboard() {
         const { data: { user } } = await supabase.auth.getUser();
 
         if (!user) {
-          // Public visitor: allow viewing the verification portal in clean locked state
+          setCurrentUser(null);
           setLoading(false);
           return;
         }
+
+        setCurrentUser(user);
 
         // Fetch profile
         const { data: profData } = await supabase
@@ -147,8 +77,45 @@ export default function MembershipDashboard() {
           }
 
           if (activeStudentId) {
-            setInputStudentId(activeStudentId);
-            await applyStudentId(activeStudentId, profData);
+            const cleanId = activeStudentId.trim().toUpperCase();
+            setBoundStudentId(cleanId);
+
+            // Fetch official verified details for this user's bound student ID
+            let matched: KclsuMemberRecord | null = null;
+            const { data: rosterRow } = await supabase
+              .from('kclsu_roster')
+              .select('*')
+              .eq('card_number', cleanId)
+              .maybeSingle();
+
+            if (rosterRow) {
+              matched = {
+                cardNumber: rosterRow.card_number,
+                name: rosterRow.full_name,
+                rawPurchaser: rosterRow.raw_purchaser || '',
+                tier: rosterRow.tier,
+                productName: rosterRow.product_name,
+                transactionId: rosterRow.transaction_id,
+                purchaseDate: rosterRow.purchase_date || '',
+              };
+            } else {
+              matched = findMemberByCardNumber(cleanId) || null;
+            }
+
+            if (matched) {
+              setSuRecord(matched);
+              setMembership({
+                id: matched.cardNumber,
+                user_id: user.id,
+                membership_number: matched.cardNumber,
+                tier: matched.tier,
+                valid_from: '2026-09-01',
+                valid_until: '2027-08-31',
+                payment_reference: matched.transactionId,
+                is_active: true,
+                created_at: new Date().toISOString(),
+              });
+            }
           }
         }
       } catch (err) {
@@ -159,11 +126,57 @@ export default function MembershipDashboard() {
     }
 
     loadUserData();
-  }, [router, supabase]);
+  }, [supabase]);
 
-  const handleLookupSubmit = (e: React.FormEvent) => {
+  // Handle one-time student ID linking to authenticated account
+  const handleLinkStudentId = async (e: React.FormEvent) => {
     e.preventDefault();
-    applyStudentId(inputStudentId);
+    const cleanId = inputStudentId.trim().toUpperCase();
+    if (!cleanId) return;
+
+    setLinkLoading(true);
+    setSearchError('');
+
+    try {
+      const res = await fetch('/api/roster/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: cleanId }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setSearchError(data.error || 'Failed to link Student ID.');
+        setLinkLoading(false);
+        return;
+      }
+
+      const matched: KclsuMemberRecord = data.member;
+      setSuRecord(matched);
+      setBoundStudentId(matched.cardNumber);
+      setMembership({
+        id: matched.cardNumber,
+        user_id: currentUser?.id || 'member',
+        membership_number: matched.cardNumber,
+        tier: matched.tier,
+        valid_from: '2026-09-01',
+        valid_until: '2027-08-31',
+        payment_reference: matched.transactionId,
+        is_active: true,
+        created_at: new Date().toISOString(),
+      });
+      if (profile) {
+        setProfile({
+          ...profile,
+          full_name: matched.name,
+          student_id: matched.cardNumber,
+        });
+      }
+    } catch (err: any) {
+      setSearchError(err.message || 'Network error linking Student ID.');
+    } finally {
+      setLinkLoading(false);
+    }
   };
 
   const handleUpdateSafetyNotes = async (e: React.FormEvent) => {
@@ -203,9 +216,11 @@ export default function MembershipDashboard() {
     if (isSupabaseConfigured()) {
       await supabase.auth.signOut();
     }
+    setCurrentUser(null);
     setProfile(null);
     setSuRecord(null);
     setMembership(null);
+    setBoundStudentId(null);
     setInputStudentId('');
     router.push('/');
     router.refresh();
@@ -235,10 +250,10 @@ export default function MembershipDashboard() {
               Membership Portal
             </h1>
             <p className="text-zinc-300 text-sm mt-1">
-              Your verified climbing pass. Card tier and details are locked according to your official KCLSU purchase record.
+              Your verified climbing pass. Card tier and details are locked according to your authenticated account and official KCLSU purchase record.
             </p>
           </div>
-          {profile ? (
+          {currentUser ? (
             <button
               onClick={handleSignOut}
               className="px-4 py-2 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 text-xs font-mono transition-colors self-start sm:self-auto"
@@ -248,248 +263,322 @@ export default function MembershipDashboard() {
           ) : (
             <Link
               href="/login?next=/membership"
-              className="px-4 py-2 rounded-lg bg-[#FFBD59] text-[#052322] font-bold hover:bg-[#FFE0A3] text-xs font-mono transition-colors self-start sm:self-auto shadow"
+              className="px-5 py-2.5 rounded-lg bg-[#FFBD59] text-[#052322] font-bold hover:bg-[#FFE0A3] text-xs font-mono transition-colors self-start sm:self-auto shadow-md"
             >
               Sign In
             </Link>
           )}
         </div>
 
-        {/* Student ID Lookup & Verification Bar */}
-        <div className="mb-8 p-6 bg-[#084746]/80 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl shadow-xl">
-          <form onSubmit={handleLookupSubmit} className="flex flex-col md:flex-row items-center gap-4 justify-between">
-            <div className="flex-1 w-full">
-              <label className="block text-xs font-mono uppercase text-[#FFBD59] font-bold mb-1">
-                KCL Student ID Number (Card Number)
-              </label>
-              <p className="text-xs text-zinc-300">
-                Enter your 8-digit K-number to load and lock your verified KCLSU pass.
-              </p>
+        {/* 1. Unauthenticated Visitor State */}
+        {!currentUser && (
+          <div className="mb-12 p-8 md:p-12 bg-[#084746]/80 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl shadow-2xl text-center max-w-2xl mx-auto">
+            <div className="w-16 h-16 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-3xl mb-4 border border-[#FFBD59]/40">
+              🔒
             </div>
-            <div className="flex w-full md:w-auto gap-2">
-              <input
-                type="text"
-                required
-                value={inputStudentId}
-                onChange={e => setInputStudentId(e.target.value.toUpperCase())}
-                placeholder="e.g. K1234567"
-                className="bg-[#041F1E] border border-[#FFBD59]/40 rounded-xl px-4 py-2.5 text-white font-mono text-sm tracking-wider uppercase focus:outline-none focus:border-[#FFBD59] w-full md:w-56"
-              />
-              <button
-                type="submit"
-                className="px-5 py-2.5 bg-[#FFBD59] text-[#052322] font-mono font-bold text-xs uppercase rounded-xl hover:bg-[#FFE0A3] transition-colors shrink-0 shadow"
+            <h2 className="text-2xl md:text-3xl font-black font-heading uppercase text-white tracking-wide mb-3">
+              Sign In to View Your Climbing Pass
+            </h2>
+            <p className="text-sm text-zinc-300 leading-relaxed mb-6 font-sans">
+              To protect student privacy and ensure safety compliance, KCLMC digital climbing passes are locked strictly to your authenticated account. Please sign in or register to display your verified membership card, gym concessions, and trip credentials.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center items-center font-mono">
+              <Link
+                href="/login?next=/membership"
+                className="w-full sm:w-auto px-6 py-3 bg-[#FFBD59] text-[#052322] font-black text-xs uppercase tracking-wider rounded-xl hover:bg-[#FFE0A3] transition-colors shadow-lg"
               >
-                Verify ID
-              </button>
-            </div>
-          </form>
-
-          {searchError && (
-            <div className="mt-4 p-4 bg-red-950/80 border border-red-500/60 rounded-xl text-red-300 text-xs font-mono flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-              <span>✖ {searchError}</span>
-              <a
-                href="https://www.kclsu.org/groups/activities/join/kclmc/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline text-[#FFBD59] hover:text-white"
+                Sign In to View Pass →
+              </Link>
+              <Link
+                href="/register"
+                className="w-full sm:w-auto px-6 py-3 bg-[#041F1E] border border-[#FFBD59]/40 text-[#FFBD59] font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#084746] transition-colors"
               >
-                Purchase on KCLSU Shop →
-              </a>
+                Register New Account
+              </Link>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start mb-12">
-          {/* Left Column: Official Card */}
-          <div className="lg:col-span-6 space-y-6">
-            {suRecord ? (
-              <MembershipCard
-                profile={{
-                  full_name: suRecord.name,
-                  student_id: suRecord.cardNumber,
-                  avatar_url: profile?.avatar_url || null,
-                }}
-                membership={{
-                  id: suRecord.cardNumber,
-                  membership_number: suRecord.cardNumber,
-                  tier: suRecord.tier,
-                  valid_from: '2026-09-01',
-                  valid_until: '2027-08-31',
-                  is_active: true,
-                  payment_reference: suRecord.transactionId,
-                }}
-              />
-            ) : (
-              <div className="bg-[#084746]/60 border-2 border-dashed border-[#FFBD59]/40 rounded-3xl p-8 text-center space-y-4">
-                <div className="w-12 h-12 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-2xl">
-                  🔒
-                </div>
-                <h3 className="text-xl font-bold font-heading uppercase tracking-wide text-white">Pass Locked</h3>
-                <p className="text-xs text-zinc-300 leading-relaxed max-w-sm mx-auto">
-                  Please enter a valid KCL Student ID that holds a 2026/27 KCLSU Mountaineering &amp; Climbing Club purchase to unlock your card.
-                </p>
+        {/* 2. Authenticated: Already Bound to Account */}
+        {currentUser && boundStudentId && (
+          <div className="mb-8 p-6 bg-[#084746]/80 backdrop-blur-md border border-emerald-500/40 rounded-3xl shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-950/80 border border-emerald-500/50 flex items-center justify-center text-emerald-400 text-xl shrink-0">
+                🔒
               </div>
-            )}
-
-            {/* KCLSU Purchase Verification Receipt */}
-            {suRecord && (
-              <div className="bg-[#084746]/60 border border-[#FFBD59]/30 rounded-2xl p-6 font-mono text-xs">
-                <div className="flex items-center justify-between border-b border-[#FFBD59]/20 pb-3 mb-3">
-                  <span className="text-[#FFBD59] font-bold uppercase tracking-wider">
-                    Official SU Purchase Details
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono uppercase tracking-wider text-emerald-400 font-bold">
+                    Pass Bound to Your Account
                   </span>
-                  <span className="text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/40 text-[10px]">
+                  <span className="bg-emerald-950 text-emerald-300 text-[10px] font-mono px-2 py-0.5 rounded border border-emerald-500/30">
                     VERIFIED
                   </span>
                 </div>
-                <div className="space-y-2 text-zinc-300 text-[11px]">
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500 uppercase">Product:</span>
-                    <span className="text-white font-bold">{suRecord.productName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500 uppercase">Member:</span>
-                    <span className="text-white">{suRecord.name}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500 uppercase">KCL Card Number:</span>
-                    <span className="text-[#FFBD59] font-bold">{suRecord.cardNumber}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500 uppercase">Transaction ID:</span>
-                    <span className="text-white">{suRecord.transactionId}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500 uppercase">Date of Purchase:</span>
-                    <span className="text-zinc-400">{suRecord.purchaseDate}</span>
-                  </div>
-                </div>
+                <p className="text-sm font-bold text-white mt-0.5">
+                  KCL Student ID: <span className="font-mono text-[#FFBD59] tracking-wider">{boundStudentId}</span>
+                  {suRecord?.name ? ` • ${suRecord.name}` : ''}
+                </p>
+                <p className="text-xs text-zinc-300 mt-0.5">
+                  This climbing pass is permanently locked to your authenticated account ({currentUser.email}).
+                </p>
               </div>
-            )}
-          </div>
-
-          {/* Right Column: Locked Climber Safety Profile */}
-          <div className="lg:col-span-6 bg-[#084746]/70 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl p-6 md:p-8 shadow-xl">
-            <div className="flex justify-between items-start mb-2">
-              <h2 className="text-2xl font-black font-heading uppercase tracking-wide text-white">
-                Climber Safety &amp; Expedition Notes
-              </h2>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                suRecord 
-                  ? 'text-emerald-400 bg-emerald-950/60 border-emerald-500/40' 
-                  : 'text-[#FFBD59] bg-[#041F1E] border-[#FFBD59]/30'
-              }`}>
-                {suRecord ? 'Verified Member' : 'Card Locked'}
-              </span>
             </div>
-            <p className="text-xs text-zinc-300 mb-6 font-sans leading-relaxed">
-              Your name and student ID are permanently locked to your KCLSU verification. Below you can keep your emergency contact and medical details up to date for expedition leaders.
-            </p>
+            <div className="text-xs font-mono text-zinc-400 text-left md:text-right shrink-0">
+              <span className="block text-zinc-400">Need to update or re-link?</span>
+              <a href="mailto:committee@kclmc.uk" className="text-[#FFBD59] hover:underline">
+                Contact Committee →
+              </a>
+            </div>
+          </div>
+        )}
 
-            {saveSuccess && (
-              <div className="mb-4 p-3 bg-emerald-950/80 border border-emerald-500/60 rounded-xl text-emerald-300 text-xs font-mono">
-                ✔ Emergency and safety notes saved successfully.
-              </div>
-            )}
+        {/* 3. Authenticated: Not Yet Bound (One-time link) */}
+        {currentUser && !boundStudentId && (
+          <div className="mb-8 p-6 md:p-8 bg-[#084746]/80 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl shadow-xl">
+            <div className="max-w-2xl">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#FFBD59] bg-[#041F1E] px-2.5 py-1 rounded border border-[#FFBD59]/30">
+                Account Verification
+              </span>
+              <h2 className="text-2xl font-black font-heading uppercase text-white mt-2 mb-1">
+                Link Your KCL Student ID
+              </h2>
+              <p className="text-xs text-zinc-300 mb-6 font-sans leading-relaxed">
+                Enter your 8-digit King's Student ID (e.g. <span className="font-mono text-[#FFBD59]">K25008223</span>) from your official KCLSU membership purchase. Once verified, your membership pass will be permanently bound to your account (<span className="text-white font-mono">{currentUser.email}</span>).
+              </p>
 
-            <form onSubmit={handleUpdateSafetyNotes} className="space-y-4 text-xs font-mono">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block uppercase text-zinc-400 mb-1 flex items-center justify-between">
-                    <span>Full Name</span>
-                    <span className="text-[10px] text-zinc-500 font-sans">Locked</span>
-                  </label>
-                  <input
-                    type="text"
-                    disabled
-                    value={suRecord?.name || profile?.full_name || ''}
-                    placeholder="Verify Student ID above"
-                    className="w-full bg-[#041F1E]/60 border border-zinc-700 rounded-xl p-3 text-zinc-300 cursor-not-allowed text-xs font-semibold placeholder:text-zinc-600"
-                  />
-                </div>
-                <div>
-                  <label className="block uppercase text-zinc-400 mb-1 flex items-center justify-between">
-                    <span>KCL Student ID</span>
-                    <span className="text-[10px] text-zinc-500 font-sans">Locked</span>
-                  </label>
-                  <input
-                    type="text"
-                    disabled
-                    value={suRecord?.cardNumber || profile?.student_id || ''}
-                    placeholder="Verify Student ID above"
-                    className="w-full bg-[#041F1E]/60 border border-zinc-700 rounded-xl p-3 text-[#FFBD59] cursor-not-allowed text-xs font-mono font-bold placeholder:text-zinc-600"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block uppercase text-zinc-300 mb-1 font-bold">
-                  Climber Mobile Phone
-                </label>
+              <form onSubmit={handleLinkStudentId} className="flex flex-col sm:flex-row gap-3">
                 <input
-                  type="tel"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  placeholder="+44 7000 000000"
-                  className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
+                  type="text"
+                  required
+                  value={inputStudentId}
+                  onChange={e => {
+                    setInputStudentId(e.target.value.toUpperCase());
+                    setSearchError('');
+                  }}
+                  placeholder="e.g. K25008223"
+                  className="bg-[#041F1E] border border-[#FFBD59]/40 rounded-xl px-4 py-3 text-white font-mono text-sm tracking-wider uppercase focus:outline-none focus:border-[#FFBD59] flex-1"
                 />
-              </div>
+                <button
+                  type="submit"
+                  disabled={linkLoading}
+                  className="px-6 py-3 bg-[#FFBD59] text-[#052322] font-mono font-bold text-xs uppercase rounded-xl hover:bg-[#FFE0A3] transition-colors shrink-0 shadow disabled:opacity-50"
+                >
+                  {linkLoading ? 'Verifying...' : 'Link to Account'}
+                </button>
+              </form>
 
-              <div className="pt-2 border-t border-[#FFBD59]/20">
-                <span className="block text-[11px] font-bold text-[#FFBD59] uppercase mb-3">
-                  Emergency Contact (Required for Expeditions)
+              {searchError && (
+                <div className="mt-4 p-4 bg-red-950/80 border border-red-500/60 rounded-xl text-red-300 text-xs font-mono flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                  <span>✖ {searchError}</span>
+                  <a
+                    href="https://www.kclsu.org/groups/activities/join/kclmc/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline text-[#FFBD59] hover:text-white shrink-0"
+                  >
+                    Purchase on KCLSU Shop →
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Member Card & Safety Profile (Rendered for Authenticated Users) */}
+        {currentUser && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start mb-12">
+            {/* Left Column: Official Card */}
+            <div className="lg:col-span-6 space-y-6">
+              {suRecord && boundStudentId ? (
+                <MembershipCard
+                  profile={{
+                    full_name: suRecord.name,
+                    student_id: suRecord.cardNumber,
+                    avatar_url: profile?.avatar_url || null,
+                  }}
+                  membership={{
+                    id: suRecord.cardNumber,
+                    membership_number: suRecord.cardNumber,
+                    tier: suRecord.tier,
+                    valid_from: '2026-09-01',
+                    valid_until: '2027-08-31',
+                    is_active: true,
+                    payment_reference: suRecord.transactionId,
+                  }}
+                />
+              ) : (
+                <div className="bg-[#084746]/60 border-2 border-dashed border-[#FFBD59]/40 rounded-3xl p-8 text-center space-y-4">
+                  <div className="w-12 h-12 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-2xl">
+                    🔒
+                  </div>
+                  <h3 className="text-xl font-bold font-heading uppercase tracking-wide text-white">Pass Locked</h3>
+                  <p className="text-xs text-zinc-300 leading-relaxed max-w-sm mx-auto">
+                    Link your KCL Student ID above to unlock and bind your official 2026/27 KCLMC climbing pass.
+                  </p>
+                </div>
+              )}
+
+              {/* KCLSU Purchase Verification Receipt */}
+              {suRecord && boundStudentId && (
+                <div className="bg-[#084746]/60 border border-[#FFBD59]/30 rounded-2xl p-6 font-mono text-xs shadow-lg">
+                  <div className="flex items-center justify-between border-b border-[#FFBD59]/20 pb-3 mb-3">
+                    <span className="text-[#FFBD59] font-bold uppercase tracking-wider">
+                      Official SU Purchase Details
+                    </span>
+                    <span className="text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/40 text-[10px]">
+                      VERIFIED
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-zinc-300 text-[11px]">
+                    <div className="flex justify-between">
+                      <span className="text-zinc-500 uppercase">Product:</span>
+                      <span className="text-white font-bold">{suRecord.productName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-500 uppercase">Member:</span>
+                      <span className="text-white">{suRecord.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-500 uppercase">KCL Card Number:</span>
+                      <span className="text-[#FFBD59] font-bold">{suRecord.cardNumber}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-500 uppercase">Transaction ID:</span>
+                      <span className="text-white">{suRecord.transactionId}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-500 uppercase">Date of Purchase:</span>
+                      <span className="text-zinc-400">{suRecord.purchaseDate}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right Column: Climber Safety Profile */}
+            <div className="lg:col-span-6 bg-[#084746]/70 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl p-6 md:p-8 shadow-xl">
+              <div className="flex justify-between items-start mb-2">
+                <h2 className="text-2xl font-black font-heading uppercase tracking-wide text-white">
+                  Climber Safety &amp; Expedition Notes
+                </h2>
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                  suRecord && boundStudentId
+                    ? 'text-emerald-400 bg-emerald-950/60 border-emerald-500/40' 
+                    : 'text-[#FFBD59] bg-[#041F1E] border-[#FFBD59]/30'
+                }`}>
+                  {suRecord && boundStudentId ? 'Verified Member' : 'Pass Locked'}
                 </span>
+              </div>
+              <p className="text-xs text-zinc-300 mb-6 font-sans leading-relaxed">
+                Your name and student ID are permanently locked to your authenticated account. Below you can keep your emergency contact and medical details up to date for expedition leaders.
+              </p>
+
+              {saveSuccess && (
+                <div className="mb-4 p-3 bg-emerald-950/80 border border-emerald-500/60 rounded-xl text-emerald-300 text-xs font-mono">
+                  ✔ Emergency and safety notes saved successfully.
+                </div>
+              )}
+
+              <form onSubmit={handleUpdateSafetyNotes} className="space-y-4 text-xs font-mono">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block uppercase text-zinc-300 mb-1">Contact Name</label>
+                    <label className="block uppercase text-zinc-400 mb-1 flex items-center justify-between">
+                      <span>Full Name</span>
+                      <span className="text-[10px] text-zinc-500 font-sans">Locked</span>
+                    </label>
                     <input
                       type="text"
-                      value={emergencyName}
-                      onChange={e => setEmergencyName(e.target.value)}
-                      placeholder="e.g. Next of Kin / Parent"
-                      className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
+                      disabled
+                      value={suRecord?.name || profile?.full_name || ''}
+                      placeholder="Link Student ID to unlock"
+                      className="w-full bg-[#041F1E]/60 border border-zinc-700 rounded-xl p-3 text-zinc-300 cursor-not-allowed text-xs font-semibold placeholder:text-zinc-600"
                     />
                   </div>
                   <div>
-                    <label className="block uppercase text-zinc-300 mb-1">Contact Phone</label>
+                    <label className="block uppercase text-zinc-400 mb-1 flex items-center justify-between">
+                      <span>KCL Student ID</span>
+                      <span className="text-[10px] text-zinc-500 font-sans">Locked</span>
+                    </label>
                     <input
-                      type="tel"
-                      value={emergencyPhone}
-                      onChange={e => setEmergencyPhone(e.target.value)}
-                      placeholder="+44 7000 000000"
-                      className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
+                      type="text"
+                      disabled
+                      value={boundStudentId || ''}
+                      placeholder="Link Student ID to unlock"
+                      className="w-full bg-[#041F1E]/60 border border-zinc-700 rounded-xl p-3 text-[#FFBD59] cursor-not-allowed text-xs font-mono font-bold placeholder:text-zinc-600"
                     />
                   </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block uppercase text-zinc-300 mb-1">
-                  Dietary &amp; Medical Notes
-                </label>
-                <textarea
-                  rows={2}
-                  value={dietary}
-                  onChange={e => setDietary(e.target.value)}
-                  placeholder="e.g. Vegetarian, carrying EpiPen, asthma inhaler..."
-                  className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
-                />
-              </div>
+                <div>
+                  <label className="block uppercase text-zinc-300 mb-1 font-bold">
+                    Climber Mobile Phone
+                  </label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    placeholder="+44 7000 000000"
+                    className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
+                  />
+                </div>
 
-              <button
-                type="submit"
-                disabled={saving || (!suRecord && !profile)}
-                className="w-full py-3 bg-[#FFBD59] text-[#052322] font-black rounded-xl hover:bg-[#FFE0A3] transition-colors font-mono uppercase tracking-wider disabled:opacity-50 text-xs shadow-lg"
-              >
-                {saving 
-                  ? 'Saving...' 
-                  : (!suRecord && !profile) 
-                    ? 'Verify Student ID to Unlock Notes' 
-                    : 'Update Emergency Details'}
-              </button>
-            </form>
+                <div className="pt-2 border-t border-[#FFBD59]/20">
+                  <span className="block text-[11px] font-bold text-[#FFBD59] uppercase mb-3">
+                    Emergency Contact (Required for Expeditions)
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block uppercase text-zinc-300 mb-1">Contact Name</label>
+                      <input
+                        type="text"
+                        value={emergencyName}
+                        onChange={e => setEmergencyName(e.target.value)}
+                        placeholder="e.g. Next of Kin / Parent"
+                        className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block uppercase text-zinc-300 mb-1">Contact Phone</label>
+                      <input
+                        type="tel"
+                        value={emergencyPhone}
+                        onChange={e => setEmergencyPhone(e.target.value)}
+                        placeholder="+44 7000 000000"
+                        className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block uppercase text-zinc-300 mb-1">
+                    Dietary &amp; Medical Notes
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={dietary}
+                    onChange={e => setDietary(e.target.value)}
+                    placeholder="e.g. Vegetarian, carrying EpiPen, asthma inhaler..."
+                    className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={saving || (!boundStudentId && !profile)}
+                  className="w-full py-3 bg-[#FFBD59] text-[#052322] font-black rounded-xl hover:bg-[#FFE0A3] transition-colors font-mono uppercase tracking-wider disabled:opacity-50 text-xs shadow-lg"
+                >
+                  {saving 
+                    ? 'Saving...' 
+                    : (!boundStudentId && !profile) 
+                      ? 'Link Student ID to Unlock Notes' 
+                      : 'Update Emergency Details'}
+                </button>
+              </form>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Membership Tier Guide: Social vs Recreational */}
         <div className="bg-[#084746]/70 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl p-6 md:p-10 shadow-xl">

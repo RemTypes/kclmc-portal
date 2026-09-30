@@ -63,17 +63,17 @@ export default function ContentAdminPage() {
           supabase.from('shop_items').select('*'),
         ]);
 
-        if (liveTrips && liveTrips.length > 0) {
+        if (liveTrips) {
           tripsData = liveTrips.map(t => ({
             ...t,
             date: t.date_start,
             type: t.trip_type,
           }));
         }
-        if (liveGuides && liveGuides.length > 0) {
+        if (liveGuides) {
           guidesData = liveGuides;
         }
-        if (liveShop && liveShop.length > 0) {
+        if (liveShop) {
           shopData = liveShop.map(s => ({
             ...s,
             price: s.price_pence ? s.price_pence / 100 : 20,
@@ -105,12 +105,18 @@ export default function ContentAdminPage() {
       supabaseMock.from('scorecards').select()
     ]);
     
-    setTrips(tripsData.length > 0 ? tripsData : (mockTrips || []));
-    setGuides(guidesData.length > 0 ? guidesData : (mockGuides || []));
+    if (isSupabaseConfigured()) {
+      setTrips(tripsData);
+      setGuides(guidesData);
+      setShopItems(shopData);
+    } else {
+      setTrips(mockTrips || []);
+      setGuides(mockGuides || []);
+      setShopItems(mockShop || []);
+    }
     setRounds(roundsData || []);
     setTeams(teamsData || []);
     setIndividuals(indData || []);
-    setShopItems(shopData.length > 0 ? shopData : (mockShop || []));
     setScorecards(scorecardsData || []);
     setLoading(false);
   }

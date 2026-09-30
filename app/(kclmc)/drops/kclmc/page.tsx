@@ -67,16 +67,24 @@ export default function DropsKclmc() {
           .eq('brand', 'KCL')
           .eq('is_active', true);
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           setShopItems(data);
-          setGarment(data[0].name);
-        } else {
+          setGarment(data.length > 0 ? data[0].name : '');
+        } else if (!isSupabaseConfigured()) {
           setShopItems(SEED_SHOP_ITEMS);
           setGarment(SEED_SHOP_ITEMS[0].name);
+        } else {
+          setShopItems([]);
+          setGarment('');
         }
       } catch {
-        setShopItems(SEED_SHOP_ITEMS);
-        setGarment(SEED_SHOP_ITEMS[0].name);
+        if (!isSupabaseConfigured()) {
+          setShopItems(SEED_SHOP_ITEMS);
+          setGarment(SEED_SHOP_ITEMS[0].name);
+        } else {
+          setShopItems([]);
+          setGarment('');
+        }
       } finally {
         setLoading(false);
       }

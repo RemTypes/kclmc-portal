@@ -143,13 +143,13 @@ const SEED_GUIDES: EnhancedGuide[] = [
 ];
 
 export default async function GuidesPage() {
-  let guides: EnhancedGuide[] = SEED_GUIDES;
+  let guides: EnhancedGuide[] = [];
 
   if (isSupabaseConfigured()) {
     try {
       const supabase = await createClient();
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('timeout')), 1500)
+        setTimeout(() => reject(new Error('timeout')), 3000)
       );
       const fetchPromise = supabase
         .from('guides')
@@ -160,7 +160,7 @@ export default async function GuidesPage() {
       const result: any = await Promise.race([fetchPromise, timeoutPromise]);
       const { data, error } = result || {};
 
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         // Merge database records with seed metadata
         guides = data.map((d: any) => {
           const seed = SEED_GUIDES.find(s => 
@@ -180,8 +180,10 @@ export default async function GuidesPage() {
         });
       }
     } catch {
-      guides = SEED_GUIDES;
+      guides = [];
     }
+  } else {
+    guides = SEED_GUIDES;
   }
 
   const indoor = guides.filter(g => g.category === 'indoor');
@@ -213,7 +215,11 @@ export default async function GuidesPage() {
               </div>
 
               <ul className="space-y-6">
-                {indoor.map((g, i) => (
+                {indoor.length === 0 ? (
+                  <li className="text-xs text-zinc-400 font-mono py-6 text-center">
+                    No indoor climbing centres currently published.
+                  </li>
+                ) : indoor.map((g, i) => (
                   <li key={g.id} className={i !== indoor.length - 1 ? "border-b border-white/10 pb-6" : ""}>
                     <div className="flex justify-between items-start gap-2 mb-1">
                       <h3 className="font-bold text-lg text-[#FFBD59] font-heading uppercase tracking-wide">{g.title}</h3>
@@ -274,7 +280,11 @@ export default async function GuidesPage() {
               </div>
 
               <ul className="space-y-6">
-                {outdoor.map((g, i) => (
+                {outdoor.length === 0 ? (
+                  <li className="text-xs text-zinc-400 font-mono py-6 text-center">
+                    No outdoor crag guides currently published.
+                  </li>
+                ) : outdoor.map((g, i) => (
                   <li key={g.id} className={i !== outdoor.length - 1 ? "border-b border-white/10 pb-6" : ""}>
                     <div className="flex justify-between items-start gap-2 mb-1">
                       <h3 className="font-bold text-lg text-[#FFBD59] font-heading uppercase tracking-wide">{g.title}</h3>
