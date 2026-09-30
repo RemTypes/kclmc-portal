@@ -11,6 +11,7 @@ export default function ReconcilePage() {
   // Roster Sync states
   const [rosterCsvText, setRosterCsvText] = useState('');
   const [parsedMembers, setParsedMembers] = useState<KclsuMemberRecord[]>([]);
+  const [rawTransactionCount, setRawTransactionCount] = useState(0);
   const [rosterSyncLoading, setRosterSyncLoading] = useState(false);
   const [rosterSyncResult, setRosterSyncResult] = useState<{
     success: boolean;
@@ -54,6 +55,8 @@ export default function ReconcilePage() {
 
   const handleRosterFile = (text: string) => {
     setRosterCsvText(text);
+    const rawLines = text.split('\n').filter(l => l.trim().length > 0 && (l.includes(',K') || l.includes('K2') || l.includes('K1')));
+    setRawTransactionCount(rawLines.length);
     const parsed = parseKclsuCsv(text);
     setParsedMembers(parsed);
     setRosterSyncResult(null);
@@ -317,10 +320,15 @@ export default function ReconcilePage() {
           <div className="bg-[#084746]/60 border border-[#FFBD59]/30 rounded-3xl p-6 mb-8 font-mono text-xs">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pb-4 border-b border-zinc-700">
               <div>
-                <h2 className="text-lg font-bold font-serif text-white">
-                  Parsed CSV Roster: {parsedMembers.length} Members
+                <h2 className="text-lg font-bold font-serif text-white flex flex-wrap items-center gap-2">
+                  <span>Parsed CSV Roster: {parsedMembers.length} Unique Members</span>
+                  {rawTransactionCount > parsedMembers.length && (
+                    <span className="text-[11px] font-mono font-normal text-[#FFBD59] bg-[#041F1E] px-2.5 py-0.5 rounded border border-[#FFBD59]/30">
+                      {rawTransactionCount} total purchase rows • Upgrades merged
+                    </span>
+                  )}
                 </h2>
-                <p className="text-zinc-400 text-xs">
+                <p className="text-zinc-400 text-xs mt-1">
                   {parsedMembers.filter((m) => m.tier === 'recreational').length} Recreational •{' '}
                   {parsedMembers.filter((m) => m.tier === 'social').length} Social
                 </p>
