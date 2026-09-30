@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { supabaseMock, ShopItem } from '@/lib/supabase';
 
 export default function LubeDropsPage() {
@@ -14,6 +15,35 @@ export default function LubeDropsPage() {
   
   useEffect(() => {
     async function fetchData() {
+      if (isSupabaseConfigured()) {
+        try {
+          const supabase = createClient();
+          const { data, error } = await supabase
+            .from('shop_items')
+            .select('*')
+            .eq('brand', 'LUBE')
+            .eq('is_active', true);
+
+          if (!error && data) {
+            const lubeItems: ShopItem[] = data.map((item: any) => ({
+              id: item.id,
+              name: item.name,
+              brand: 'LUBE',
+              currentMoq: item.current_moq,
+              targetMoq: item.target_moq,
+              garmentTypes: item.garment_types,
+              price: item.price_pence ? item.price_pence / 100 : 20,
+            }));
+            setShopItems(lubeItems);
+            if (lubeItems.length > 0) setGarment(lubeItems[0].name);
+            setLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.error('Error fetching LUBE drops:', err);
+        }
+      }
+
       const { data } = await supabaseMock.from('shop_items').select<ShopItem>();
       const lubeItems = (data || []).filter(item => item.brand === 'LUBE');
       setShopItems(lubeItems);
