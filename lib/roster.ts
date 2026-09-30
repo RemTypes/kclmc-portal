@@ -274,9 +274,41 @@ export function findMemberByCardNumber(cardNumber: string): KclsuMemberRecord | 
   );
 }
 
+export function determineMemberTier(productName: string): 'recreational' | 'social' {
+  const p = (productName || '').toLowerCase();
+
+  // Explicit check for upgrade product ID or keywords:
+  // e.g. [10188720] Climbing/Mountaineering Soc to Rec Membership Upgrade
+  if (
+    p.includes('10188720') ||
+    p.includes('soc to rec') ||
+    p.includes('social to rec') ||
+    p.includes('social-recreational') ||
+    p.includes('social recreational') ||
+    p.includes('recreational') ||
+    p.includes('upgrade') ||
+    p.includes('top-up') ||
+    p.includes('top up')
+  ) {
+    return 'recreational';
+  }
+
+  // Pure social membership
+  if (p.includes('social') || p.includes('10166870')) {
+    return 'social';
+  }
+
+  // Default fallback if contains rec
+  if (p.includes('rec')) {
+    return 'recreational';
+  }
+
+  return 'recreational';
+}
+
 export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
   const lines = csvText.split('\n');
-  const records: KclsuMemberRecord[] = [];
+  const recordsMap = new Map<string, KclsuMemberRecord>();
 
   let headerIndex = -1;
   for (let i = 0; i < lines.length; i++) {
@@ -286,7 +318,7 @@ export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
     }
   }
 
-  if (headerIndex === -1) return records;
+  if (headerIndex === -1) return [];
 
   for (let i = headerIndex + 1; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -308,21 +340,41 @@ export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
       const purchaseDate = cols[7];
 
       if (cardNumber && cardNumber.startsWith('K')) {
-        const isSocial = productName.toLowerCase().includes('social');
-        records.push({
-          cardNumber: cardNumber.trim().toUpperCase(),
+        const cleanCard = cardNumber.trim().toUpperCase();
+        const tier = determineMemberTier(productName);
+        const newRecord: KclsuMemberRecord = {
+          cardNumber: cleanCard,
           name: formatPurchaserName(rawPurchaser),
           rawPurchaser,
-          tier: isSocial ? 'social' : 'recreational',
+          tier,
           productName,
           transactionId,
           purchaseDate,
-        });
+        };
+
+        const existing = recordsMap.get(cleanCard);
+        if (!existing) {
+          recordsMap.set(cleanCard, newRecord);
+        } else {
+          // Social-Recreational upgrade strictly overrides Social to Recreational
+          const isRecreational = existing.tier === 'recreational' || tier === 'recreational';
+          const preferredProduct = (tier === 'recreational' && existing.tier === 'social')
+            ? productName
+            : (existing.tier === 'recreational' ? existing.productName : productName);
+
+          recordsMap.set(cleanCard, {
+            ...existing,
+            tier: isRecreational ? 'recreational' : 'social',
+            productName: preferredProduct,
+            transactionId: newRecord.transactionId || existing.transactionId,
+            purchaseDate: newRecord.purchaseDate || existing.purchaseDate,
+          });
+        }
       }
     }
   }
 
-  return records;
+  return Array.from(recordsMap.values());
 }
 
 export async function fetchMemberFromSupabase(
@@ -363,7 +415,32 @@ export async function upsertRosterToSupabase(
   if (!supabaseClient || !records.length) return { count: 0, error: 'No records or client' };
 
   try {
-    const inserts = records.map(r => ({
+    // Defensively deduplicate by card_number using Social-to-Recreational upgrade rule
+    const dedupeMap = new Map<string, KclsuMemberRecord>();
+    for (const r of records) {
+      const cleanCard = r.cardNumber.trim().toUpperCase();
+      const existing = dedupeMap.get(cleanCard);
+      if (!existing) {
+        dedupeMap.set(cleanCard, r);
+      } else {
+        const isRecreational = existing.tier === 'recreational' || r.tier === 'recreational';
+        const preferredProduct = (r.tier === 'recreational' && existing.tier === 'social')
+          ? r.productName
+          : (existing.tier === 'recreational' ? existing.productName : r.productName);
+
+        dedupeMap.set(cleanCard, {
+          ...existing,
+          tier: isRecreational ? 'recreational' : 'social',
+          productName: preferredProduct,
+          transactionId: r.transactionId || existing.transactionId,
+          purchaseDate: r.purchaseDate || existing.purchaseDate,
+        });
+      }
+    }
+
+    const uniqueRecords = Array.from(dedupeMap.values());
+
+    const inserts = uniqueRecords.map(r => ({
       card_number: r.cardNumber,
       full_name: r.name,
       raw_purchaser: r.rawPurchaser,
