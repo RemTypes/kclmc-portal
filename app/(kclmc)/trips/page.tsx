@@ -111,7 +111,7 @@ const SEED_TRIPS: (Trip & { itinerary: string[]; leader: string; mapUrl: string 
 ];
 
 export default function TripsPage() {
-  const [trips, setTrips] = useState<any[]>(SEED_TRIPS);
+  const [trips, setTrips] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
   const [registeredTrips, setRegisteredTrips] = useState<string[]>([]);
@@ -123,6 +123,7 @@ export default function TripsPage() {
   useEffect(() => {
     async function loadData() {
       if (!isSupabaseConfigured()) {
+        setTrips(SEED_TRIPS);
         setLoading(false);
         return;
       }
@@ -146,7 +147,7 @@ export default function TripsPage() {
           .select('*')
           .order('date_start', { ascending: true });
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           const merged = data.map(d => {
             const seed = SEED_TRIPS.find(s => s.id === d.id || s.title === d.title);
             return {
@@ -158,9 +159,17 @@ export default function TripsPage() {
             };
           });
           setTrips(merged);
+        } else if (!isSupabaseConfigured()) {
+          setTrips(SEED_TRIPS);
+        } else {
+          setTrips([]);
         }
       } catch {
-        // Fallback already in place
+        if (!isSupabaseConfigured()) {
+          setTrips(SEED_TRIPS);
+        } else {
+          setTrips([]);
+        }
       } finally {
         setLoading(false);
       }

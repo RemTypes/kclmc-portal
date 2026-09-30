@@ -52,20 +52,20 @@ export default function AdminDashboard() {
           const orders = ordersRes.value;
           ordersCount = orders.length;
           orders.forEach((o: any) => {
-            totalRevenue += o.totalPence ? o.totalPence / 100 : 25;
+            totalRevenue += o.total ? o.total : (o.totalPence ? o.totalPence / 100 : 0);
             if (o.status === 'PENDING' || !o.reconciled) pendingReconciliation++;
             if (o.status === 'COLLECTED') itemsCollected++;
           });
         }
 
         setStats({
-          rosterTotal: rosterTotal || 48,
-          socialCount: socialCount || 20,
-          recreationalCount: recreationalCount || 28,
-          ordersCount: ordersCount || 124,
-          totalRevenue: totalRevenue || 2450,
-          pendingReconciliation: pendingReconciliation || 12,
-          itemsCollected: itemsCollected || 89,
+          rosterTotal: rosterTotal,
+          socialCount: socialCount,
+          recreationalCount: recreationalCount,
+          ordersCount: ordersCount,
+          totalRevenue: totalRevenue,
+          pendingReconciliation: pendingReconciliation,
+          itemsCollected: itemsCollected,
           loading: false,
         });
       } catch (err) {

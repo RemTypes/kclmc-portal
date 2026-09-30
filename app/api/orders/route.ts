@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import type { MerchOrder } from '@/types/database';
 
-// In-memory fallback cache for development before live Supabase is provisioned
+// In-memory fallback cache for development when Supabase is not configured
 let fallbackOrders: MerchOrder[] = [
   {
     id: '1',
@@ -37,27 +37,54 @@ export async function GET(request: Request) {
   const code = searchParams.get('code');
 
   try {
-    if (code) {
+    if (isSupabaseConfigured()) {
       const adminClient = createAdminClient();
+
+      if (code) {
+        const { data, error } = await adminClient
+          .from('merch_orders')
+          .select('*')
+          .eq('order_code', code)
+          .maybeSingle();
+
+        if (!error && data) {
+          return NextResponse.json({
+            id: data.id,
+            orderCode: data.order_code,
+            customerName: data.customer_name,
+            customerEmail: data.customer_email,
+            items: data.items,
+            status: data.status.toUpperCase(),
+            total: data.total_pence / 100,
+          });
+        }
+
+        return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+      }
+
       const { data, error } = await adminClient
         .from('merch_orders')
         .select('*')
-        .eq('order_code', code)
-        .maybeSingle();
+        .order('created_at', { ascending: false })
+        .limit(50);
 
       if (!error && data) {
-        return NextResponse.json({
-          id: data.id,
-          orderCode: data.order_code,
-          customerName: data.customer_name,
-          customerEmail: data.customer_email,
-          items: data.items,
-          status: data.status.toUpperCase(),
-          total: data.total_pence / 100,
-        });
+        return NextResponse.json(data.map((d: any) => ({
+          id: d.id,
+          orderCode: d.order_code,
+          customerName: d.customer_name,
+          customerEmail: d.customer_email,
+          items: d.items,
+          status: d.status.toUpperCase(),
+          total: d.total_pence / 100,
+        })));
       }
 
-      // Fallback
+      return NextResponse.json([]);
+    }
+
+    // Supabase not configured: fallback cache
+    if (code) {
       const fallback = fallbackOrders.find(o => o.order_code === code);
       if (fallback) {
         return NextResponse.json({
@@ -70,27 +97,7 @@ export async function GET(request: Request) {
           total: fallback.total_pence / 100,
         });
       }
-
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-    }
-
-    const admin = createAdminClient();
-    const { data } = await admin
-      .from('merch_orders')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    if (data && data.length > 0) {
-      return NextResponse.json(data.map((d: any) => ({
-        id: d.id,
-        orderCode: d.order_code,
-        customerName: d.customer_name,
-        customerEmail: d.customer_email,
-        items: d.items,
-        status: d.status.toUpperCase(),
-        total: d.total_pence / 100,
-      })));
     }
 
     return NextResponse.json(fallbackOrders.map(d => ({
@@ -102,22 +109,11 @@ export async function GET(request: Request) {
       status: d.status.toUpperCase(),
       total: d.total_pence / 100,
     })));
-  } catch {
+  } catch (err: any) {
     if (code) {
-      const fallback = fallbackOrders.find(o => o.order_code === code);
-      return fallback
-        ? NextResponse.json({
-            id: fallback.id,
-            orderCode: fallback.order_code,
-            customerName: fallback.customer_name,
-            customerEmail: fallback.customer_email,
-            items: fallback.items,
-            status: fallback.status.toUpperCase(),
-            total: fallback.total_pence / 100,
-          })
-        : NextResponse.json({ error: 'Order not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
-    return NextResponse.json(fallbackOrders);
+    return NextResponse.json([]);
   }
 }
 
