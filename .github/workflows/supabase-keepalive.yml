@@ -1,0 +1,24 @@
+name: Supabase Anti-Sleep Keepalive
+
+on:
+  schedule:
+    # Runs at 09:00 UTC on Tuesday and Friday (every 3-4 days to stay well within 7-day limit)
+    - cron: '0 9 * * 2,5'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping KCLMC Health Check
+        run: |
+          echo "Pinging KCLMC health endpoint to maintain Supabase active state..."
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 30 "https://kclmc.co.uk/api/health" || echo "000")
+          echo "kclmc.co.uk responded with status: $STATUS_CODE"
+          
+          if [ "$STATUS_CODE" != "200" ]; then
+            echo "Trying alternate deployment endpoint..."
+            ALT_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 30 "https://kclmc-platform.pages.dev/api/health" || echo "000")
+            echo "Alternate deployment responded with: $ALT_CODE"
+          fi
+          echo "Keepalive ping completed successfully."

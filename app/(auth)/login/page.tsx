@@ -11,6 +11,7 @@ function LoginForm() {
   const next = searchParams.get('next') || '/membership';
   const urlError = searchParams.get('error');
 
+  const [mode, setMode] = useState<'password' | 'magic_link'>('password');
   const [view, setView] = useState<'sign_in' | 'sign_up' | 'forgot_password'>('sign_in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,11 +25,12 @@ function LoginForm() {
       ? 'Authentication failed. Please try again.'
       : ''
   );
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
 
-  const handleAuthSubmit = async (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
@@ -71,6 +73,33 @@ function LoginForm() {
     }
   };
 
+  const handleMagicLinkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg('');
+
+    if (!isSupabaseConfigured()) {
+      setErrorMsg('Supabase credentials are not connected yet.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        },
+      });
+      if (error) throw error;
+      setMagicLinkSent(true);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to send magic link. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -99,7 +128,11 @@ function LoginForm() {
   let titleText = 'KCLMC Member Portal';
   let descText = 'Sign in to access your verified climbing pass, meet signups & society perks.';
 
-  if (view === 'sign_up') {
+  if (mode === 'magic_link') {
+    badgeText = 'Instant Sign-In';
+    titleText = 'Magic Link Access';
+    descText = 'We will email you a secure one-click link to log into your account.';
+  } else if (view === 'sign_up') {
     badgeText = 'New Member Registration';
     titleText = 'Join KCLMC';
     descText = 'Create your member account to access verified passes and club signups.';
@@ -128,7 +161,96 @@ function LoginForm() {
           </p>
         </div>
 
-        {view === 'forgot_password' ? (
+        {/* Mode Selector (Password vs Magic Link) */}
+        {view !== 'forgot_password' && (
+          <div className="flex rounded-xl bg-[#041F1E] p-1 mb-6 border border-[#FFBD59]/30">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('password');
+                setMagicLinkSent(false);
+                setErrorMsg('');
+              }}
+              className={`flex-1 py-2.5 rounded-lg transition-all font-heading font-bold uppercase tracking-wider text-xs cursor-pointer ${
+                mode === 'password'
+                  ? 'bg-[#FFBD59] text-[#052322] shadow'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              Password
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('magic_link');
+                setView('sign_in');
+                setMagicLinkSent(false);
+                setErrorMsg('');
+              }}
+              className={`flex-1 py-2.5 rounded-lg transition-all font-heading font-bold uppercase tracking-wider text-xs cursor-pointer ${
+                mode === 'magic_link'
+                  ? 'bg-[#FFBD59] text-[#052322] shadow'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              Magic Link
+            </button>
+          </div>
+        )}
+
+        {/* View Handling */}
+        {mode === 'magic_link' ? (
+          magicLinkSent ? (
+            <div className="bg-[#041F1E] border border-[#FFBD59]/30 rounded-2xl p-6 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-xl">
+                ✉️
+              </div>
+              <h3 className="text-lg font-heading font-bold uppercase tracking-wide text-white">
+                Check your email
+              </h3>
+              <p className="text-xs text-zinc-300 font-sans leading-relaxed">
+                We sent a secure login link to <strong className="text-[#FFBD59]">{email}</strong>. Click the link to log into your account instantly.
+              </p>
+              <button
+                type="button"
+                onClick={() => setMagicLinkSent(false)}
+                className="text-xs font-sans text-[#FFBD59] underline hover:text-[#FFE0A3] mt-2 block mx-auto cursor-pointer"
+              >
+                Use a different email
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleMagicLinkSubmit} className="space-y-4">
+              {errorMsg && (
+                <div className="p-3.5 bg-red-950/70 border border-red-500/50 rounded-xl text-red-300 text-xs font-sans leading-relaxed">
+                  {errorMsg}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="your.name@kcl.ac.uk"
+                  className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-sans transition-colors"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 mt-2 bg-[#FFBD59] text-[#052322] font-heading font-black uppercase tracking-wider text-sm rounded-xl hover:bg-[#FFE0A3] transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
+              >
+                {loading ? 'Sending link...' : 'Send Magic Link →'}
+              </button>
+            </form>
+          )
+        ) : view === 'forgot_password' ? (
           resetEmailSent ? (
             <div className="bg-[#041F1E] border border-[#FFBD59]/30 rounded-2xl p-6 text-center space-y-4">
               <div className="w-12 h-12 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-xl">
@@ -195,7 +317,7 @@ function LoginForm() {
             </form>
           )
         ) : (
-          <form onSubmit={handleAuthSubmit} className="space-y-4">
+          <form onSubmit={handlePasswordSubmit} className="space-y-4">
             {errorMsg && (
               <div className="p-3.5 bg-red-950/70 border border-red-500/50 rounded-xl text-red-300 text-xs font-sans leading-relaxed">
                 {errorMsg}
