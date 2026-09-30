@@ -37,3 +37,7 @@ __pycache__/
 env/
 venv/
 *.ipynb_checkpoints/
+
+# Data Redundancy Backups (UK GDPR Confidentiality)
+backups/
+*.dump
