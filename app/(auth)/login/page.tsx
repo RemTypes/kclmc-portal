@@ -27,6 +27,7 @@ function LoginForm() {
   );
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -34,6 +35,12 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
+
+    if (view === 'sign_up' && !acceptedTerms) {
+      setErrorMsg('You must agree to the Terms & Conditions, Privacy Policy, and acknowledge the BMC Climbing Risk Statement.');
+      setLoading(false);
+      return;
+    }
 
     if (!isSupabaseConfigured()) {
       setErrorMsg('Supabase credentials are not connected yet. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Cloudflare Settings > Variables and Secrets, then trigger a new deployment.');
@@ -395,6 +402,33 @@ function LoginForm() {
                 className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-sans transition-colors"
               />
             </div>
+
+            {view === 'sign_up' && (
+              <div className="flex items-start gap-2.5 pt-2">
+                <input
+                  type="checkbox"
+                  id="terms-consent"
+                  required
+                  checked={acceptedTerms}
+                  onChange={e => setAcceptedTerms(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded bg-[#041F1E] border border-[#FFBD59]/40 accent-[#FFBD59] cursor-pointer"
+                />
+                <label htmlFor="terms-consent" className="text-xs text-zinc-300 font-sans leading-relaxed select-none">
+                  I agree to the{' '}
+                  <Link href="/terms" target="_blank" className="text-[#FFBD59] underline hover:text-[#FFE0A3]">
+                    Terms &amp; Conditions
+                  </Link>{' '}
+                  and{' '}
+                  <Link href="/privacy" target="_blank" className="text-[#FFBD59] underline hover:text-[#FFE0A3]">
+                    Privacy Policy
+                  </Link>
+                  , and accept the{' '}
+                  <Link href="/safety" target="_blank" className="text-amber-400 underline hover:text-amber-300">
+                    BMC Climbing Risk Statement
+                  </Link>.
+                </label>
+              </div>
+            )}
 
             <button
               type="submit"

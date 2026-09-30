@@ -33,3 +33,16 @@ next-env.d.ts
 .idea/
 .vscode/
 *.log
+
+# Python / ML artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+*.ipynb_checkpoints/
+
+# Data Redundancy Backups (UK GDPR Confidentiality)
+backups/
+*.dump
