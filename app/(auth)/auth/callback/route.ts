@@ -14,5 +14,7 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.redirect(`${origin}/login?error=auth_failed`);
+  // If the next destination was password update, pass a specific error query param
+  const errorParam = next.includes('update-password') ? 'reset_link_expired' : 'auth_failed';
+  return NextResponse.redirect(`${origin}/login?error=${errorParam}`);
 }
