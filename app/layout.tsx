@@ -1,6 +1,7 @@
 import './globals.css';
 import React from 'react';
 import Navigation from '@/components/Navigation';
+import Footer from '@/components/Footer';
 import { Barlow_Condensed, Inter, Space_Mono } from 'next/font/google';
 
 const barlowCondensed = Barlow_Condensed({
@@ -40,6 +41,7 @@ export default function RootLayout({
         <main className="flex-1">
           {children}
         </main>
+        <Footer />
       </body>
     </html>
   );

@@ -393,50 +393,6 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-
-      {/* =====================================================================
-          6. DISPATCHES FOOTER & APPAREL BANNER
-          ===================================================================== */}
-      <footer className="bg-[#052322] text-white pt-12 pb-8 px-6 md:px-12 border-t border-[#084746]">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-8 pb-8 border-b border-[#084746]">
-          <div>
-            <div className="font-heading font-black text-2xl uppercase tracking-wider text-[#FFBD59]">
-              King's College London Mountaineering Club
-            </div>
-            <p className="text-xs text-zinc-400 font-sans mt-1">
-              Affiliated with the King's College London Student Union (KCLSU). Founded 1928.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <Link href="/drops/kclmc" className="kclmc-btn-primary text-xs py-2 px-4 font-bold">
-              <span>2026 Stash Pre-Orders</span>
-              <span>→</span>
-            </Link>
-            <a
-              href="https://www.instagram.com/kclmc/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="kclmc-btn-outline text-xs py-2 px-4 font-bold"
-            >
-              Instagram Dispatches ↗
-            </a>
-          </div>
-        </div>
-
-        <div className="max-w-6xl mx-auto mt-6 flex flex-col sm:flex-row justify-between items-center text-xs text-zinc-500 font-sans gap-4">
-          <div>
-            &copy; {new Date().getFullYear()} KCLMC. All rights reserved.
-          </div>
-          <div className="flex gap-6">
-            <Link href="/trips" className="hover:text-zinc-300 transition-colors">Trips</Link>
-            <Link href="/guides" className="hover:text-zinc-300 transition-colors">Where We Climb</Link>
-            <Link href="/drops/kclmc" className="hover:text-zinc-300 transition-colors">Apparel Drops</Link>
-            <Link href="/membership" className="hover:text-zinc-300 transition-colors">Member Pass</Link>
-            <Link href="/admin" className="hover:text-zinc-300 transition-colors">Committee Admin</Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
