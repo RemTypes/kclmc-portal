@@ -1,7 +1,68 @@
 import React from 'react';
 import Link from 'next/link';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/server';
 
-export default function HomePage() {
+export const dynamic = 'force-dynamic';
+
+export default async function HomePage() {
+  let upcomingMeets: any[] = [];
+  if (isSupabaseConfigured()) {
+    try {
+      const supabase = await createClient();
+      const { data } = await supabase
+        .from('trips')
+        .select('*')
+        .neq('trip_type', 'social')
+        .neq('status', 'draft')
+        .neq('status', 'cancelled')
+        .order('date_start', { ascending: true })
+        .limit(3);
+
+      if (data && data.length > 0) {
+        upcomingMeets = data;
+      }
+    } catch (err) {
+      console.error('Failed to fetch upcoming meets:', err);
+    }
+  }
+
+  if (upcomingMeets.length === 0) {
+    upcomingMeets = [
+      {
+        id: '2',
+        title: "Harrison's Rocks Day Trip",
+        trip_type: 'trad',
+        description: 'Southern Sandstone top-roping classic. Perfect intro to outdoor rock climbing just 50 mins from London Bridge.',
+        difficulty_grade: 'VDiff to HVS',
+        price_pence: 1500,
+        date_start: '2026-10-12',
+        date_end: '2026-10-12',
+        location: 'Groombridge, Kent',
+      },
+      {
+        id: '3',
+        title: 'Peak District Weekend Trad',
+        trip_type: 'trad',
+        description: 'Two full days on world-famous gritstone: Stanage Edge and Burbage South. Wild camping and bunkhouse options.',
+        difficulty_grade: 'Severe to E1',
+        price_pence: 4500,
+        date_start: '2026-10-25',
+        date_end: '2026-10-26',
+        location: 'Hathersage, Peak District',
+      },
+      {
+        id: '4',
+        title: 'Scottish Winter Mountaineering',
+        trip_type: 'winter',
+        description: 'Grade I-III winter gullies and ridge traverses in Glencoe. Crampon and ice axe technique required.',
+        difficulty_grade: 'Grade I to III Winter',
+        price_pence: 15000,
+        date_start: '2026-12-14',
+        date_end: '2026-12-17',
+        location: 'Glencoe Valley, Scottish Highlands',
+      },
+    ];
+  }
   return (
     <div className="flex flex-col min-h-screen">
       {/* =====================================================================
@@ -140,27 +201,10 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Card 3: Scrambling */}
+            {/* Card 3: Scottish Winter */}
             <div className="kclmc-card p-6 flex flex-col justify-between">
               <div>
-                <span className="kclmc-badge-pine mb-4">Mountain Days</span>
-                <h3 className="font-heading font-bold text-2xl uppercase tracking-wide text-slate-900 mb-2">
-                  Hillwalking &amp; Ridges
-                </h3>
-                <p className="text-slate-600 text-xs font-sans leading-relaxed mb-4">
-                  Scrambling traverses and wilderness summits across Snowdonia and the Lake District. Build mountain navigation and leadership confidence.
-                </p>
-              </div>
-              <div className="pt-4 border-t border-slate-100 text-xs font-mono text-slate-500 flex justify-between items-center">
-                <span>Term-time Meets</span>
-                <span className="text-[#052322] font-bold">UK Peaks</span>
-              </div>
-            </div>
-
-            {/* Card 4: Winter */}
-            <div className="kclmc-card p-6 flex flex-col justify-between">
-              <div>
-                <span className="kclmc-badge-pine mb-4">Alpine Expedition</span>
+                <span className="kclmc-badge-pine mb-4">Winter Mountaineering</span>
                 <h3 className="font-heading font-bold text-2xl uppercase tracking-wide text-slate-900 mb-2">
                   Scottish Winter
                 </h3>
@@ -171,6 +215,23 @@ export default function HomePage() {
               <div className="pt-4 border-t border-slate-100 text-xs font-mono text-slate-500 flex justify-between items-center">
                 <span>December / January</span>
                 <span className="text-[#052322] font-bold">Scottish Highlands</span>
+              </div>
+            </div>
+
+            {/* Card 4: Summer Alpine */}
+            <div className="kclmc-card p-6 flex flex-col justify-between">
+              <div>
+                <span className="kclmc-badge-pine mb-4">Alpine Expedition</span>
+                <h3 className="font-heading font-bold text-2xl uppercase tracking-wide text-slate-900 mb-2">
+                  Summer Alpine (Les Écrins)
+                </h3>
+                <p className="text-slate-600 text-xs font-sans leading-relaxed mb-4">
+                  Three weeks of high-altitude multipitch rock climbing, glacier traverses, and guided mountaineering in the French Alps. Fully subsidised with guide fees covered.
+                </p>
+              </div>
+              <div className="pt-4 border-t border-slate-100 text-xs font-mono text-slate-500 flex justify-between items-center">
+                <span>July / August</span>
+                <span className="text-[#052322] font-bold">French Alps</span>
               </div>
             </div>
           </div>
@@ -236,7 +297,7 @@ export default function HomePage() {
               <div className="p-4 rounded-xl bg-[#084746]/60 border border-[#FFBD59]/20">
                 <div className="flex justify-between text-sm font-heading font-bold uppercase tracking-wide text-white">
                   <span>Monday Evening Social</span>
-                  <span className="text-[#FFBD59]">18:30 — 21:00</span>
+                  <span className="text-[#FFBD59]">16:00 — 20:00</span>
                 </div>
                 <div className="text-xs font-sans text-zinc-300 mt-1">
                   VauxWall East (Vauxhall railway arches). Bouldering, social climbing, and drinks.
@@ -246,7 +307,7 @@ export default function HomePage() {
               <div className="p-4 rounded-xl bg-[#084746]/60 border border-[#FFBD59]/20">
                 <div className="flex justify-between text-sm font-heading font-bold uppercase tracking-wide text-white">
                   <span>Wednesday Roped Session</span>
-                  <span className="text-[#FFBD59]">17:30 — 20:30</span>
+                  <span className="text-[#FFBD59]">15:00 — 19:00</span>
                 </div>
                 <div className="text-xs font-sans text-zinc-300 mt-1">
                   The Castle Climbing Centre (Manor House). Top-roping, lead climbing, and auto-belays.
@@ -264,13 +325,13 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-[#084746] flex justify-between items-center text-xs font-mono text-[#FFBD59]">
+            <div className="mt-6 pt-4 border-t border-[#084746] flex justify-between items-center text-xs font-heading font-bold uppercase tracking-wider text-[#FFBD59]">
               <span>QUESTIONS?</span>
               <a
                 href="https://www.instagram.com/kclmc/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:underline flex items-center gap-1"
+                className="hover:underline flex items-center gap-1.5"
               >
                 <span>DM us @kclmc</span>
                 <span>↗</span>
@@ -301,95 +362,78 @@ export default function HomePage() {
           </div>
 
           <div className="grid gap-4">
-            {/* Meet 1 */}
-            <div className="kclmc-card p-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2.5 py-0.5 rounded text-[11px] font-heading uppercase font-bold tracking-wider bg-emerald-100 text-emerald-800">
-                    Social Wall
-                  </span>
-                  <span className="text-xs font-mono text-slate-500">
-                    All levels welcome
-                  </span>
-                  <span className="text-xs font-mono font-bold text-emerald-600">
-                    FREE
-                  </span>
-                </div>
-                <h3 className="font-heading font-bold text-2xl uppercase tracking-wide text-slate-900">
-                  Weekly Social Wall — Mile End
-                </h3>
-                <p className="text-slate-600 text-xs font-sans mt-1">
-                  Drop-in Tuesday evening session. Meet at reception foyer for circuits and warm-up.
-                </p>
-                <div className="flex items-center gap-4 mt-3 text-xs font-mono text-slate-500">
-                  <span>🗓️ 2026-10-01</span>
-                  <span>📍 Mile End Climbing Wall, London E3</span>
-                </div>
-              </div>
-              <Link href="/trips" className="kclmc-btn-primary text-xs py-2 px-4 self-start sm:self-auto">
-                Details →
-              </Link>
-            </div>
+            {upcomingMeets.map((meet) => {
+              const badgeLabel =
+                meet.trip_type === 'trad'
+                  ? 'Trad Day Trip'
+                  : meet.trip_type === 'winter'
+                  ? 'Winter Mountaineering'
+                  : meet.trip_type === 'expedition'
+                  ? 'Alpine Expedition'
+                  : meet.trip_type === 'sport'
+                  ? 'Sport Climbing'
+                  : meet.trip_type === 'bouldering'
+                  ? 'Outdoor Bouldering'
+                  : 'Outdoor Meet';
 
-            {/* Meet 2 */}
-            <div className="kclmc-card p-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2.5 py-0.5 rounded text-[11px] font-heading uppercase font-bold tracking-wider bg-[#FFBD59] text-[#052322]">
-                    Trad Day Trip
-                  </span>
-                  <span className="text-xs font-mono text-slate-500">
-                    VDiff to HVS
-                  </span>
-                  <span className="text-xs font-mono font-bold text-slate-700">
-                    £15.00
-                  </span>
-                </div>
-                <h3 className="font-heading font-bold text-2xl uppercase tracking-wide text-slate-900">
-                  Harrison's Rocks Day Trip
-                </h3>
-                <p className="text-slate-600 text-xs font-sans mt-1">
-                  Southern Sandstone top-roping classic. Perfect intro to outdoor rock climbing 50 mins from London Bridge.
-                </p>
-                <div className="flex items-center gap-4 mt-3 text-xs font-mono text-slate-500">
-                  <span>🗓️ 2026-10-12</span>
-                  <span>📍 Groombridge, Kent</span>
-                </div>
-              </div>
-              <Link href="/trips" className="kclmc-btn-primary text-xs py-2 px-4 self-start sm:self-auto">
-                Details →
-              </Link>
-            </div>
+              const badgeColor =
+                meet.trip_type === 'trad'
+                  ? 'bg-[#FFBD59] text-[#052322]'
+                  : meet.trip_type === 'winter'
+                  ? 'bg-sky-100 text-sky-900 border border-sky-300'
+                  : meet.trip_type === 'expedition'
+                  ? 'bg-slate-900 text-[#FFBD59]'
+                  : 'bg-emerald-100 text-emerald-800';
 
-            {/* Meet 3 */}
-            <div className="kclmc-card p-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2.5 py-0.5 rounded text-[11px] font-heading uppercase font-bold tracking-wider bg-slate-900 text-[#FFBD59]">
-                    Weekend Expedition
-                  </span>
-                  <span className="text-xs font-mono text-slate-500">
-                    Severe to E1
-                  </span>
-                  <span className="text-xs font-mono font-bold text-slate-700">
-                    £45.00
-                  </span>
+              const priceLabel =
+                meet.price_pence === 0
+                  ? 'FREE'
+                  : `£${(meet.price_pence / 100).toFixed(2)}`;
+
+              const dateDisplay =
+                meet.date_end && meet.date_end !== meet.date_start
+                  ? `${meet.date_start} → ${meet.date_end}`
+                  : meet.date_start;
+
+              return (
+                <div
+                  key={meet.id}
+                  className="kclmc-card p-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4"
+                >
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`px-2.5 py-0.5 rounded text-[11px] font-heading uppercase font-bold tracking-wider ${badgeColor}`}>
+                        {badgeLabel}
+                      </span>
+                      {meet.difficulty_grade && (
+                        <span className="text-xs font-mono text-slate-500">
+                          {meet.difficulty_grade}
+                        </span>
+                      )}
+                      <span className="text-xs font-mono font-bold text-slate-700">
+                        {priceLabel}
+                      </span>
+                    </div>
+                    <h3 className="font-heading font-bold text-2xl uppercase tracking-wide text-slate-900">
+                      {meet.title}
+                    </h3>
+                    <p className="text-slate-600 text-xs font-sans mt-1">
+                      {meet.description}
+                    </p>
+                    <div className="flex items-center gap-4 mt-3 text-xs font-mono text-slate-500">
+                      <span>🗓️ {dateDisplay}</span>
+                      <span>📍 {meet.location}</span>
+                    </div>
+                  </div>
+                  <Link
+                    href={`/trips#trip-${meet.id}`}
+                    className="kclmc-btn-primary text-xs py-2 px-4 self-start sm:self-auto"
+                  >
+                    Details →
+                  </Link>
                 </div>
-                <h3 className="font-heading font-bold text-2xl uppercase tracking-wide text-slate-900">
-                  Peak District Weekend Trad
-                </h3>
-                <p className="text-slate-600 text-xs font-sans mt-1">
-                  Two full days on world-famous gritstone: Stanage Edge and Burbage South. Wild camping and bunkhouse options.
-                </p>
-                <div className="flex items-center gap-4 mt-3 text-xs font-mono text-slate-500">
-                  <span>🗓️ 2026-10-25 → 2026-10-26</span>
-                  <span>📍 Hathersage, Peak District</span>
-                </div>
-              </div>
-              <Link href="/trips" className="kclmc-btn-primary text-xs py-2 px-4 self-start sm:self-auto">
-                Details →
-              </Link>
-            </div>
+              );
+            })}
           </div>
         </div>
       </section>

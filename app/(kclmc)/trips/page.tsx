@@ -253,8 +253,9 @@ export default function TripsPage() {
             return (
               <div
                 key={trip.id}
+                id={`trip-${trip.id}`}
                 onClick={() => setSelectedTrip(trip)}
-                className="cursor-pointer bg-[#084746]/70 backdrop-blur-md p-6 rounded-2xl border border-[#FFBD59]/25 flex flex-col sm:flex-row justify-between sm:items-center gap-4 hover:border-[#FFBD59] hover:bg-[#084746]/90 transition-all shadow-lg group"
+                className="cursor-pointer bg-[#084746]/70 backdrop-blur-md p-6 rounded-2xl border border-[#FFBD59]/25 flex flex-col sm:flex-row justify-between sm:items-center gap-4 hover:border-[#FFBD59] hover:bg-[#084746]/90 transition-all shadow-lg group scroll-mt-24"
               >
                 <div>
                   <div className="flex items-center gap-2 mb-2">
