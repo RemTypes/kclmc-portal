@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
+import { getUserRole } from '@/lib/auth';
 import type { MerchOrder } from '@/types/database';
 
 // In-memory fallback cache for development when Supabase is not configured
@@ -41,10 +42,15 @@ export async function GET(request: Request) {
       const adminClient = createAdminClient();
 
       if (code) {
+        const cleanCode = typeof code === 'string' ? code.trim().toUpperCase() : '';
+        if (!cleanCode || cleanCode.length > 32 || !/^[A-Z0-9_-]{3,32}$/.test(cleanCode)) {
+          return NextResponse.json({ error: 'Invalid order code format' }, { status: 400 });
+        }
+
         const { data, error } = await adminClient
           .from('merch_orders')
           .select('*')
-          .eq('order_code', code)
+          .eq('order_code', cleanCode)
           .maybeSingle();
 
         if (!error && data) {
@@ -60,6 +66,17 @@ export async function GET(request: Request) {
         }
 
         return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+      }
+
+      // Restrict unauthenticated listing of customer PII: require committee role
+      const userClient = await createClient();
+      const { data: { user } } = await userClient.auth.getUser();
+      const role = getUserRole(user?.email);
+      if (role < 1) {
+        return NextResponse.json(
+          { error: 'Unauthorized: Committee access required to list all orders' },
+          { status: 403 }
+        );
       }
 
       const { data, error } = await adminClient
@@ -118,66 +135,114 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  const brand = body.brand === 'LUBE' ? 'LUBE' : 'KCL';
-  const orderCode = `${brand}-${Math.floor(Math.random() * 9000 + 1000).toString()}`;
-
-  const newOrder: MerchOrder = {
-    id: Date.now().toString(),
-    user_id: null,
-    order_code: orderCode,
-    customer_name: body.customerName || body.customText || 'Member',
-    customer_email: body.customerEmail || body.customerName || 'member@kcl.ac.uk',
-    items: body.items || [{ name: body.garment || 'KCLMC Stash', size: body.size || 'M' }],
-    status: 'pending',
-    total_pence: body.total ? body.total * 100 : 2000,
-    brand,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-
   try {
-    const admin = createAdminClient();
-    const { error } = await admin.from('merch_orders').insert({
-      order_code: newOrder.order_code,
-      customer_name: newOrder.customer_name,
-      customer_email: newOrder.customer_email,
-      items: newOrder.items,
-      status: newOrder.status,
-      total_pence: newOrder.total_pence,
-      brand: newOrder.brand,
-    });
+    const body = await request.json();
+    const brand = body.brand === 'LUBE' ? 'LUBE' : 'KCL';
+    const orderCode = `${brand}-${Math.floor(Math.random() * 9000 + 1000).toString()}`;
 
-    if (error) {
-      console.warn('Order insert error:', error.message);
+    // Validate amount to prevent price tampering
+    let totalPence = 2000;
+    if (body.total !== undefined) {
+      if (typeof body.total !== 'number' || !Number.isFinite(body.total) || body.total < 0 || body.total > 5000) {
+        return NextResponse.json({ error: 'Invalid total amount' }, { status: 400 });
+      }
+      totalPence = Math.round(body.total * 100);
+    }
+
+    const rawName = typeof body.customerName === 'string' ? body.customerName : (typeof body.customText === 'string' ? body.customText : 'Member');
+    const rawEmail = typeof body.customerEmail === 'string' ? body.customerEmail : 'member@kcl.ac.uk';
+
+    const customerName = rawName.replace(/[<>\0\r\n]/g, '').trim().slice(0, 100) || 'Member';
+    const customerEmail = rawEmail.replace(/[<>\0\r\n]/g, '').trim().slice(0, 150) || 'member@kcl.ac.uk';
+
+    const items = Array.isArray(body.items) && body.items.length > 0
+      ? body.items.slice(0, 20).map((it: any) => ({
+          name: String(it?.name || 'KCLMC Stash').replace(/[<>\0\r\n]/g, '').trim().slice(0, 100),
+          size: String(it?.size || 'M').replace(/[<>\0\r\n]/g, '').trim().slice(0, 10),
+        }))
+      : [{ name: String(body.garment || 'KCLMC Stash').replace(/[<>\0\r\n]/g, '').trim().slice(0, 100), size: String(body.size || 'M').replace(/[<>\0\r\n]/g, '').trim().slice(0, 10) }];
+
+    const newOrder: MerchOrder = {
+      id: Date.now().toString(),
+      user_id: null,
+      order_code: orderCode,
+      customer_name: customerName,
+      customer_email: customerEmail,
+      items,
+      status: 'pending',
+      total_pence: totalPence,
+      brand,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (isSupabaseConfigured()) {
+      const admin = createAdminClient();
+      const { error } = await admin.from('merch_orders').insert({
+        order_code: newOrder.order_code,
+        customer_name: newOrder.customer_name,
+        customer_email: newOrder.customer_email,
+        items: newOrder.items,
+        status: newOrder.status,
+        total_pence: newOrder.total_pence,
+        brand: newOrder.brand,
+      });
+
+      if (error) {
+        console.warn('Order insert error:', error.message);
+        fallbackOrders.push(newOrder);
+      }
+    } else {
       fallbackOrders.push(newOrder);
     }
-  } catch {
-    fallbackOrders.push(newOrder);
-  }
 
-  return NextResponse.json({ success: true, orderCode: newOrder.order_code });
+    return NextResponse.json({ success: true, orderCode: newOrder.order_code });
+  } catch (err: any) {
+    return NextResponse.json({ error: 'Failed to process order' }, { status: 400 });
+  }
 }
 
 export async function PUT(request: Request) {
-  const body = await request.json();
-  const { code, status } = body;
-
-  if (!code || !status) {
-    return NextResponse.json({ error: 'Missing code or status' }, { status: 400 });
-  }
-
-  const normalizedStatus = status.toLowerCase();
-
   try {
-    const admin = createAdminClient();
-    await admin
-      .from('merch_orders')
-      .update({ status: normalizedStatus, updated_at: new Date().toISOString() })
-      .eq('order_code', code);
+    const body = await request.json();
+    const { code, status } = body;
 
-    // Update in fallback
-    const idx = fallbackOrders.findIndex(o => o.order_code === code);
+    if (!code || !status) {
+      return NextResponse.json({ error: 'Missing code or status' }, { status: 400 });
+    }
+
+    const cleanCode = typeof code === 'string' ? code.trim().toUpperCase() : '';
+    if (!cleanCode || cleanCode.length > 32 || !/^[A-Z0-9_-]{3,32}$/.test(cleanCode)) {
+      return NextResponse.json({ error: 'Invalid order code format' }, { status: 400 });
+    }
+
+    const normalizedStatus = String(status).toLowerCase().trim();
+    const allowedStatuses = ['pending', 'paid', 'fulfilled', 'cancelled'];
+    if (!allowedStatuses.includes(normalizedStatus)) {
+      return NextResponse.json({ error: 'Invalid order status' }, { status: 400 });
+    }
+
+    if (isSupabaseConfigured()) {
+      // Require committee privileges to modify order statuses
+      const userClient = await createClient();
+      const { data: { user } } = await userClient.auth.getUser();
+      const role = getUserRole(user?.email);
+      if (role < 1) {
+        return NextResponse.json(
+          { error: 'Unauthorized: Committee privileges required to modify orders' },
+          { status: 403 }
+        );
+      }
+
+      const admin = createAdminClient();
+      await admin
+        .from('merch_orders')
+        .update({ status: normalizedStatus, updated_at: new Date().toISOString() })
+        .eq('order_code', cleanCode);
+    }
+
+    // Update in fallback cache
+    const idx = fallbackOrders.findIndex(o => o.order_code === cleanCode);
     if (idx > -1) {
       fallbackOrders[idx].status = normalizedStatus as any;
     }

@@ -1,78 +1,37 @@
-# King's College London Mountaineering Club (KCLMC) Portal
+# King's College London Mountaineering Club (KCLMC) Platform
 
-Official web platform and digital membership portal for King's College London Mountaineering Club.
+The official digital platform and operational engine of the **King's College London Mountaineering & Climbing Club (KCLMC)**, accredited society of the King's College London Students' Union (KCLSU, Charity No. 1136043).
 
----
-
-## Overview
-
-The KCLMC Portal provides verified membership passes, trip registrations, London climbing wall discounts, crag directories, and committee administration tools for King's College London climbers.
-
-## Key Features
-
-- **Digital Membership Cards**: Tamper-proof passes bound to official KCLSU purchase records with instant QR verification and high-resolution PNG export.
-- **KCLSU Member Roster Synchronization**: Database-backed membership verification with automated Student Union CSV ingestion.
-- **Club Hub & Expeditions**: Dedicated trip schedules covering trad, sport, bouldering, and winter mountaineering.
-- **Wall & Crag Guides**: Comprehensive guides with student discount rates across London climbing centres and UK crags.
-- **Committee Administration Suite**:
-  - `/admin/reconcile`: Dual-mode KCLSU membership roster synchronization and merch payment matching.
-  - `/admin/scan`: Mobile camera and manual scanner for verifying climber passes at the climbing wall.
-  - `/admin/export`: Manufacturing sizing matrix for apparel group-buys.
-  - `/admin/modules`: Role-based permissions and module gating.
-
-## Tech Stack
-
-- **Framework**: Next.js 16 (App Router)
-- **Frontend**: React 19, Tailwind CSS, Framer Motion, Lucide React
-- **Database & Auth**: Supabase PostgreSQL with Row Level Security (RLS)
-- **Hosting & Edge**: Cloudflare Workers (`@opennextjs/cloudflare`)
-- **Language**: TypeScript
-
-## Getting Started
-
-### 1. Installation
+## Quick Start
 
 ```bash
-git clone https://github.com/RemTypes/kclmc-portal.git
-cd kclmc-portal
+# 1. Install dependencies
 npm install
-```
 
-### 2. Environment Configuration
-
-Create a `.env.local` file in the project root:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-SUPERADMIN_EMAIL=remy.preston@outlook.com
-COMMITTEE_EMAILS=president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org
-```
-
-### 3. Development Server
-
-```bash
+# 2. Start development server
 npm run dev
-```
 
-Open [http://localhost:3000](http://localhost:3000) to view the application.
+# 3. Run all tests (roster, verification, and security suite)
+npm test
 
-### 4. Production Build
+# 4. Run automated security testing suite
+npm run test:security
 
-```bash
+# 5. Build for production
 npm run build
 ```
 
-## Deployment
+## Documentation & Manuals
 
-Configured for deployment to Cloudflare Workers using OpenNext:
+- **[Committee Handover Manual](docs/COMMITTEE_HANDOVER_MANUAL.md)**: Full architecture, tech stack, database schema, RLS policies, RBAC setup, pass lifecycle, deployment guide, and tenure transition checklist.
+- **[Legal Compliance & Risk Audit](docs/LEGAL_COMPLIANCE_AND_RISK_AUDIT.md)**: Statutory ICO fee exemption, negligence defense shield (*volenti non fit injuria*), and Equality Act 2010 accessibility policy.
+- **[Environment Configuration Template](sample.env)**: Reference for all required environment variables and secrets.
 
-```bash
-npm run build:worker
-npm run deploy:cloudflare
-```
+## Core Features
 
----
-
-© King's College London Mountaineering Club.
+- **Digital Climbing Pass**: Authenticated pass with live QR code for climbing gyms and trip leaders.
+- **KCLSU Roster Reconciliation**: Automated CSV ingest with Soc-to-Rec tier upgrade support and CSV formula injection protection.
+- **Where We Climb (Beta)**: Indoor walls and crag guides linked directly to BMC Regional Access Database (RAD) and UK Climbing (UKC) topos.
+- **Meets & Expeditions**: Club meets calendar with difficulty ratings and registration tracking.
+- **LUBE Competition Engine**: London University Bouldering Event scoring and live rankings.
+- **Automated Security Suite**: Static credential leakage detection, SQL injection resistance, XSS sanitization, and RBAC defense.

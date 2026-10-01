@@ -11,8 +11,9 @@ function LoginForm() {
   const next = searchParams.get('next') || '/membership';
   const urlError = searchParams.get('error');
 
+  const initialView = searchParams.get('view') === 'sign_up' || searchParams.get('mode') === 'register' ? 'sign_up' : 'sign_in';
   const [mode, setMode] = useState<'password' | 'magic_link'>('password');
-  const [view, setView] = useState<'sign_in' | 'sign_up' | 'forgot_password'>('sign_in');
+  const [view, setView] = useState<'sign_in' | 'sign_up' | 'forgot_password'>(initialView);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');

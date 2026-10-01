@@ -8,10 +8,21 @@ export interface KclsuMemberRecord {
   purchaseDate: string;
 }
 
+export function sanitizeCsvCell(val: string): string {
+  if (!val) return '';
+  let cleaned = val.trim();
+  // Neutralize CSV formula injection characters (=, +, -, @) if at start of string
+  if (/^[=+@-]/i.test(cleaned)) {
+    cleaned = cleaned.replace(/^[=+@-]+/, '').trim();
+  }
+  return cleaned;
+}
+
 export function formatPurchaserName(raw: string): string {
   if (!raw) return '';
+  const sanitized = sanitizeCsvCell(raw);
   // Handle formats like "SMITH, Jane", "DOE, John"
-  const clean = raw.replace(/^"|"$/g, '').trim();
+  const clean = sanitized.replace(/^"|"$/g, '').trim();
   if (clean.includes(',')) {
     const [last, first] = clean.split(',').map(s => s.trim());
     if (first && last) {
@@ -333,11 +344,11 @@ export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
     }
 
     if (cols.length >= 8) {
-      const productName = cols[0];
-      const transactionId = cols[1];
-      const rawPurchaser = cols[2];
-      const cardNumber = cols[4];
-      const purchaseDate = cols[7];
+      const productName = sanitizeCsvCell(cols[0]);
+      const transactionId = sanitizeCsvCell(cols[1]);
+      const rawPurchaser = sanitizeCsvCell(cols[2]);
+      const cardNumber = sanitizeCsvCell(cols[4]);
+      const purchaseDate = sanitizeCsvCell(cols[7]);
 
       if (cardNumber && cardNumber.startsWith('K')) {
         const cleanCard = cardNumber.trim().toUpperCase();

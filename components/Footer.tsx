@@ -92,12 +92,23 @@ export default function Footer() {
             </li>
             <li>
               <a 
-                href="https://www.kclsu.org/resources/kclsu/code-of-conduct/"
+                href="https://www.kclsu.org/policyzone"
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="hover:text-[#FFBD59] transition-colors text-zinc-400 inline-flex items-center gap-1"
               >
-                <span>KCLSU Code of Conduct</span>
+                <span>KCLSU Policy Zone &amp; Code of Conduct</span>
+                <span className="text-[10px]">↗</span>
+              </a>
+            </li>
+            <li>
+              <a
+                href="https://www.thebmc.co.uk/participation-statement"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-[#FFBD59] transition-colors text-zinc-400 inline-flex items-center gap-1"
+              >
+                <span>BMC Participation Statement</span>
                 <span className="text-[10px]">↗</span>
               </a>
             </li>
@@ -129,7 +140,7 @@ export default function Footer() {
               <span>@kclmc Instagram Dispatches ↗</span>
             </a>
             <a
-              href="https://www.kclsu.org/groups/activities/join/kclmc/"
+              href="https://www.kclsu.org/organisation/climbing/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-zinc-300 hover:text-[#FFBD59] transition-colors inline-flex items-center gap-1.5"

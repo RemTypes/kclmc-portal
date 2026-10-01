@@ -23,16 +23,17 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const rawStudentId = body.studentId || '';
+    const rawStudentId = typeof body.studentId === 'string' ? body.studentId : '';
     const cleanId = rawStudentId.trim().toUpperCase();
 
-    if (!cleanId) {
+    if (!cleanId || cleanId.length > 32 || !/^[A-Z0-9_-]{3,32}$/.test(cleanId)) {
       return NextResponse.json(
         { error: 'Please provide a valid KCL Student ID (e.g. K25008223).' },
         { status: 400 }
       );
     }
 
+    const safeDisplayId = cleanId.replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
     const admin = createAdminClient();
 
     // 2. Check if this student ID is already linked to another user in profiles
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
 
     if (existingProfile && existingProfile.id !== user.id) {
       return NextResponse.json(
-        { error: `Student ID "${cleanId}" is already linked to another KCLMC account. If this is your student ID, please contact committee@kclmc.org.` },
+        { error: `Student ID "${safeDisplayId}" is already linked to another KCLMC account. If this is your student ID, please contact committee@kclmc.org.` },
         { status: 409 }
       );
     }
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
 
     if (existingRoster && existingRoster.user_id && existingRoster.user_id !== user.id) {
       return NextResponse.json(
-        { error: `Student ID "${cleanId}" is already linked to another KCLMC account. If this is your student ID, please contact committee@kclmc.org.` },
+        { error: `Student ID "${safeDisplayId}" is already linked to another KCLMC account. If this is your student ID, please contact committee@kclmc.org.` },
         { status: 409 }
       );
     }
