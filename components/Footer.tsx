@@ -86,6 +86,11 @@ export default function Footer() {
               </Link>
             </li>
             <li>
+              <Link href="/accessibility" className="hover:text-[#FFBD59] transition-colors font-medium text-emerald-300/90 hover:text-emerald-200">
+                ♿ Accessibility &amp; Paraclimbing (Equality Act)
+              </Link>
+            </li>
+            <li>
               <a 
                 href="https://www.kclsu.org/resources/kclsu/code-of-conduct/"
                 target="_blank" 

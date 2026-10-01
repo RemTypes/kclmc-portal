@@ -39,8 +39,9 @@ export default function PrivacyPolicyPage() {
           </p>
           <div className="bg-[#041F1E] border border-[#FFBD59]/20 rounded-2xl p-4 text-xs font-mono text-zinc-300 space-y-1.5">
             <div><strong className="text-white">Data Controller:</strong> KCL Mountaineering Club Committee</div>
-            <div><strong className="text-white">Charity Umbrella:</strong> King&apos;s College London Students&apos; Union</div>
+            <div><strong className="text-white">Charity Umbrella:</strong> King&apos;s College London Students&apos; Union (KCLSU)</div>
             <div><strong className="text-white">Registered Address:</strong> Student Centre, Macadam Building, Surrey Street, London WC2R 2NS, UK</div>
+            <div><strong className="text-white">ICO Fee Status:</strong> Exempt under Data Protection (Charges and Information) Regulations 2018 (Not-for-Profit Exemption; operates under KCLSU Charity No. 1136043 ICO registration)</div>
             <div><strong className="text-white">Data Protection Contact:</strong> <a href="mailto:portal@kclmc.org" className="text-[#FFBD59] underline">portal@kclmc.org</a></div>
           </div>
         </section>
@@ -68,6 +69,7 @@ export default function PrivacyPolicyPage() {
               <ul className="list-disc list-inside text-zinc-300 space-y-1">
                 <li>Emergency contact (next-of-kin name and phone)</li>
                 <li>Voluntarily declared medical notes (allergies, asthma)</li>
+                <li>Accessibility, paraclimbing, or sensory accommodation preferences</li>
                 <li>Climbing experience and belay competence self-rating</li>
               </ul>
             </div>
@@ -107,7 +109,7 @@ export default function PrivacyPolicyPage() {
               <strong className="text-white">Legitimate Interests (Art. 6(1)(f)):</strong> Verifying active student status with KCLSU, preventing fraudulent pass duplication, maintaining equipment loan safety logs, and securing the platform.
             </div>
             <div className="p-3.5 bg-[#041F1E] rounded-xl border border-[#084746]">
-              <strong className="text-white">Explicit Consent (Art. 9(2)(a)):</strong> Special category health data (e.g. medical conditions or dietary requirements) disclosed specifically for residential trips.
+              <strong className="text-white">Explicit Consent (Art. 9(2)(a)):</strong> Special category health data (e.g. medical conditions, paraclimbing adjustments, or dietary requirements) disclosed specifically for residential trips or climbing sessions.
             </div>
           </div>
         </section>
@@ -193,6 +195,10 @@ export default function PrivacyPolicyPage() {
 
         {/* Footer Navigation */}
         <div className="border-t border-[#084746] pt-6 flex flex-col sm:flex-row justify-between items-center text-xs text-zinc-400 font-heading uppercase tracking-wider gap-4">
+          <Link href="/accessibility" className="text-emerald-400 hover:underline flex items-center gap-1">
+            <span>♿ Accessibility Policy</span>
+            <span>→</span>
+          </Link>
           <Link href="/terms" className="text-[#FFBD59] hover:underline flex items-center gap-1">
             <span>Read Terms of Service</span>
             <span>→</span>
