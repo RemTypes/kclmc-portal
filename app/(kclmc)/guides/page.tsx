@@ -20,7 +20,7 @@ const SEED_GUIDES: EnhancedGuide[] = [
     location: 'Mile End, Haverfield Rd, E3 5BE',
     grade_range: null,
     discount_info: '20% off with KCL student ID',
-    website_url: 'https://mileendwall.org.uk',
+    website_url: 'https://www.mileendwall.org.uk/',
     map_url: 'https://maps.google.com/?q=Mile+End+Climbing+Wall',
     tube_station: 'Mile End (Central, District, Hammersmith & City)',
     image_url: null,
@@ -68,7 +68,7 @@ const SEED_GUIDES: EnhancedGuide[] = [
     location: 'Bermondsey, Drummond Rd, SE16 4EE',
     grade_range: null,
     discount_info: 'Student off-peak concessions available',
-    website_url: 'https://archclimbingwall.com/',
+    website_url: 'https://climbingdistrict.uk/',
     map_url: 'https://maps.google.com/?q=Arch+Climbing+Wall+Building+One',
     tube_station: 'Bermondsey (Jubilee Line)',
     image_url: null,
@@ -84,7 +84,7 @@ const SEED_GUIDES: EnhancedGuide[] = [
     location: 'Groombridge, East Sussex',
     grade_range: 'VDiff to E3',
     discount_info: 'Open public crag access',
-    website_url: 'https://www.thebmc.co.uk/modules/rad/viewcrag.aspx?id=18',
+    website_url: 'https://services.thebmc.co.uk/modules/RAD/View.aspx?id=119',
     map_url: 'https://maps.google.com/?q=Harrisons+Rocks+Groombridge',
     topo_url: 'https://www.ukclimbing.com/logbook/crags/harrisons_rocks-57/',
     image_url: null,
@@ -116,9 +116,9 @@ const SEED_GUIDES: EnhancedGuide[] = [
     location: 'Dorset, South Coast',
     grade_range: 'F4 to F7c+',
     discount_info: 'Free crag access (Bolt Fund supported)',
-    website_url: 'https://www.thebmc.co.uk/modules/rad/viewcrag.aspx?id=86',
+    website_url: 'https://services.thebmc.co.uk/modules/RAD/View.aspx?id=299',
     map_url: 'https://maps.google.com/?q=Isle+of+Portland+Dorset',
-    topo_url: 'https://www.ukclimbing.com/logbook/crags/portland-21959/',
+    topo_url: 'https://www.ukclimbing.com/logbook/crags/the_cuttings-721/',
     image_url: null,
     sort_order: 3,
     is_published: true,
@@ -132,7 +132,7 @@ const SEED_GUIDES: EnhancedGuide[] = [
     location: 'Hathersage, Peak District National Park',
     grade_range: 'Mod to E8',
     discount_info: 'Free access (Peak District National Park)',
-    website_url: 'https://www.peakdistrict.gov.uk/',
+    website_url: 'https://services.thebmc.co.uk/modules/RAD/View.aspx?id=150',
     map_url: 'https://maps.google.com/?q=Stanage+Edge+Popular+End',
     topo_url: 'https://www.ukclimbing.com/logbook/crags/stanage_popular-104/',
     image_url: null,
@@ -323,7 +323,13 @@ export default async function GuidesPage() {
                           rel="noopener noreferrer"
                           className="px-3 py-1.5 rounded-lg bg-[#041F1E] border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors flex items-center gap-1"
                         >
-                          <span>Crag Info</span>
+                          <span>
+                            {g.website_url.includes('thebmc.co.uk')
+                              ? 'BMC RAD Access'
+                              : g.category === 'indoor'
+                              ? 'Wall Website'
+                              : 'Crag Info'}
+                          </span>
                           <span>↗</span>
                         </a>
                       )}
