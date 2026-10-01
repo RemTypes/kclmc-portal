@@ -116,8 +116,14 @@ export default function DigitalPass() {
             
             {order?.customerName && (
               <div className="mt-4 pt-4 border-t border-zinc-800 flex justify-between text-xs text-zinc-400">
-                <span>Customer Email:</span>
+                <span>Customer Name:</span>
                 <span className="font-bold text-zinc-200">{order.customerName}</span>
+              </div>
+            )}
+            {order?.customerEmail && (
+              <div className="mt-2 flex justify-between text-xs text-zinc-400">
+                <span>Customer Email:</span>
+                <span className="font-bold text-zinc-200">{order.customerEmail}</span>
               </div>
             )}
           </div>
