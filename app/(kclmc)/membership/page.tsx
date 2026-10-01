@@ -409,17 +409,6 @@ export default function MembershipDashboard() {
     router.refresh();
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#041F1E] text-[#F7F7F7] flex items-center justify-center font-mono">
-        <div className="animate-pulse flex flex-col items-center gap-2">
-          <div className="w-8 h-8 rounded-full border-2 border-[#FFBD59] border-t-transparent animate-spin"></div>
-          <span>Loading membership pass...</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-[#041F1E] text-[#F7F7F7] p-6 md:p-12 relative overflow-hidden font-sans topo-pattern">
       <div className="max-w-6xl mx-auto relative z-10">
@@ -460,31 +449,38 @@ export default function MembershipDashboard() {
           <>
             <MembershipTierGuide />
 
-            <div className="mb-12 p-8 md:p-12 bg-[#084746]/80 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl shadow-2xl text-center max-w-2xl mx-auto">
-              <div className="w-16 h-16 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-3xl mb-4 border border-[#FFBD59]/40">
-                🔒
+            {loading ? (
+              <div className="mb-12 p-8 bg-[#084746]/60 backdrop-blur-md border border-[#FFBD59]/20 rounded-3xl text-center max-w-xl mx-auto shadow-xl">
+                <div className="w-8 h-8 rounded-full border-2 border-[#FFBD59] border-t-transparent animate-spin mx-auto mb-3"></div>
+                <p className="text-xs font-mono text-zinc-300">Checking membership pass status...</p>
               </div>
-              <h2 className="text-2xl md:text-3xl font-black font-heading uppercase text-white tracking-wide mb-3">
-                Already Joined on KCLSU? Sign In to View Your Pass
-              </h2>
-              <p className="text-sm text-zinc-300 leading-relaxed mb-6 font-sans">
-                To protect student privacy and ensure safety compliance, KCLMC digital climbing passes are locked strictly to your authenticated account. Please sign in or register to display your verified membership card, gym concessions, and trip credentials.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center items-center font-mono">
-                <Link
-                  href="/login?next=/membership"
-                  className="w-full sm:w-auto px-6 py-3 bg-[#FFBD59] text-[#052322] font-black text-xs uppercase tracking-wider rounded-xl hover:bg-[#FFE0A3] transition-colors shadow-lg"
-                >
-                  Sign In to View Pass →
-                </Link>
-                <Link
-                  href="/register"
-                  className="w-full sm:w-auto px-6 py-3 bg-[#041F1E] border border-[#FFBD59]/40 text-[#FFBD59] font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#084746] transition-colors"
-                >
-                  Register New Account
-                </Link>
+            ) : (
+              <div className="mb-12 p-8 md:p-12 bg-[#084746]/80 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl shadow-2xl text-center max-w-2xl mx-auto">
+                <div className="w-16 h-16 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-3xl mb-4 border border-[#FFBD59]/40">
+                  🔒
+                </div>
+                <h2 className="text-2xl md:text-3xl font-black font-heading uppercase text-white tracking-wide mb-3">
+                  Already Joined on KCLSU? Sign In to View Your Pass
+                </h2>
+                <p className="text-sm text-zinc-300 leading-relaxed mb-6 font-sans">
+                  To protect student privacy and ensure safety compliance, KCLMC digital climbing passes are locked strictly to your authenticated account. Please sign in or register to display your verified membership card, gym concessions, and trip credentials.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center items-center font-mono">
+                  <Link
+                    href="/login?next=/membership"
+                    className="w-full sm:w-auto px-6 py-3 bg-[#FFBD59] text-[#052322] font-black text-xs uppercase tracking-wider rounded-xl hover:bg-[#FFE0A3] transition-colors shadow-lg"
+                  >
+                    Sign In to View Pass →
+                  </Link>
+                  <Link
+                    href="/register"
+                    className="w-full sm:w-auto px-6 py-3 bg-[#041F1E] border border-[#FFBD59]/40 text-[#FFBD59] font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#084746] transition-colors"
+                  >
+                    Register New Account
+                  </Link>
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
 
