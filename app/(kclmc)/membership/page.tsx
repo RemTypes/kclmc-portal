@@ -8,6 +8,189 @@ import MembershipCard from '@/components/MembershipCard';
 import { findMemberByCardNumber, KclsuMemberRecord } from '@/lib/roster';
 import type { Profile, Membership } from '@/types/database';
 
+function MembershipTierGuide() {
+  return (
+    <div className="bg-[#084746]/70 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl p-6 md:p-10 shadow-xl mb-12">
+      <div className="max-w-3xl mb-8">
+        <span className="text-[10px] font-mono uppercase tracking-widest text-[#FFBD59] bg-[#041F1E] px-2.5 py-1 rounded border border-[#FFBD59]/30">
+          Official KCLMC Guide
+        </span>
+        <h2 className="text-3xl font-black font-heading uppercase tracking-tight text-white mt-3 mb-2">
+          Social vs. Recreational Membership: What's the Difference?
+        </h2>
+        <p className="text-xs sm:text-sm text-zinc-300 font-sans leading-relaxed">
+          We offer two distinct memberships through KCLSU. Choose the tier that matches your climbing goals, or start with Social and upgrade with a Top-Up later!
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Social Membership Card */}
+        <div className="bg-[#041F1E]/95 border-2 border-[#FFBD59]/40 rounded-2xl p-6 relative flex flex-col justify-between shadow-lg">
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-xl font-bold font-heading uppercase tracking-wide text-[#FFBD59]">
+                Social Membership
+              </h3>
+              <span className="text-xs font-mono uppercase bg-[#084746] text-[#FFBD59] px-2.5 py-1 rounded font-bold border border-[#FFBD59]/40">
+                Bouldering &amp; Social
+              </span>
+            </div>
+            <div className="text-2xl font-mono font-black text-white mb-3">
+              £15 <span className="text-xs font-sans text-zinc-400 font-normal">/ year</span>
+            </div>
+            <p className="text-xs text-zinc-300 mb-6 leading-relaxed">
+              Developed specifically for boulderers and brand-new climbers, as well as those not ready to commit to full expeditions yet but who want to be within the club's sphere of influence. If you'd like to boulder with KCLMC during official climbing sessions, this is the membership for you.
+            </p>
+
+            <h4 className="text-xs font-mono uppercase text-[#FFBD59] font-bold mb-3">
+              Included Perks &amp; Benefits:
+            </h4>
+            <ul className="space-y-3 text-xs text-zinc-300">
+              <li className="flex items-start gap-2.5">
+                <span className="text-emerald-400 font-bold text-sm">✔</span>
+                <div>
+                  <strong className="text-white">The KCLMC Discount (£9.50 Entry):</strong>
+                  <p className="text-zinc-400 mt-0.5">
+                    Discounted entry (£9.50) at London Climbing Centre (LCC) gyms on Mondays, Fridays, and off-peak hours. Includes free shoe hire (usually £4). <em>Pays for itself in just 3 visits!</em>
+                  </p>
+                </div>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="text-emerald-400 font-bold text-sm">✔</span>
+                <div>
+                  <strong className="text-white">Members' WhatsApp Group Chat:</strong>
+                  <p className="text-zinc-400 mt-0.5">
+                    Coordinated climbing sessions, advance notice on trip signups, and direct access to committee beta.
+                  </p>
+                </div>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="text-emerald-400 font-bold text-sm">✔</span>
+                <div>
+                  <strong className="text-white">Discounts on Ticketed Socials:</strong>
+                  <p className="text-zinc-400 mt-0.5">
+                    Subsidized tickets for the annual KCLMC Winter Ball, Christmas Dinner, and social events.
+                  </p>
+                </div>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="text-emerald-400 font-bold text-sm">✔</span>
+                <div>
+                  <strong className="text-white">Easy Upgrade Path:</strong>
+                  <p className="text-zinc-400 mt-0.5">
+                    Upgrade anytime to Full Membership by purchasing the Student Recreational Top-Up.
+                  </p>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <a
+              href="https://www.kclsu.org/groups/activities/join/kclmc/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-6 w-full py-3 bg-[#FFBD59] text-[#052322] font-heading font-black text-sm uppercase tracking-wider rounded-xl text-center hover:bg-[#FFE0A3] transition-colors shadow-md block"
+            >
+              Join Social on KCLSU (£15) ↗
+            </a>
+            <div className="mt-4 pt-4 border-t border-[#FFBD59]/20 flex items-center justify-between text-xs font-mono">
+              <span className="text-zinc-400">Best for: Boulderers &amp; New Climbers</span>
+              <span className="text-[#FFBD59] font-bold">£15 / Year</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Recreational Membership Card */}
+        <div className="bg-[#041F1E]/95 border-2 border-emerald-500/50 rounded-2xl p-6 relative flex flex-col justify-between shadow-lg">
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-xl font-bold font-heading uppercase tracking-wide text-emerald-400">
+                Full Recreational Membership
+              </h3>
+              <span className="text-xs font-mono uppercase bg-emerald-950 text-emerald-300 px-2.5 py-1 rounded font-bold border border-emerald-500/40">
+                Standard / Associate
+              </span>
+            </div>
+            <div className="text-2xl font-mono font-black text-white mb-3">
+              £45 <span className="text-xs font-sans text-zinc-400 font-normal">/ year</span>
+            </div>
+            <p className="text-xs text-zinc-300 mb-6 leading-relaxed">
+              Our biggest offering yet and a must for those who want to get good at climbing and make the most of what KCLMC has to offer. Includes <strong>all perks of the Social Membership</strong>, plus:
+            </p>
+
+            <h4 className="text-xs font-mono uppercase text-emerald-400 font-bold mb-3">
+              Exclusive Full Member Benefits:
+            </h4>
+            <ul className="space-y-3 text-xs text-zinc-300">
+              <li className="flex items-start gap-2.5">
+                <span className="text-emerald-400 font-bold text-sm">✔</span>
+                <div>
+                  <strong className="text-white">Free Hire of £30,000+ Club Equipment:</strong>
+                  <p className="text-zinc-400 mt-0.5">
+                    Ropes, trad racks, harnesses, ice axes, bouldering pads, camping gear, and guidebooks regularly safety-checked. Climb safely on your own or with us without storing expensive kit.
+                  </p>
+                </div>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="text-emerald-400 font-bold text-sm">✔</span>
+                <div>
+                  <strong className="text-white">Exclusive Worldwide Climbing Trips:</strong>
+                  <p className="text-zinc-400 mt-0.5">
+                    Intro days at Harrison's Rocks, trad in the Peak District, sport climbing in Portland &amp; Wales, and world-class sandstone bouldering in Fontainebleau, France.
+                  </p>
+                </div>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="text-emerald-400 font-bold text-sm">✔</span>
+                <div>
+                  <strong className="text-white">Subsidised Training &amp; Guided Alpine Expeditions:</strong>
+                  <p className="text-zinc-400 mt-0.5">
+                    Join us in the French Alps for 3 weeks to learn multipitch sport climbing &amp; guided mountaineering (all guide fees covered by the club!), plus winter climbing in Scotland.
+                  </p>
+                </div>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="text-emerald-400 font-bold text-sm">✔</span>
+                <div>
+                  <strong className="text-white">UK Mountain Hut &amp; Bunkhouse Access:</strong>
+                  <p className="text-zinc-400 mt-0.5">
+                    Stay at authentic mountaineering huts and bunkhouses across North Wales, the Lake District, and the Scottish Highlands on official club meets.
+                  </p>
+                </div>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="text-emerald-400 font-bold text-sm">✔</span>
+                <div>
+                  <strong className="text-white">Weekly Comp Training &amp; Team Entry:</strong>
+                  <p className="text-zinc-400 mt-0.5">
+                    Weekly coaching clinics and free entry representing KCLMC in LUBE, BUCS, and university boulder leagues.
+                  </p>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <a
+              href="https://www.kclsu.org/groups/activities/join/kclmc/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-6 w-full py-3 bg-emerald-500 text-slate-950 font-heading font-black text-sm uppercase tracking-wider rounded-xl text-center hover:bg-emerald-400 transition-colors shadow-md block"
+            >
+              Join Recreational on KCLSU (£45) ↗
+            </a>
+            <div className="mt-4 pt-4 border-t border-emerald-500/20 flex items-center justify-between text-xs font-mono">
+              <span className="text-zinc-400">Best for: Active Climbers &amp; Mountaineers</span>
+              <span className="text-emerald-400 font-bold">£45 / Year</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MembershipDashboard() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -244,13 +427,15 @@ export default function MembershipDashboard() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 pb-4 border-b border-[#FFBD59]/20">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#084746] border border-[#FFBD59]/40 text-[#FFBD59] text-xs font-mono uppercase tracking-widest mb-3">
-              Official KCLMC Pass // Season 2026/27
+              {currentUser ? 'Official KCLMC Pass // Season 2026/27' : 'KCLSU Accredited Society // Season 2026/27'}
             </div>
             <h1 className="text-4xl md:text-5xl font-black font-heading uppercase tracking-tight text-[#FFBD59]">
-              Membership Portal
+              {currentUser ? 'Membership Portal' : 'Club Memberships & Passes'}
             </h1>
             <p className="text-zinc-300 text-sm mt-1">
-              Your verified climbing pass. Card tier and details are locked according to your authenticated account and official KCLSU purchase record.
+              {currentUser
+                ? 'Your verified climbing pass. Card tier and details are locked according to your authenticated account and official KCLSU purchase record.'
+                : 'Compare official membership tiers, join via the KCLSU Student Union portal, and access your verified digital pass for London wall discounts and outdoor expeditions.'}
             </p>
           </div>
           {currentUser ? (
@@ -272,31 +457,35 @@ export default function MembershipDashboard() {
 
         {/* 1. Unauthenticated Visitor State */}
         {!currentUser && (
-          <div className="mb-12 p-8 md:p-12 bg-[#084746]/80 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl shadow-2xl text-center max-w-2xl mx-auto">
-            <div className="w-16 h-16 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-3xl mb-4 border border-[#FFBD59]/40">
-              🔒
+          <>
+            <MembershipTierGuide />
+
+            <div className="mb-12 p-8 md:p-12 bg-[#084746]/80 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl shadow-2xl text-center max-w-2xl mx-auto">
+              <div className="w-16 h-16 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-3xl mb-4 border border-[#FFBD59]/40">
+                🔒
+              </div>
+              <h2 className="text-2xl md:text-3xl font-black font-heading uppercase text-white tracking-wide mb-3">
+                Already Joined on KCLSU? Sign In to View Your Pass
+              </h2>
+              <p className="text-sm text-zinc-300 leading-relaxed mb-6 font-sans">
+                To protect student privacy and ensure safety compliance, KCLMC digital climbing passes are locked strictly to your authenticated account. Please sign in or register to display your verified membership card, gym concessions, and trip credentials.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center items-center font-mono">
+                <Link
+                  href="/login?next=/membership"
+                  className="w-full sm:w-auto px-6 py-3 bg-[#FFBD59] text-[#052322] font-black text-xs uppercase tracking-wider rounded-xl hover:bg-[#FFE0A3] transition-colors shadow-lg"
+                >
+                  Sign In to View Pass →
+                </Link>
+                <Link
+                  href="/register"
+                  className="w-full sm:w-auto px-6 py-3 bg-[#041F1E] border border-[#FFBD59]/40 text-[#FFBD59] font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#084746] transition-colors"
+                >
+                  Register New Account
+                </Link>
+              </div>
             </div>
-            <h2 className="text-2xl md:text-3xl font-black font-heading uppercase text-white tracking-wide mb-3">
-              Sign In to View Your Climbing Pass
-            </h2>
-            <p className="text-sm text-zinc-300 leading-relaxed mb-6 font-sans">
-              To protect student privacy and ensure safety compliance, KCLMC digital climbing passes are locked strictly to your authenticated account. Please sign in or register to display your verified membership card, gym concessions, and trip credentials.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center items-center font-mono">
-              <Link
-                href="/login?next=/membership"
-                className="w-full sm:w-auto px-6 py-3 bg-[#FFBD59] text-[#052322] font-black text-xs uppercase tracking-wider rounded-xl hover:bg-[#FFE0A3] transition-colors shadow-lg"
-              >
-                Sign In to View Pass →
-              </Link>
-              <Link
-                href="/register"
-                className="w-full sm:w-auto px-6 py-3 bg-[#041F1E] border border-[#FFBD59]/40 text-[#FFBD59] font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#084746] transition-colors"
-              >
-                Register New Account
-              </Link>
-            </div>
-          </div>
+          </>
         )}
 
         {/* 2. Authenticated: Already Bound to Account */}
@@ -581,164 +770,7 @@ export default function MembershipDashboard() {
         )}
 
         {/* Membership Tier Guide: Social vs Recreational */}
-        <div className="bg-[#084746]/70 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl p-6 md:p-10 shadow-xl">
-          <div className="max-w-3xl mb-8">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-[#FFBD59] bg-[#041F1E] px-2.5 py-1 rounded border border-[#FFBD59]/30">
-              Official KCLMC Guide
-            </span>
-            <h2 className="text-3xl font-black font-heading uppercase tracking-tight text-white mt-3 mb-2">
-              Social vs. Recreational Membership: What's the Difference?
-            </h2>
-            <p className="text-xs sm:text-sm text-zinc-300 font-sans leading-relaxed">
-              We offer two distinct memberships through KCLSU. Choose the tier that matches your climbing goals, or start with Social and upgrade with a Top-Up later!
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Social Membership Card */}
-            <div className="bg-[#041F1E]/95 border-2 border-[#FFBD59]/40 rounded-2xl p-6 relative flex flex-col justify-between shadow-lg">
-              <div>
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-xl font-bold font-heading uppercase tracking-wide text-[#FFBD59]">
-                    Social Membership
-                  </h3>
-                  <span className="text-xs font-mono uppercase bg-[#084746] text-[#FFBD59] px-2.5 py-1 rounded font-bold border border-[#FFBD59]/40">
-                    Bouldering &amp; Social
-                  </span>
-                </div>
-                <div className="text-2xl font-mono font-black text-white mb-3">
-                  £15 <span className="text-xs font-sans text-zinc-400 font-normal">/ year</span>
-                </div>
-                <p className="text-xs text-zinc-300 mb-6 leading-relaxed">
-                  Developed specifically for boulderers and brand-new climbers, as well as those not ready to commit to full expeditions yet but who want to be within the club's sphere of influence. If you'd like to boulder with KCLMC during official climbing sessions, this is the membership for you.
-                </p>
-
-                <h4 className="text-xs font-mono uppercase text-[#FFBD59] font-bold mb-3">
-                  Included Perks &amp; Benefits:
-                </h4>
-                <ul className="space-y-3 text-xs text-zinc-300">
-                  <li className="flex items-start gap-2.5">
-                    <span className="text-emerald-400 font-bold text-sm">✔</span>
-                    <div>
-                      <strong className="text-white">The KCLMC Discount (£9.50 Entry):</strong>
-                      <p className="text-zinc-400 mt-0.5">
-                        Discounted entry (£9.50) at London Climbing Centre (LCC) gyms on Mondays, Fridays, and off-peak hours. Includes free shoe hire (usually £4). <em>Pays for itself in just 3 visits!</em>
-                      </p>
-                    </div>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="text-emerald-400 font-bold text-sm">✔</span>
-                    <div>
-                      <strong className="text-white">Members' WhatsApp Group Chat:</strong>
-                      <p className="text-zinc-400 mt-0.5">
-                        Coordinated climbing sessions, advance notice on trip signups, and direct access to committee beta.
-                      </p>
-                    </div>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="text-emerald-400 font-bold text-sm">✔</span>
-                    <div>
-                      <strong className="text-white">Discounts on Ticketed Socials:</strong>
-                      <p className="text-zinc-400 mt-0.5">
-                        Subsidized tickets for the annual KCLMC Winter Ball, Christmas Dinner, and social events.
-                      </p>
-                    </div>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="text-emerald-400 font-bold text-sm">✔</span>
-                    <div>
-                      <strong className="text-white">Easy Upgrade Path:</strong>
-                      <p className="text-zinc-400 mt-0.5">
-                        Upgrade anytime to Full Membership by purchasing the Student Recreational Top-Up.
-                      </p>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="mt-8 pt-4 border-t border-[#FFBD59]/20 flex items-center justify-between text-xs font-mono">
-                <span className="text-zinc-400">Best for: Boulderers &amp; New Climbers</span>
-                <span className="text-[#FFBD59] font-bold">£15 / Year</span>
-              </div>
-            </div>
-
-            {/* Recreational Membership Card */}
-            <div className="bg-[#041F1E]/95 border-2 border-emerald-500/50 rounded-2xl p-6 relative flex flex-col justify-between shadow-lg">
-              <div>
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-xl font-bold font-heading uppercase tracking-wide text-emerald-400">
-                    Full Recreational Membership
-                  </h3>
-                  <span className="text-xs font-mono uppercase bg-emerald-950 text-emerald-300 px-2.5 py-1 rounded font-bold border border-emerald-500/40">
-                    Standard / Associate
-                  </span>
-                </div>
-                <div className="text-2xl font-mono font-black text-white mb-3">
-                  £45 <span className="text-xs font-sans text-zinc-400 font-normal">/ year</span>
-                </div>
-                <p className="text-xs text-zinc-300 mb-6 leading-relaxed">
-                  Our biggest offering yet and a must for those who want to get good at climbing and make the most of what KCLMC has to offer. Includes <strong>all perks of the Social Membership</strong>, plus:
-                </p>
-
-                <h4 className="text-xs font-mono uppercase text-emerald-400 font-bold mb-3">
-                  Exclusive Full Member Benefits:
-                </h4>
-                <ul className="space-y-3 text-xs text-zinc-300">
-                  <li className="flex items-start gap-2.5">
-                    <span className="text-emerald-400 font-bold text-sm">✔</span>
-                    <div>
-                      <strong className="text-white">Free Hire of £30,000+ Club Equipment:</strong>
-                      <p className="text-zinc-400 mt-0.5">
-                        Ropes, trad racks, harnesses, ice axes, bouldering pads, camping gear, and guidebooks regularly safety-checked. Climb safely on your own or with us without storing expensive kit.
-                      </p>
-                    </div>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="text-emerald-400 font-bold text-sm">✔</span>
-                    <div>
-                      <strong className="text-white">Exclusive Worldwide Climbing Trips:</strong>
-                      <p className="text-zinc-400 mt-0.5">
-                        Intro days at Harrison's Rocks, trad in the Peak District, sport climbing in Portland &amp; Wales, and world-class sandstone bouldering in Fontainebleau, France.
-                      </p>
-                    </div>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="text-emerald-400 font-bold text-sm">✔</span>
-                    <div>
-                      <strong className="text-white">Subsidised Training &amp; Guided Alpine Expeditions:</strong>
-                      <p className="text-zinc-400 mt-0.5">
-                        Join us in the French Alps for 3 weeks to learn multipitch sport climbing &amp; guided mountaineering (all guide fees covered by the club!), plus winter climbing in Scotland.
-                      </p>
-                    </div>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="text-emerald-400 font-bold text-sm">✔</span>
-                    <div>
-                      <strong className="text-white">UK Mountain Hut &amp; Bunkhouse Access:</strong>
-                      <p className="text-zinc-400 mt-0.5">
-                        Stay at authentic mountaineering huts and bunkhouses across North Wales, the Lake District, and the Scottish Highlands on official club meets.
-                      </p>
-                    </div>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="text-emerald-400 font-bold text-sm">✔</span>
-                    <div>
-                      <strong className="text-white">Weekly Comp Training &amp; Team Entry:</strong>
-                      <p className="text-zinc-400 mt-0.5">
-                        Weekly coaching clinics and free entry representing KCLMC in LUBE, BUCS, and university boulder leagues.
-                      </p>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="mt-8 pt-4 border-t border-emerald-500/20 flex items-center justify-between text-xs font-mono">
-                <span className="text-zinc-400">Best for: Active Climbers &amp; Mountaineers</span>
-                <span className="text-emerald-400 font-bold">£45 / Year</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        {currentUser && <MembershipTierGuide />}
       </div>
     </div>
   );
