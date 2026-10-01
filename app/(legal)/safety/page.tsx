@@ -109,8 +109,44 @@ export default function SafetyPage() {
           </div>
         </section>
 
+        {/* Section 5: Adaptive Climbing & Sensory Safety */}
+        <section className="space-y-3">
+          <h2 className="text-xl sm:text-2xl font-bold font-heading uppercase text-white tracking-wide flex items-center gap-2">
+            <span className="text-[#FFBD59]">5.</span> Adaptive Climbing &amp; Paraclimbing Protocols
+          </h2>
+          <div className="p-4 bg-[#041F1E] border border-[#084746] rounded-2xl text-xs sm:text-sm text-zinc-300 leading-relaxed space-y-2">
+            <p>
+              In line with the <strong>Equality Act 2010</strong>, KCLMC actively accommodates climbers with sensory impairments (blind / low vision, deaf / hard-of-hearing, mute / non-verbal), physical disabilities, and neurodiversity.
+            </p>
+            <p>
+              We employ standardized sight-calling protocols (clockface direction system), tactile rope-tug systems (3 tugs = Safe/Off Belay, 2 = Slack, 4 = Take), and assisted-braking belay devices (Grigri) to maintain maximum safety without compromising autonomy. For full operational guidance and accommodation requests, view our <Link href="/accessibility" className="text-[#FFBD59] underline font-bold">Accessibility &amp; Disability Policy</Link>.
+            </p>
+          </div>
+        </section>
+
+        {/* Section 6: Incident & Near-Miss Reporting */}
+        <section className="space-y-3">
+          <h2 className="text-xl sm:text-2xl font-bold font-heading uppercase text-white tracking-wide flex items-center gap-2">
+            <span className="text-[#FFBD59]">6.</span> Incident, Injury &amp; Near-Miss Reporting (RIDDOR)
+          </h2>
+          <div className="p-4 bg-[#041F1E] border border-amber-500/30 rounded-2xl text-xs sm:text-sm text-zinc-300 leading-relaxed space-y-2">
+            <p>
+              To maintain an evidence-backed standard of care and ensure continuous safety improvement:
+            </p>
+            <ul className="list-disc list-inside space-y-1 text-xs">
+              <li><strong>Mandatory 24-Hour Reporting:</strong> Any injury, near-miss, dropped safety equipment, or rope shock-load occurring on an official club session or meet must be reported to the Safety Officer within 24 hours.</li>
+              <li><strong>KCLSU &amp; HSE Escalation:</strong> Qualifying serious injuries are formally escalated to the KCLSU Health &amp; Safety Department and reported under the <strong>Reporting of Injuries, Diseases and Dangerous Occurrences Regulations 2013 (RIDDOR)</strong> where statutory criteria are met.</li>
+              <li><strong>Equipment Quarantine:</strong> Any gear involved in an uncontrolled fall, rockfall strike, or chemical exposure is quarantined immediately and permanently retired from service.</li>
+            </ul>
+          </div>
+        </section>
+
         {/* Footer Navigation */}
         <div className="border-t border-[#084746] pt-6 flex flex-col sm:flex-row justify-between items-center text-xs text-zinc-400 font-heading uppercase tracking-wider gap-4">
+          <Link href="/accessibility" className="text-emerald-400 hover:underline flex items-center gap-1">
+            <span>♿ Accessibility Policy</span>
+            <span>→</span>
+          </Link>
           <Link href="/terms" className="text-[#FFBD59] hover:underline flex items-center gap-1">
             <span>Read Terms of Service</span>
             <span>→</span>

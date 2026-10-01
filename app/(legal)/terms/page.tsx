@@ -66,6 +66,7 @@ export default function TermsPage() {
             <ul className="list-disc list-inside space-y-1.5 text-xs text-zinc-300">
               <li><strong>Zero Tolerance:</strong> Harassment, bullying, discrimination, sexual misconduct, and hazing of any kind will result in immediate suspension, expulsion, and escalation to KCL Student Conduct.</li>
               <li><strong>Crag &amp; Environmental Stewardship:</strong> We uphold the <em>Leave No Trace</em> ethic. Members must adhere to local access restrictions, respect crag closures, pack out all waste, and avoid damaging sandstone/limestone ecosystems.</li>
+              <li><strong>Equality &amp; Disability Inclusion:</strong> We are committed to barrier-free access under the <strong>Equality Act 2010</strong>. Discrimination or harassment on grounds of disability, gender, race, or sexual orientation is strictly prohibited. For sensory or physical accommodations, refer to our <Link href="/accessibility" className="text-[#FFBD59] underline">Accessibility &amp; Paraclimbing Policy</Link>.</li>
               <li><strong>Substance Policy:</strong> Consumption of alcohol or recreational substances immediately before or during any climbing, belaying, or scrambling activity is strictly prohibited.</li>
             </ul>
           </div>
@@ -106,7 +107,8 @@ export default function TermsPage() {
             <ul className="list-disc list-inside space-y-1.5 text-xs text-zinc-300">
               <li><strong>Deposits &amp; Cancellations:</strong> Deposits for external bunkhouses, cottage bookings, or transport hire are strictly non-refundable once committed to third-party vendors. If you can no longer attend, you may find an eligible substitute member subject to trip leader approval.</li>
               <li><strong>Leader Discretion &amp; Authority:</strong> Designated trip leaders, climbing guides, and safety officers hold absolute authority to modify routes, postpone climbs, or turn back any participant on grounds of weather, insufficient fitness, missing technical gear, or safety concerns.</li>
-              <li><strong>Weather &amp; Force Majeure:</strong> British mountain weather is notoriously unpredictable. Meets will not be refunded solely due to wet weather; alternative wet-weather cragging or hillwalking itineraries will be provided.</li>
+              <li><strong>Weather &amp; Force Majeure:</strong> British mountain weather is notoriously unpredictable. Meets will not be refunded solely due to wet weather; alternative wet-weather cragging or training itineraries will be provided.</li>
+              <li><strong>Safeguarding &amp; Under-18 Members:</strong> In accordance with KCLSU Safeguarding and the Protection of Freedoms Act 2012, student members aged 16–17 must have a parent or legal guardian execute the official KCLSU Parental Consent Form before attending any overnight, residential, or multi-day mountain meet.</li>
             </ul>
           </div>
         </section>
@@ -128,10 +130,27 @@ export default function TermsPage() {
           </div>
         </section>
 
-        {/* Section 6: Jurisdiction */}
+        {/* Section 6: Statutory Liability & Inherent Hazards */}
         <section className="space-y-3 border-t border-[#084746] pt-6">
           <h2 className="text-xl sm:text-2xl font-bold font-heading uppercase text-white tracking-wide flex items-center gap-2">
-            <span className="text-[#FFBD59]">6.</span> Governing Law &amp; Jurisdiction
+            <span className="text-[#FFBD59]">6.</span> Limitation of Liability &amp; Statutory Rights (UCTA &amp; CRA)
+          </h2>
+          <div className="space-y-3 text-xs sm:text-sm text-zinc-300 leading-relaxed">
+            <div className="p-4 bg-[#041F1E] border border-amber-500/30 rounded-2xl space-y-2">
+              <p>
+                <strong className="text-white">Statutory Non-Exclusion:</strong> Nothing in these Terms shall limit or exclude KCLMC&apos;s liability for death or personal injury resulting from negligence, or for fraud or fraudulent misrepresentation, where prohibited by <strong>Section 2(1) of the Unfair Contract Terms Act 1977 (UCTA)</strong> and <strong>Section 65 of the Consumer Rights Act 2015 (CRA)</strong>.
+              </p>
+              <p>
+                <strong className="text-white">Voluntary Assumption of Inherent Hazards (Volenti Non Fit Injuria):</strong> In the absence of negligence, members freely acknowledge that climbing, mountaineering, and hill activities carry unavoidable objective risks of personal injury or death. In accordance with the <strong>BMC Participation Statement</strong>, participants are responsible for their own actions and involvement.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Section 7: Jurisdiction */}
+        <section className="space-y-3 border-t border-[#084746] pt-6">
+          <h2 className="text-xl sm:text-2xl font-bold font-heading uppercase text-white tracking-wide flex items-center gap-2">
+            <span className="text-[#FFBD59]">7.</span> Governing Law &amp; Jurisdiction
           </h2>
           <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
             These terms are governed by and construed in accordance with the laws of <strong>England and Wales</strong>. Any disputes arising in connection with these terms shall be subject to the exclusive jurisdiction of the English courts.
@@ -140,6 +159,10 @@ export default function TermsPage() {
 
         {/* Footer Navigation */}
         <div className="border-t border-[#084746] pt-6 flex flex-col sm:flex-row justify-between items-center text-xs text-zinc-400 font-heading uppercase tracking-wider gap-4">
+          <Link href="/accessibility" className="text-emerald-400 hover:underline flex items-center gap-1">
+            <span>♿ Accessibility Policy</span>
+            <span>→</span>
+          </Link>
           <Link href="/privacy" className="text-[#FFBD59] hover:underline flex items-center gap-1">
             <span>Read Privacy Policy</span>
             <span>→</span>
