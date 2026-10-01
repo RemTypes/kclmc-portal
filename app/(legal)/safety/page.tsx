@@ -35,7 +35,7 @@ export default function SafetyPage() {
             &ldquo;The British Mountaineering Council (BMC) recognises that climbing and mountaineering are activities with a danger of personal injury or death. Participants in these activities should be aware of and accept these risks and be responsible for their own actions and involvement.&rdquo;
           </blockquote>
           <p className="text-xs text-zinc-400 font-sans">
-            By participating in any KCLMC climbing wall meet, bouldering session, outdoor crag day, or mountain expedition, you formally acknowledge and accept this fundamental statement.
+            By participating in any KCLMC climbing wall meet, bouldering session, outdoor crag day, or mountain expedition, you formally acknowledge and accept this fundamental statement. Read the official <a href="https://www.thebmc.co.uk/participation-statement" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline font-semibold">BMC Participation Statement on thebmc.co.uk ↗</a>.
           </p>
         </div>
 
@@ -79,7 +79,7 @@ export default function SafetyPage() {
             <ul className="list-disc list-inside space-y-1 text-xs">
               <li>Grades are subjective opinions and vary widely based on individual morphology, climbing style, and seasonal humidity.</li>
               <li>Crags are dynamic natural environments: key holds snap, fixed gear rusts, abseil tat degrades, and access agreements change.</li>
-              <li>You must always carry up-to-date definitive paper guidebooks (e.g. BMC, CC, or Rockfax guides) and conduct your own dynamic on-site risk assessment before committing to a route.</li>
+              <li>You must always carry up-to-date definitive paper guidebooks (e.g. BMC, CC, or Rockfax guides), check the official <a href="https://services.thebmc.co.uk/modules/rad/" target="_blank" rel="noopener noreferrer" className="text-[#FFBD59] underline">BMC Regional Access Database (RAD) ↗</a> for seasonal bird nesting closures, and conduct your own dynamic on-site risk assessment before committing to a route.</li>
             </ul>
           </div>
         </section>

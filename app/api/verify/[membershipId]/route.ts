@@ -8,11 +8,21 @@ export async function GET(
 ) {
   const { membershipId } = await params;
 
-  if (!membershipId) {
+  if (!membershipId || typeof membershipId !== 'string') {
     return NextResponse.json({ valid: false, error: 'Missing membership ID' }, { status: 400 });
   }
 
   const cleanId = decodeURIComponent(membershipId).trim().toUpperCase();
+
+  // Validate format and length to prevent SQLi / buffer overflows
+  if (cleanId.length === 0 || cleanId.length > 64) {
+    return NextResponse.json({ valid: false, error: 'Invalid membership ID length' }, { status: 400 });
+  }
+
+  // Reject malicious input containing control characters, null bytes, or SQL/script syntax
+  if (/[\0\r\n\t'"`;\\<>]/.test(cleanId)) {
+    return NextResponse.json({ valid: false, error: 'Invalid membership ID characters' }, { status: 400 });
+  }
 
   // 1. If Supabase is configured, check live database first
   if (isSupabaseConfigured()) {
@@ -107,8 +117,9 @@ export async function GET(
     });
   }
 
+  const safeDisplayId = cleanId.replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
   return NextResponse.json({
     valid: false,
-    error: `No official KCLMC membership found for ID ${cleanId}`,
+    error: `No official KCLMC membership found for ID ${safeDisplayId}`,
   }, { status: 404 });
 }

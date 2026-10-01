@@ -10,6 +10,7 @@
     "deploy:cloudflare": "opennextjs-cloudflare build && wrangler deploy",
     "backup": "tsx scripts/backup_database.ts",
     "test": "vitest run",
+    "test:security": "vitest run tests/security.test.ts",
     "test:watch": "vitest",
     "test:email": "tsx scripts/verify_email_system.ts",
     "test:all": "vitest run && npm run test:email",
