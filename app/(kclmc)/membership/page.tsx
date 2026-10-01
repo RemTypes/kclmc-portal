@@ -326,7 +326,7 @@ export default function MembershipDashboard() {
             </div>
             <div className="text-xs font-mono text-zinc-400 text-left md:text-right shrink-0">
               <span className="block text-zinc-400">Need to update or re-link?</span>
-              <a href="mailto:committee@kclmc.uk" className="text-[#FFBD59] hover:underline">
+              <a href="mailto:committee@kclmc.org" className="text-[#FFBD59] hover:underline">
                 Contact Committee →
               </a>
             </div>

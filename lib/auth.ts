@@ -18,7 +18,7 @@ export function getUserRole(email: string | null | undefined, roleOverride?: str
   if (!email) return 0;
   const superAdmin = getSuperAdminEmail();
   if (email.toLowerCase() === superAdmin.toLowerCase()) return 2;
-  const committeeEmails = (process.env.COMMITTEE_EMAILS || 'president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org')
+  const committeeEmails = (process.env.COMMITTEE_EMAILS || 'president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org')
     .split(',')
     .map(e => e.trim().toLowerCase());
   if (committeeEmails.includes(email.toLowerCase())) return 1;
