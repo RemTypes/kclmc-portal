@@ -24,7 +24,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(`/403?from=${encodeURIComponent(path)}&req=disabled`, request.url));
   }
 
-  // 2. Strict route protection for /admin and /membership
+  // 2. Strict route protection for /admin
   if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder-project')) {
     // If Supabase is not configured yet, still require login for admin routes
     if (path.startsWith('/admin')) {
@@ -58,14 +58,7 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Route protection
-  if (path.startsWith('/membership') && !user) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.searchParams.set('next', path);
-    return NextResponse.redirect(url);
-  }
-
+  // Route protection (Admin only)
   if (path.startsWith('/admin') && !user) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
