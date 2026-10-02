@@ -118,7 +118,7 @@ const SEED_GUIDES: EnhancedGuide[] = [
     discount_info: 'Free crag access (Bolt Fund supported)',
     website_url: 'https://services.thebmc.co.uk/modules/RAD/View.aspx?id=299',
     map_url: 'https://maps.google.com/?q=Isle+of+Portland+Dorset',
-    topo_url: 'https://www.ukclimbing.com/logbook/crags/the_cuttings-721/',
+    topo_url: 'https://www.ukclimbing.com/logbook/crags/the_cuttings-276/',
     image_url: null,
     sort_order: 3,
     is_published: true,

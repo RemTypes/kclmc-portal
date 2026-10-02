@@ -6,14 +6,14 @@ import {
   upsertRosterToSupabase, 
   KclsuMemberRecord 
 } from '@/lib/roster';
-import { getUserRole } from '@/lib/auth';
+import { getUserRole, getAuthenticatedUserRole } from '@/lib/auth';
 
 export async function GET() {
   try {
     if (isSupabaseConfigured()) {
       const userClient = await createClient();
       const { data: { user } } = await userClient.auth.getUser();
-      const role = getUserRole(user?.email);
+      const role = await getAuthenticatedUserRole(userClient, user);
 
       if (role < 1) {
         return NextResponse.json(
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     if (isSupabaseConfigured()) {
       const userClient = await createClient();
       const { data: { user } } = await userClient.auth.getUser();
-      const role = getUserRole(user?.email);
+      const role = await getAuthenticatedUserRole(userClient, user);
 
       if (role < 1) {
         return NextResponse.json(

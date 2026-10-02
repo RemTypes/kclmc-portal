@@ -140,7 +140,7 @@ export default function Footer() {
               <span>@kclmc Instagram Dispatches ↗</span>
             </a>
             <a
-              href="https://www.kclsu.org/organisation/climbing/"
+              href="https://www.kclsu.org/groups/sports/join/mountaineerclimbsoc/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-zinc-300 hover:text-[#FFBD59] transition-colors inline-flex items-center gap-1.5"

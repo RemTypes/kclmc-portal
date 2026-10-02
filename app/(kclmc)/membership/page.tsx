@@ -87,7 +87,7 @@ function MembershipTierGuide() {
 
           <div>
             <a
-              href="https://www.kclsu.org/organisation/climbing/"
+              href="https://www.kclsu.org/groups/sports/join/mountaineerclimbsoc/"
               target="_blank"
               rel="noopener noreferrer"
               className="mt-6 w-full py-3 bg-[#FFBD59] text-[#052322] font-heading font-black text-sm uppercase tracking-wider rounded-xl text-center hover:bg-[#FFE0A3] transition-colors shadow-md block"
@@ -173,7 +173,7 @@ function MembershipTierGuide() {
 
           <div>
             <a
-              href="https://www.kclsu.org/organisation/climbing/"
+              href="https://www.kclsu.org/groups/sports/join/mountaineerclimbsoc/"
               target="_blank"
               rel="noopener noreferrer"
               className="mt-6 w-full py-3 bg-emerald-500 text-slate-950 font-heading font-black text-sm uppercase tracking-wider rounded-xl text-center hover:bg-emerald-400 transition-colors shadow-md block"
@@ -557,7 +557,7 @@ export default function MembershipDashboard() {
                 <div className="mt-4 p-4 bg-red-950/80 border border-red-500/60 rounded-xl text-red-300 text-xs font-mono flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                   <span>✖ {searchError}</span>
                   <a
-                    href="https://www.kclsu.org/organisation/climbing/"
+                    href="https://www.kclsu.org/groups/sports/join/mountaineerclimbsoc/"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline text-[#FFBD59] hover:text-white shrink-0"
