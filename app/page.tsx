@@ -294,25 +294,23 @@ export default async function HomePage() {
                 <span>2026/27 Outdoor Programme</span>
               </div>
               <h2 className="font-heading font-black text-3xl sm:text-5xl uppercase tracking-tight text-[#FFBD59] mb-4">
-                Meets &amp; Expeditions Coming Soon
+                Meets &amp; Expeditions Calendar
               </h2>
               <p className="text-zinc-300 text-sm sm:text-base leading-relaxed mb-6 font-sans">
-                We are currently finalizing our weekend bunkhouses, Scottish Winter tours, and Summer Alpine guides with KCLSU. The full meets calendar and registration portal will launch shortly.
+                Our outdoor rock meets, Southern Sandstone intro days, Portland sport climbing, Peak District trad weekends, and Scottish Winter tours are live! Sign up for upcoming club meets via official secretary forms.
               </p>
               <div className="flex flex-wrap gap-4">
-                <Link href="/membership" className="kclmc-btn-primary text-xs py-3 px-5 font-bold uppercase">
-                  <span>Get Pass Ready</span>
+                <Link href="/trips" className="kclmc-btn-primary text-xs py-3 px-5 font-bold uppercase">
+                  <span>Explore Meets Calendar</span>
                   <span>→</span>
                 </Link>
-                <a
-                  href="https://www.instagram.com/kclmc/"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Link
+                  href="/membership/bmc"
                   className="px-5 py-3 rounded-xl border border-[#FFBD59]/40 text-[#FFBD59] hover:bg-[#084746] font-mono text-xs font-bold uppercase transition-colors inline-flex items-center gap-1.5"
                 >
-                  <span>📸</span>
-                  <span>Follow @kclmc on Instagram ↗</span>
-                </a>
+                  <span>🛡️</span>
+                  <span>BMC Insurance Guide ↗</span>
+                </Link>
               </div>
             </div>
           </div>

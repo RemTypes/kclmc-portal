@@ -38,7 +38,12 @@ export default function Footer() {
           <ul className="space-y-2 text-xs text-zinc-300">
             <li>
               <Link href="/trips" className="hover:text-[#FFBD59] transition-colors">
-                Trips &amp; Meets <span className="text-[10px] text-[#FFBD59]/80 font-mono">(Coming Soon)</span>
+                Trips &amp; Meets
+              </Link>
+            </li>
+            <li>
+              <Link href="/membership/bmc" className="hover:text-[#FFBD59] transition-colors text-amber-300/90 hover:text-amber-200">
+                🏔️ BMC Membership &amp; Insurance
               </Link>
             </li>
             <li>

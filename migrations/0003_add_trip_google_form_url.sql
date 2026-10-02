@@ -1,0 +1,102 @@
+-- ============================================================
+-- Migration: 0003_add_trip_google_form_url.sql
+-- Add Google Form sign-up link and itinerary columns to trips,
+-- and seed the curated 2026/27 outdoor calendar.
+-- ============================================================
+
+INSERT OR REPLACE INTO trips (
+  id,
+  title,
+  description,
+  trip_type,
+  location,
+  date_start,
+  date_end,
+  difficulty_grade,
+  max_capacity,
+  gear_requirements,
+  itinerary,
+  status,
+  price_pence,
+  google_form_url
+) VALUES
+(
+  'trip-weekly-wall',
+  'Weekly Social Wall Sessions',
+  'Drop-in society sessions at London climbing centres. No advance registration needed — simply present your KCLSU Recreational pass at reception for society discount.',
+  'social',
+  'VauxWall East (Mondays 16:00-20:00) & The Castle (Wednesdays 15:00-19:00)',
+  '2026-10-05',
+  '2027-06-01',
+  'All Grades (V0-V10 / 3-8a)',
+  100,
+  '["Climbing Shoes", "Chalk Bag", "Harness (optional for Castle ropes)"]',
+  '["Mondays: VauxWall East from 16:00 to 20:00 with post-session pub social", "Wednesdays: The Castle Climbing Centre from 15:00 to 19:00 with lead and top-rope pairs"]',
+  'open',
+  0,
+  NULL
+),
+(
+  'trip-harrisons-rocks',
+  'Harrison''s Rocks Day Trip',
+  'Southern Sandstone top-roping and bouldering classic. The ideal first outdoor rock trip of the academic year, located just 50 minutes from London Bridge.',
+  'trad',
+  'Harrison''s Rocks, Groombridge, Kent',
+  '2026-10-18',
+  '2026-10-18',
+  'Mod to E3 (Top-rope only)',
+  24,
+  '["Climbing Helmet (Mandatory)", "Harness", "Rock Shoes", "Carabiner & Belay Device", "Packed Lunch & Water"]',
+  '["08:15: Meet at London Bridge station main concourse", "08:45: Train departure to Eridge", "10:00: Walk to crag and safety briefing on sandstone ethics (no moving ropes across rock)", "10:30-16:30: Rigging top-ropes and climbing classic lines", "17:00: De-rig and debrief at The Junction Inn before return train"]',
+  'open',
+  1500,
+  'https://docs.google.com/forms/d/e/1FAIpQLSc_kclmc_harrisons_rocks_sample/viewform'
+),
+(
+  'trip-portland-sport',
+  'Portland Limestone Sport Weekend',
+  'Two days of sunny sea-cliff limestone sport climbing along the Jurassic Coast. Routes from easy beginner friendly F4s to testpiece F7cs, staying in the Portland bunkhouse.',
+  'sport',
+  'The Cuttings & Blacknor, Isle of Portland, Dorset',
+  '2026-11-07',
+  '2026-11-08',
+  'F4 to F7b+',
+  18,
+  '["Climbing Helmet (Mandatory)", "Harness", "Rock Shoes", "Belay Device", "Sleeping Bag", "Warm Layers & Waterproofs"]',
+  '["Friday 18:30: Coach departure from Guy''s Campus", "Friday 22:30: Arrive at Portland Bunkhouse & bed down", "Saturday 09:00: Full day sport climbing at The Cuttings with tidal and clip-stick safety briefings", "Saturday 19:30: Communal club dinner & fish and chips in Castletown", "Sunday 09:30: Morning climbing at Blacknor Central / Battleship", "Sunday 16:00: Pack up and coach departure back to London"]',
+  'open',
+  5500,
+  'https://docs.google.com/forms/d/e/1FAIpQLSc_kclmc_portland_sport_sample/viewform'
+),
+(
+  'trip-peak-district',
+  'Peak District Trad & Bouldering Weekend',
+  'Classic British gritstone trad climbing and bouldering on the legendary Stanage Edge and Burbage North. Camping or bunkhouse option in Hathersage.',
+  'trad',
+  'Stanage Edge & Burbage, Hathersage, Derbyshire',
+  '2026-11-28',
+  '2026-11-29',
+  'Diff to E2 / Font 3 to 7A',
+  16,
+  '["Climbing Helmet (Mandatory)", "Harness", "Rock Shoes", "Belay Device", "Warm Down Jacket", "Headtorch", "Sleeping Bag & Mat"]',
+  '["Friday 17:45: Mini-bus pickup from Strand Campus", "Friday 22:00: Arrive at Hathersage Bunkhouse", "Saturday 09:00: Trad placement clinic on Stanage Popular End and paired lead/second climbing", "Saturday 17:00: Tea & cake at Outside Cafe, Hathersage", "Sunday 09:30: Burbage bouldering and highball circuit", "Sunday 16:30: Depart for London"]',
+  'open',
+  4800,
+  'https://docs.google.com/forms/d/e/1FAIpQLSc_kclmc_peak_district_sample/viewform'
+),
+(
+  'trip-scottish-winter',
+  'Scottish Winter Mountaineering Expedition',
+  'Iconic winter mountaineering and snow gully ascents in Glencoe and the Ben Nevis range. Crampon, ice axe, and winter navigation workshop included.',
+  'winter',
+  'Glencoe & Fort William, Scottish Highlands',
+  '2027-01-14',
+  '2027-01-18',
+  'Winter Grade I to III',
+  12,
+  '["B2/B3 Mountaineering Boots (Mandatory)", "C2 Walking/Climbing Crampons", "Mountaineering Axe", "Climbing Helmet", "Winter Goggles & Balaclava", "Four-season Waterproofs", "Emergency Bivi Bag & Whistle"]',
+  '["Thursday 20:00: Overnight sleeper or road convoy to Fort William", "Friday: Winter skills clinic (avalanche awareness, crampon footwork, ice axe arrests)", "Saturday: Guided ascent of Glencoe classic ridge/gully (e.g. Zig-Zags or Curved Ridge)", "Sunday: Second mountaineering objective on Ben Nevis North Face / Aonach Mor", "Monday: Morning debrief and return travel to London"]',
+  'open',
+  14500,
+  'https://docs.google.com/forms/d/e/1FAIpQLSc_kclmc_scottish_winter_sample/viewform'
+);

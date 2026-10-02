@@ -180,6 +180,21 @@ function MembershipTierGuide() {
             >
               Join Recreational on KCLSU (£45) ↗
             </a>
+
+            {/* BMC Club Affiliation Callout */}
+            <div className="mt-4 p-3 rounded-xl bg-[#084746]/60 border border-[#FFBD59]/30 flex items-center justify-between gap-3 text-xs font-mono">
+              <div className="flex items-center gap-2">
+                <span>🛡️</span>
+                <span className="text-zinc-200">Includes Official <strong>BMC Club Affiliation</strong> &amp; £15M Liability</span>
+              </div>
+              <Link
+                href="/membership/bmc"
+                className="text-[#FFBD59] hover:underline font-bold shrink-0"
+              >
+                Claim Card →
+              </Link>
+            </div>
+
             <div className="mt-4 pt-4 border-t border-emerald-500/20 flex items-center justify-between text-xs font-mono">
               <span className="text-zinc-400">Best for: Active Climbers &amp; Mountaineers</span>
               <span className="text-emerald-400 font-bold">£45 / Year</span>

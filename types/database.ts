@@ -42,6 +42,8 @@ export interface Trip {
   gear_requirements: string[] | null;
   status: 'draft' | 'open' | 'waitlist' | 'full' | 'completed' | 'cancelled';
   price_pence: number;
+  itinerary?: string[] | null;
+  google_form_url?: string | null;
   created_at: string;
   updated_at: string;
 }
