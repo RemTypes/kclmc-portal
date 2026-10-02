@@ -197,6 +197,12 @@ export type Role = 0 | 1 | 2;
      ```
      Any user signing in with an email in this list automatically resolves to **Role 1 (Committee Member)**.
 3. **Admin Layout Protection**: The `app/admin/layout.tsx` component automatically checks user authentication. If unauthenticated, it redirects to `/login?next=/admin`. If the authenticated user is not committee, it renders `app/403/page.tsx` (Forbidden).
+4. **API Route Security & UK GDPR Protection**:
+   - `GET /api/roster` & `POST /api/roster`: Strictly require `role >= 1` (Committee). Protects all student names, student IDs, and transaction records from unauthenticated public enumeration or unauthorized tampering.
+   - `GET /api/orders` (unfiltered) & `PUT /api/orders`: Strictly require `role >= 1` to prevent harvesting customer order histories or modifying payment states.
+   - `GET /api/telemetry`: Requires `role >= 1` to inspect diagnostic events.
+   - `GET /api/verify/[membershipId]`: Hardened against SQL injection, null bytes, buffer overflows, and malformed URI encodings.
+   - **Open Redirect Prevention**: Login redirect queries (`?next=`) are validated through `getSafeRedirectUrl` (`lib/auth.ts`) to ensure redirection targets only internal relative paths (`/` only, no `//`, `/\`, or external schemes).
 
 ---
 
@@ -267,13 +273,13 @@ The following table documents all external canonical links used across the platf
 | Destination | Canonical Live URL | Purpose |
 | :--- | :--- | :--- |
 | **KCLSU Climbing Society** | `https://www.kclsu.org/organisation/climbing/` | Official union society page to buy passes |
-| **KCLSU Policy Zone** | `https://www.kclsu.org/policyzone` | Official union code of conduct & policies |
-| **BMC Participation Statement** | `https://www.thebmc.co.uk/participation-statement` | Statutory voluntary assumption of risk notice |
+| **KCLSU Policy Zone** | `https://www.kclsu.org/policyzone/` | Official union code of conduct & policies |
+| **BMC Participation Statement** | `https://www.thebmc.co.uk/en/bmc-participation-statement` | Statutory voluntary assumption of risk notice |
 | **BMC Regional Access Database** | `https://services.thebmc.co.uk/modules/rad/` | Official crag access restrictions & bird bans |
 | **Harrison's Rocks BMC RAD** | `https://services.thebmc.co.uk/modules/RAD/View.aspx?id=119` | Access & sandstone rules (Harrison's Rocks) |
 | **The Cuttings (Portland) BMC RAD**| `https://services.thebmc.co.uk/modules/RAD/View.aspx?id=299` | Access rules (Portland - The Cuttings Area) |
 | **Stanage Edge BMC RAD** | `https://services.thebmc.co.uk/modules/RAD/View.aspx?id=150` | Access rules (Stanage / Eastern Gritstone) |
-| **Bowles Rocks Access Info** | `https://bowles.rocks/outdoor-climbing/` | Reception permit and opening times |
+| **Bowles Rocks Access Info** | `https://bowles.rocks/individuals-and-families/rock-climbing/` | Reception permit and opening times |
 | **UKC: Harrison's Rocks Topo** | `https://www.ukclimbing.com/logbook/crags/harrisons_rocks-57/` | Logbook & route topo for Harrison's Rocks |
 | **UKC: Bowles Rocks Topo** | `https://www.ukclimbing.com/logbook/crags/bowles_rocks-54/` | Logbook & route topo for Bowles Rocks |
 | **UKC: Portland The Cuttings** | `https://www.ukclimbing.com/logbook/crags/the_cuttings-721/` | Logbook & route topo for The Cuttings |

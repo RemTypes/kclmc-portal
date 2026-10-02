@@ -12,7 +12,12 @@ export async function GET(
     return NextResponse.json({ valid: false, error: 'Missing membership ID' }, { status: 400 });
   }
 
-  const cleanId = decodeURIComponent(membershipId).trim().toUpperCase();
+  let cleanId = '';
+  try {
+    cleanId = decodeURIComponent(membershipId).trim().toUpperCase();
+  } catch {
+    return NextResponse.json({ valid: false, error: 'Malformed membership ID parameter' }, { status: 400 });
+  }
 
   // Validate format and length to prevent SQLi / buffer overflows
   if (cleanId.length === 0 || cleanId.length > 64) {
