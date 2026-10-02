@@ -1,7 +1,7 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getUserRole } from '@/lib/auth';
+import { getUserRole, getAuthenticatedUserRole } from '@/lib/auth';
 import AdminNav from '@/components/AdminNav';
 
 export default async function AdminLayout({
@@ -17,20 +17,8 @@ export default async function AdminLayout({
       redirect('/login?next=/admin');
     }
 
-    // Check role from profiles table, with fallback to email whitelist in lib/auth
-    let role = getUserRole(user.email);
-
-    if (role === 0) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (profile?.role) {
-        role = profile.role;
-      }
-    }
+    // Unified role resolution: checks email whitelist & Supabase profiles table
+    const role = await getAuthenticatedUserRole(supabase, user);
 
     // Clearance check: Must be at least Committee (role >= 1)
     if (role < 1) {

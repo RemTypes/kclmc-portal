@@ -188,18 +188,21 @@ export type Role = 0 | 1 | 2;
 ```
 
 ### How Permissions Are Resolved
-1. **Dynamic Database Role**: When a user signs in, their role in `public.profiles.role` is queried.
+1. **Dynamic Database Role & Whitelist (`getAuthenticatedUserRole`)**:
+   - When an authenticated user makes an API request or visits `/admin`, `getAuthenticatedUserRole(client, user)` evaluates their privileges.
+   - It first evaluates their email against `SUPERADMIN_EMAIL` and `COMMITTEE_EMAILS`.
+   - If their email is not hardcoded, it queries `public.profiles.role` for `id = user.id`. Users granted committee or admin status in Supabase are automatically recognized across both UI and API endpoints.
 2. **Environment Variable Whitelist**:
-   - `SUPERADMIN_EMAIL`: Defaults to `admin@kclmc.org`. Anyone authenticated with this email receives **Role 2**.
+   - `SUPERADMIN_EMAIL`: Defaults to `admin@kclmc.org` (and whitelists platform lead `remy.preston@outlook.com`). Anyone authenticated with this email receives **Role 2**.
    - `COMMITTEE_EMAILS`: Comma-separated list in `.env.local` or Cloudflare dashboard:
      ```bash
-     COMMITTEE_EMAILS=president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org
+     COMMITTEE_EMAILS=president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org,remy.preston@outlook.com,remy.preston@kcl.ac.uk
      ```
-     Any user signing in with an email in this list automatically resolves to **Role 1 (Committee Member)**.
-3. **Admin Layout Protection**: The `app/admin/layout.tsx` component automatically checks user authentication. If unauthenticated, it redirects to `/login?next=/admin`. If the authenticated user is not committee, it renders `app/403/page.tsx` (Forbidden).
+     Any user signing in with an email in this list automatically resolves to **Role 1 (Committee Member)** (or Role 2 if lead).
+3. **Admin Layout Protection**: The `app/admin/layout.tsx` component automatically checks user authentication via `getAuthenticatedUserRole()`. If unauthenticated, it redirects to `/login?next=/admin`. If the authenticated user is not committee, it renders `app/403/page.tsx` (Forbidden).
 4. **API Route Security & UK GDPR Protection**:
-   - `GET /api/roster` & `POST /api/roster`: Strictly require `role >= 1` (Committee). Protects all student names, student IDs, and transaction records from unauthenticated public enumeration or unauthorized tampering.
-   - `GET /api/orders` (unfiltered) & `PUT /api/orders`: Strictly require `role >= 1` to prevent harvesting customer order histories or modifying payment states.
+   - `GET /api/roster` & `POST /api/roster`: Strictly require `role >= 1` (Committee) via `getAuthenticatedUserRole()`. Protects all student names, student IDs, and transaction records from unauthenticated public enumeration or unauthorized tampering.
+   - `GET /api/orders` (unfiltered) & `PUT /api/orders`: Strictly require `role >= 1` via `getAuthenticatedUserRole()` to prevent harvesting customer order histories or modifying payment states.
    - `GET /api/telemetry`: Requires `role >= 1` to inspect diagnostic events.
    - `GET /api/verify/[membershipId]`: Hardened against SQL injection, null bytes, buffer overflows, and malformed URI encodings.
    - **Open Redirect Prevention**: Login redirect queries (`?next=`) are validated through `getSafeRedirectUrl` (`lib/auth.ts`) to ensure redirection targets only internal relative paths (`/` only, no `//`, `/\`, or external schemes).
@@ -272,7 +275,7 @@ The following table documents all external canonical links used across the platf
 
 | Destination | Canonical Live URL | Purpose |
 | :--- | :--- | :--- |
-| **KCLSU Climbing Society** | `https://www.kclsu.org/organisation/climbing/` | Official union society page to buy passes |
+| **KCLSU Climbing Society** | `https://www.kclsu.org/groups/sports/join/mountaineerclimbsoc/` | Official union society page to buy passes |
 | **KCLSU Policy Zone** | `https://www.kclsu.org/policyzone/` | Official union code of conduct & policies |
 | **BMC Participation Statement** | `https://www.thebmc.co.uk/en/bmc-participation-statement` | Statutory voluntary assumption of risk notice |
 | **BMC Regional Access Database** | `https://services.thebmc.co.uk/modules/rad/` | Official crag access restrictions & bird bans |
@@ -282,7 +285,7 @@ The following table documents all external canonical links used across the platf
 | **Bowles Rocks Access Info** | `https://bowles.rocks/individuals-and-families/rock-climbing/` | Reception permit and opening times |
 | **UKC: Harrison's Rocks Topo** | `https://www.ukclimbing.com/logbook/crags/harrisons_rocks-57/` | Logbook & route topo for Harrison's Rocks |
 | **UKC: Bowles Rocks Topo** | `https://www.ukclimbing.com/logbook/crags/bowles_rocks-54/` | Logbook & route topo for Bowles Rocks |
-| **UKC: Portland The Cuttings** | `https://www.ukclimbing.com/logbook/crags/the_cuttings-721/` | Logbook & route topo for The Cuttings |
+| **UKC: Portland The Cuttings** | `https://www.ukclimbing.com/logbook/crags/the_cuttings-276/` | Logbook & route topo for The Cuttings |
 | **UKC: Stanage Popular Topo** | `https://www.ukclimbing.com/logbook/crags/stanage_popular-104/` | Logbook & route topo for Stanage Popular |
 | **Mile End Climbing Wall** | `https://www.mileendwall.org.uk/` | Partner gym discount portal |
 | **VauxWall East (LCC)** | `https://londonclimbingcentres.co.uk/locations/vauxwall-east/` | Partner bouldering gym portal |

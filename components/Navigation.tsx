@@ -54,7 +54,7 @@ export default function Navigation() {
             @kclmc Instagram ↗
           </a>
           <a
-            href="https://www.kclsu.org/organisation/climbing/"
+            href="https://www.kclsu.org/groups/sports/join/mountaineerclimbsoc/"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-[#FFBD59] transition-colors hidden md:inline"

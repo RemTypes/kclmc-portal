@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server';
-import { getUserRole } from '@/lib/auth';
+import { getUserRole, getAuthenticatedUserRole } from '@/lib/auth';
 
 let fallbackTelemetry: any[] = [];
 
@@ -9,7 +9,7 @@ export async function GET() {
     if (isSupabaseConfigured()) {
       const userClient = await createClient();
       const { data: { user } } = await userClient.auth.getUser();
-      const role = getUserRole(user?.email);
+      const role = await getAuthenticatedUserRole(userClient, user);
 
       if (role < 1) {
         return NextResponse.json({ error: 'Unauthorized: Committee access required' }, { status: 403 });
