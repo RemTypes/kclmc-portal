@@ -19,7 +19,7 @@ export default function TripsPage() {
         </h1>
 
         <p className="text-zinc-300 text-base md:text-lg mb-8 max-w-2xl leading-relaxed">
-          Our weekend outdoor meets, Southern Sandstone day trips, Scottish Winter, and Summer Alpine expeditions are currently being finalized with KCLSU and qualified mountain guides.
+          Our weekend outdoor meets, Scottish Winter tours, and Summer Alpine expeditions are currently being finalized with KCLSU and qualified mountain guides.
         </p>
 
         {/* Status Callout Box */}
