@@ -1,68 +1,9 @@
 import React from 'react';
 import Link from 'next/link';
-import { createClient, isSupabaseConfigured } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  let upcomingMeets: any[] = [];
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = await createClient();
-      const { data } = await supabase
-        .from('trips')
-        .select('*')
-        .neq('trip_type', 'social')
-        .neq('status', 'draft')
-        .neq('status', 'cancelled')
-        .order('date_start', { ascending: true })
-        .limit(3);
-
-      if (data && data.length > 0) {
-        upcomingMeets = data;
-      }
-    } catch (err) {
-      console.error('Failed to fetch upcoming meets:', err);
-    }
-  }
-
-  if (upcomingMeets.length === 0) {
-    upcomingMeets = [
-      {
-        id: '2',
-        title: "Harrison's Rocks Day Trip",
-        trip_type: 'trad',
-        description: 'Southern Sandstone top-roping classic. Perfect intro to outdoor rock climbing just 50 mins from London Bridge.',
-        difficulty_grade: 'VDiff to HVS',
-        price_pence: 1500,
-        date_start: '2026-10-12',
-        date_end: '2026-10-12',
-        location: 'Groombridge, Kent',
-      },
-      {
-        id: '3',
-        title: 'Peak District Weekend Trad',
-        trip_type: 'trad',
-        description: 'Two full days on world-famous gritstone: Stanage Edge and Burbage South. Wild camping and bunkhouse options.',
-        difficulty_grade: 'Severe to E1',
-        price_pence: 4500,
-        date_start: '2026-10-25',
-        date_end: '2026-10-26',
-        location: 'Hathersage, Peak District',
-      },
-      {
-        id: '4',
-        title: 'Scottish Winter Mountaineering',
-        trip_type: 'winter',
-        description: 'Grade I-III winter gullies and ridge traverses in Glencoe. Crampon and ice axe technique required.',
-        difficulty_grade: 'Grade I to III Winter',
-        price_pence: 15000,
-        date_start: '2026-12-14',
-        date_end: '2026-12-17',
-        location: 'Glencoe Valley, Scottish Highlands',
-      },
-    ];
-  }
   return (
     <div className="flex flex-col min-h-screen">
       {/* =====================================================================
@@ -342,98 +283,38 @@ export default async function HomePage() {
       </section>
 
       {/* =====================================================================
-          5. UPCOMING MEETS PREVIEW (Expedition Ledger)
+          5. UPCOMING MEETS PREVIEW (2026/27 Outdoor Programme)
           ===================================================================== */}
-      <section className="bg-slate-50 py-16 px-6 md:px-12">
+      <section className="bg-slate-50 py-16 px-6 md:px-12 border-t border-slate-200">
         <div className="max-w-6xl mx-auto">
-          <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-4 mb-8">
-            <div>
-              <div className="inline-block px-3 py-1 mb-2 rounded bg-amber-100 text-amber-900 font-heading font-bold text-xs uppercase tracking-wider">
-                Expeditions &amp; Calendar
+          <div className="p-8 sm:p-12 rounded-3xl bg-[#052322] border border-[#FFBD59]/30 text-white shadow-2xl relative overflow-hidden topo-pattern">
+            <div className="max-w-2xl relative z-10">
+              <div className="inline-flex items-center gap-2 px-3 py-1 mb-4 rounded-full bg-[#084746] border border-[#FFBD59]/40 text-[#FFBD59] text-xs font-mono uppercase tracking-widest">
+                <span>🏔️</span>
+                <span>2026/27 Outdoor Programme</span>
               </div>
-              <h2 className="font-heading font-black text-3xl sm:text-5xl uppercase tracking-tight text-slate-900">
-                Upcoming Meets
+              <h2 className="font-heading font-black text-3xl sm:text-5xl uppercase tracking-tight text-[#FFBD59] mb-4">
+                Meets &amp; Expeditions Coming Soon
               </h2>
-            </div>
-            <Link href="/trips" className="kclmc-btn-forest text-xs py-2.5 px-4 font-bold self-start sm:self-auto">
-              <span>View Full Calendar</span>
-              <span>→</span>
-            </Link>
-          </div>
-
-          <div className="grid gap-4">
-            {upcomingMeets.map((meet) => {
-              const badgeLabel =
-                meet.trip_type === 'trad'
-                  ? 'Trad Day Trip'
-                  : meet.trip_type === 'winter'
-                  ? 'Winter Mountaineering'
-                  : meet.trip_type === 'expedition'
-                  ? 'Alpine Expedition'
-                  : meet.trip_type === 'sport'
-                  ? 'Sport Climbing'
-                  : meet.trip_type === 'bouldering'
-                  ? 'Outdoor Bouldering'
-                  : 'Outdoor Meet';
-
-              const badgeColor =
-                meet.trip_type === 'trad'
-                  ? 'bg-[#FFBD59] text-[#052322]'
-                  : meet.trip_type === 'winter'
-                  ? 'bg-sky-100 text-sky-900 border border-sky-300'
-                  : meet.trip_type === 'expedition'
-                  ? 'bg-slate-900 text-[#FFBD59]'
-                  : 'bg-emerald-100 text-emerald-800';
-
-              const priceLabel =
-                meet.price_pence === 0
-                  ? 'FREE'
-                  : `£${(meet.price_pence / 100).toFixed(2)}`;
-
-              const dateDisplay =
-                meet.date_end && meet.date_end !== meet.date_start
-                  ? `${meet.date_start} → ${meet.date_end}`
-                  : meet.date_start;
-
-              return (
-                <div
-                  key={meet.id}
-                  className="kclmc-card p-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4"
+              <p className="text-zinc-300 text-sm sm:text-base leading-relaxed mb-6 font-sans">
+                We are currently finalizing our weekend bunkhouses, Dartmoor wild camping, Scottish Winter tours, and Summer Alpine guides with KCLSU. The full meets calendar and registration portal will launch shortly.
+              </p>
+              <div className="flex flex-wrap gap-4">
+                <Link href="/membership" className="kclmc-btn-primary text-xs py-3 px-5 font-bold uppercase">
+                  <span>Get Pass Ready</span>
+                  <span>→</span>
+                </Link>
+                <a
+                  href="https://www.instagram.com/kclmc/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-5 py-3 rounded-xl border border-[#FFBD59]/40 text-[#FFBD59] hover:bg-[#084746] font-mono text-xs font-bold uppercase transition-colors inline-flex items-center gap-1.5"
                 >
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={`px-2.5 py-0.5 rounded text-[11px] font-heading uppercase font-bold tracking-wider ${badgeColor}`}>
-                        {badgeLabel}
-                      </span>
-                      {meet.difficulty_grade && (
-                        <span className="text-xs font-mono text-slate-500">
-                          {meet.difficulty_grade}
-                        </span>
-                      )}
-                      <span className="text-xs font-mono font-bold text-slate-700">
-                        {priceLabel}
-                      </span>
-                    </div>
-                    <h3 className="font-heading font-bold text-2xl uppercase tracking-wide text-slate-900">
-                      {meet.title}
-                    </h3>
-                    <p className="text-slate-600 text-xs font-sans mt-1">
-                      {meet.description}
-                    </p>
-                    <div className="flex items-center gap-4 mt-3 text-xs font-mono text-slate-500">
-                      <span>🗓️ {dateDisplay}</span>
-                      <span>📍 {meet.location}</span>
-                    </div>
-                  </div>
-                  <Link
-                    href={`/trips#trip-${meet.id}`}
-                    className="kclmc-btn-primary text-xs py-2 px-4 self-start sm:self-auto"
-                  >
-                    Details →
-                  </Link>
-                </div>
-              );
-            })}
+                  <span>📸</span>
+                  <span>Follow @kclmc on Instagram ↗</span>
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       </section>
