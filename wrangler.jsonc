@@ -33,12 +33,6 @@
           "database_id": "4aaad910-a81b-44ec-b448-85dc7103be20"
         }
       ],
-      "r2_buckets": [
-        {
-          "binding": "STORAGE",
-          "bucket_name": "kclmc-storage-preview"
-        }
-      ],
       "vars": {
         "NEXT_PUBLIC_ENV": "preview",
         "NEXT_PUBLIC_SITE_URL": "https://kclmc-platform-preview.workers.dev",
