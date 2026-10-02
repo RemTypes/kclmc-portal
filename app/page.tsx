@@ -297,7 +297,7 @@ export default async function HomePage() {
                 Meets &amp; Expeditions Coming Soon
               </h2>
               <p className="text-zinc-300 text-sm sm:text-base leading-relaxed mb-6 font-sans">
-                We are currently finalizing our weekend bunkhouses, Dartmoor wild camping, Scottish Winter tours, and Summer Alpine guides with KCLSU. The full meets calendar and registration portal will launch shortly.
+                We are currently finalizing our weekend bunkhouses, Scottish Winter tours, and Summer Alpine guides with KCLSU. The full meets calendar and registration portal will launch shortly.
               </p>
               <div className="flex flex-wrap gap-4">
                 <Link href="/membership" className="kclmc-btn-primary text-xs py-3 px-5 font-bold uppercase">
