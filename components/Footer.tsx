@@ -92,7 +92,7 @@ export default function Footer() {
             </li>
             <li>
               <a 
-                href="https://www.kclsu.org/policyzone"
+                href="https://www.kclsu.org/policyzone/"
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="hover:text-[#FFBD59] transition-colors text-zinc-400 inline-flex items-center gap-1"
@@ -103,7 +103,7 @@ export default function Footer() {
             </li>
             <li>
               <a
-                href="https://www.thebmc.co.uk/participation-statement"
+                href="https://www.thebmc.co.uk/en/bmc-participation-statement"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-[#FFBD59] transition-colors text-zinc-400 inline-flex items-center gap-1"

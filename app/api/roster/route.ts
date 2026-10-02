@@ -1,56 +1,69 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
+import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { 
   INITIAL_KCLSU_ROSTER, 
   parseKclsuCsv, 
   upsertRosterToSupabase, 
   KclsuMemberRecord 
 } from '@/lib/roster';
+import { getUserRole } from '@/lib/auth';
 
 export async function GET() {
   try {
-    if (!isSupabaseConfigured()) {
-      const socialCount = INITIAL_KCLSU_ROSTER.filter(m => m.tier === 'social').length;
-      const recCount = INITIAL_KCLSU_ROSTER.filter(m => m.tier === 'recreational').length;
+    if (isSupabaseConfigured()) {
+      const userClient = await createClient();
+      const { data: { user } } = await userClient.auth.getUser();
+      const role = getUserRole(user?.email);
+
+      if (role < 1) {
+        return NextResponse.json(
+          { error: 'Unauthorized: Committee access required to view membership roster' },
+          { status: 403 }
+        );
+      }
+
+      const supabase = createAdminClient();
+      const { data, error } = await supabase
+        .from('kclsu_roster')
+        .select('*')
+        .order('purchase_date', { ascending: false });
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      const members = (data || []).map((row: any) => ({
+        cardNumber: row.card_number,
+        name: row.full_name,
+        rawPurchaser: row.raw_purchaser,
+        tier: row.tier,
+        productName: row.product_name,
+        transactionId: row.transaction_id,
+        purchaseDate: row.purchase_date || '',
+        userId: row.user_id,
+      }));
+
+      const socialCount = members.filter(m => m.tier === 'social').length;
+      const recCount = members.filter(m => m.tier === 'recreational').length;
+
       return NextResponse.json({
-        source: 'local_fallback',
-        total: INITIAL_KCLSU_ROSTER.length,
+        source: 'supabase',
+        total: members.length,
         socialCount,
         recreationalCount: recCount,
-        members: INITIAL_KCLSU_ROSTER,
+        members,
       });
     }
 
-    const supabase = createAdminClient();
-    const { data, error } = await supabase
-      .from('kclsu_roster')
-      .select('*')
-      .order('purchase_date', { ascending: false });
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    const members = (data || []).map((row: any) => ({
-      cardNumber: row.card_number,
-      name: row.full_name,
-      rawPurchaser: row.raw_purchaser,
-      tier: row.tier,
-      productName: row.product_name,
-      transactionId: row.transaction_id,
-      purchaseDate: row.purchase_date || '',
-      userId: row.user_id,
-    }));
-
-    const socialCount = members.filter(m => m.tier === 'social').length;
-    const recCount = members.filter(m => m.tier === 'recreational').length;
-
+    // Local development fallback
+    const socialCount = INITIAL_KCLSU_ROSTER.filter(m => m.tier === 'social').length;
+    const recCount = INITIAL_KCLSU_ROSTER.filter(m => m.tier === 'recreational').length;
     return NextResponse.json({
-      source: 'supabase',
-      total: members.length,
+      source: 'local_fallback',
+      total: INITIAL_KCLSU_ROSTER.length,
       socialCount,
       recreationalCount: recCount,
-      members,
+      members: INITIAL_KCLSU_ROSTER,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to fetch roster' }, { status: 500 });
@@ -59,6 +72,19 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    if (isSupabaseConfigured()) {
+      const userClient = await createClient();
+      const { data: { user } } = await userClient.auth.getUser();
+      const role = getUserRole(user?.email);
+
+      if (role < 1) {
+        return NextResponse.json(
+          { error: 'Unauthorized: Committee access required to synchronize roster' },
+          { status: 403 }
+        );
+      }
+    }
+
     const body = await request.json();
     let recordsToSync: KclsuMemberRecord[] = [];
 

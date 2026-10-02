@@ -25,3 +25,29 @@ export function getUserRole(email: string | null | undefined, roleOverride?: str
   return 0;
 }
 
+export function getSafeRedirectUrl(target: string | null | undefined, fallback: string = '/membership'): string {
+  if (!target) return fallback;
+  const trimmed = target.trim();
+  // Ensure target is a relative internal path starting with a single slash
+  // Disallow protocol-relative URLs (//), backslash tricks (/\), schemes (http:, javascript:), and null bytes
+  if (
+    trimmed.startsWith('/') &&
+    !trimmed.startsWith('//') &&
+    !trimmed.startsWith('/\\') &&
+    !trimmed.includes(':') &&
+    !trimmed.includes('\0')
+  ) {
+    return trimmed;
+  }
+  return fallback;
+}
+
+export function sanitizeStudentId(id: string | null | undefined): string {
+  if (!id) return '';
+  return id.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 32);
+}
+
+export function sanitizeEmail(email: string | null | undefined): string {
+  if (!email) return '';
+  return email.trim().toLowerCase().slice(0, 255);
+}

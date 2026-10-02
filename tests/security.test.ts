@@ -16,8 +16,10 @@ import { GET as verifyGet } from '@/app/api/verify/[membershipId]/route';
 import { POST as rosterLinkPost } from '@/app/api/roster/link/route';
 import { GET as ordersGet, POST as ordersPost, PUT as ordersPut } from '@/app/api/orders/route';
 import { POST as reconcilePost } from '@/app/api/reconcile/route';
+import { GET as rosterGet, POST as rosterPost } from '@/app/api/roster/route';
+import { GET as telemetryGet, POST as telemetryPost } from '@/app/api/telemetry/route';
 import { parseKclsuCsv, sanitizeCsvCell } from '@/lib/roster';
-import { getUserRole } from '@/lib/auth';
+import { getUserRole, getSafeRedirectUrl, sanitizeStudentId, sanitizeEmail } from '@/lib/auth';
 
 describe('Security Testing Suite', () => {
   beforeEach(() => {
@@ -165,6 +167,19 @@ describe('Security Testing Suite', () => {
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error).toBe('Invalid membership ID length');
+    });
+
+    it('gracefully handles malformed URI percent-encoding without crashing (URIError defense)', async () => {
+      const malformedParam = '%E0%A4%A';
+      const request = new Request(`http://localhost:3000/api/verify/${malformedParam}`);
+      const response = await verifyGet(request, {
+        params: Promise.resolve({ membershipId: malformedParam }),
+      });
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.valid).toBe(false);
+      expect(data.error).toBe('Malformed membership ID parameter');
     });
   });
 
@@ -464,6 +479,190 @@ describe('Security Testing Suite', () => {
       expect(getUserRole('student@kcl.ac.uk', '-1')).toBe(0);
       expect(getUserRole('student@kcl.ac.uk', 'admin')).toBe(0);
       expect(getUserRole('student@kcl.ac.uk', '3')).toBe(0);
+    });
+  });
+
+  // =========================================================================
+  // 8. ROSTER DATA PROTECTION & COMMITTEE RBAC: /api/roster
+  // =========================================================================
+  describe('Roster Data Protection & Committee RBAC: /api/roster', () => {
+    it('prevents unauthenticated public users from dumping full student roster (UK GDPR)', async () => {
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      const mockUserClient = {
+        auth: {
+          getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+        },
+      };
+      vi.mocked(createClient).mockResolvedValue(mockUserClient as any);
+
+      const response = await rosterGet();
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error).toContain('Unauthorized: Committee access required');
+    });
+
+    it('prevents regular student climbers from dumping full student roster', async () => {
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      const mockUserClient = {
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: 'usr-climber', email: 'student@kcl.ac.uk' } },
+            error: null,
+          }),
+        },
+      };
+      vi.mocked(createClient).mockResolvedValue(mockUserClient as any);
+
+      const response = await rosterGet();
+      expect(response.status).toBe(403);
+    });
+
+    it('allows committee officers to inspect roster records when authenticated', async () => {
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      const mockUserClient = {
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: 'comm-1', email: 'president@kclmc.org' } },
+            error: null,
+          }),
+        },
+      };
+      vi.mocked(createClient).mockResolvedValue(mockUserClient as any);
+
+      const mockAdminClient = {
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            order: vi.fn().mockResolvedValue({
+              data: [
+                {
+                  card_number: 'K25008223',
+                  full_name: 'Arthur Dean',
+                  raw_purchaser: 'DEAN, Arthur',
+                  tier: 'recreational',
+                  product_name: 'Climbing Recreational',
+                  transaction_id: 'TX1001',
+                  purchase_date: '2026-09-15',
+                  user_id: 'usr-1',
+                },
+              ],
+              error: null,
+            }),
+          }),
+        }),
+      };
+      vi.mocked(createAdminClient).mockReturnValue(mockAdminClient as any);
+
+      const response = await rosterGet();
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.total).toBe(1);
+      expect(data.members[0].cardNumber).toBe('K25008223');
+    });
+
+    it('rejects unauthenticated attempts to POST and synchronize roster records', async () => {
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      const mockUserClient = {
+        auth: {
+          getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+        },
+      };
+      vi.mocked(createClient).mockResolvedValue(mockUserClient as any);
+
+      const request = new Request('http://localhost:3000/api/roster', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csv: 'card_number,name\nK123,Test' }),
+      });
+
+      const response = await rosterPost(request);
+      expect(response.status).toBe(403);
+    });
+  });
+
+  // =========================================================================
+  // 9. TELEMETRY OBSERVABILITY & BUFFER OVERFLOW DEFENSE: /api/telemetry
+  // =========================================================================
+  describe('Telemetry Observability & Input Bounds: /api/telemetry', () => {
+    it('requires committee role to query telemetry logs when Supabase is connected', async () => {
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      const mockUserClient = {
+        auth: {
+          getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+        },
+      };
+      vi.mocked(createClient).mockResolvedValue(mockUserClient as any);
+
+      const response = await telemetryGet();
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error).toContain('Unauthorized');
+    });
+
+    it('rejects oversized payloads (HTTP 413) to prevent denial of service', async () => {
+      const hugePayload = JSON.stringify({ data: 'A'.repeat(40000) });
+      const request = new Request('http://localhost:3000/api/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: hugePayload,
+      });
+
+      const response = await telemetryPost(request);
+      expect(response.status).toBe(413);
+    });
+
+    it('sanitizes event_type parameter against script tags and control characters', async () => {
+      vi.mocked(isSupabaseConfigured).mockReturnValue(false);
+      const maliciousPayload = {
+        type: '<script>alert(1)</script>page_view',
+        sessionId: 'sess_123',
+      };
+      const request = new Request('http://localhost:3000/api/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(maliciousPayload),
+      });
+
+      const response = await telemetryPost(request);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+    });
+  });
+
+  // =========================================================================
+  // 10. AUTH FLOW SECURITY: OPEN REDIRECT & CREDENTIAL SANITIZATION
+  // =========================================================================
+  describe('Auth Flow Security: Open Redirect & Input Sanitization', () => {
+    it('blocks open redirect attempts to external origins or malicious schemes', () => {
+      expect(getSafeRedirectUrl('https://evil.com')).toBe('/membership');
+      expect(getSafeRedirectUrl('http://attacker.com/login')).toBe('/membership');
+      expect(getSafeRedirectUrl('//evil.com')).toBe('/membership');
+      expect(getSafeRedirectUrl('/\\evil.com')).toBe('/membership');
+      expect(getSafeRedirectUrl('javascript:alert(1)')).toBe('/membership');
+      expect(getSafeRedirectUrl('data:text/html;base64,...')).toBe('/membership');
+      expect(getSafeRedirectUrl(null)).toBe('/membership');
+      expect(getSafeRedirectUrl(undefined)).toBe('/membership');
+      expect(getSafeRedirectUrl('')).toBe('/membership');
+    });
+
+    it('permits legitimate internal relative navigation paths', () => {
+      expect(getSafeRedirectUrl('/admin')).toBe('/admin');
+      expect(getSafeRedirectUrl('/trips')).toBe('/trips');
+      expect(getSafeRedirectUrl('/membership?view=active')).toBe('/membership?view=active');
+      expect(getSafeRedirectUrl('/guides#crags')).toBe('/guides#crags');
+      expect(getSafeRedirectUrl('/pass/KCL-1001')).toBe('/pass/KCL-1001');
+    });
+
+    it('sanitizes student IDs against SQL injection and script characters', () => {
+      expect(sanitizeStudentId("K25008223'; DROP TABLE profiles; --")).toBe('K25008223DROPTABLEPROFILES');
+      expect(sanitizeStudentId('<script>alert(1)</script>K123')).toBe('SCRIPTALERT1SCRIPTK123');
+      expect(sanitizeStudentId('  k25008223  ')).toBe('K25008223');
+      expect(sanitizeStudentId(null)).toBe('');
+    });
+
+    it('sanitizes email addresses to prevent whitespace and case inconsistencies', () => {
+      expect(sanitizeEmail('  President@KCLMC.org  ')).toBe('president@kclmc.org');
+      expect(sanitizeEmail(null)).toBe('');
     });
   });
 });
