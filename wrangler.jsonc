@@ -20,7 +20,7 @@
     {
       "binding": "DB",
       "database_name": "kclmc-db-preview",
-      "database_id": "kclmc-db-preview-id"
+      "database_id": "4aaad910-a81b-44ec-b448-85dc7103be20"
     }
   ],
   "env": {
@@ -30,7 +30,7 @@
         {
           "binding": "DB",
           "database_name": "kclmc-db-preview",
-          "database_id": "kclmc-db-preview-id"
+          "database_id": "4aaad910-a81b-44ec-b448-85dc7103be20"
         }
       ],
       "r2_buckets": [
