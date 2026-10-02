@@ -94,14 +94,7 @@ export default function Navigation() {
 
           {/* Club Navigation Links */}
           <div className="hidden md:flex items-center space-x-6">
-            <Link 
-              href="/trips" 
-              className={`font-heading text-base uppercase tracking-wider font-bold transition-colors ${
-                pathname.startsWith('/trips') ? 'text-[#FFBD59]' : 'text-zinc-200 hover:text-[#FFBD59]'
-              }`}
-            >
-              Trips &amp; Meets
-            </Link>
+            {/* Trips & Meets temporarily disabled while schedule is being finalized in preview */}
             <Link 
               href="/guides" 
               className={`font-heading text-base uppercase tracking-wider font-bold transition-colors ${

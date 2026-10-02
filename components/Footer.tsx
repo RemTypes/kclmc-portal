@@ -38,7 +38,7 @@ export default function Footer() {
           <ul className="space-y-2 text-xs text-zinc-300">
             <li>
               <Link href="/trips" className="hover:text-[#FFBD59] transition-colors">
-                Trips &amp; Meets
+                Trips &amp; Meets <span className="text-[10px] text-[#FFBD59]/80 font-mono">(Coming Soon)</span>
               </Link>
             </li>
             <li>
