@@ -15,5 +15,38 @@
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg",
     "SUPERADMIN_EMAIL": "admin@kclmc.org",
     "COMMITTEE_EMAILS": "president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org,remy.preston@outlook.com,remy.preston@kcl.ac.uk"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "kclmc-db-preview",
+      "database_id": "kclmc-db-preview-id"
+    }
+  ],
+  "env": {
+    "preview": {
+      "name": "kclmc-platform-preview",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "kclmc-db-preview",
+          "database_id": "kclmc-db-preview-id"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "STORAGE",
+          "bucket_name": "kclmc-storage-preview"
+        }
+      ],
+      "vars": {
+        "NEXT_PUBLIC_ENV": "preview",
+        "NEXT_PUBLIC_SITE_URL": "https://kclmc-platform-preview.workers.dev",
+        "NEXT_PUBLIC_SUPABASE_URL": "https://bsvnyibipcwrcyzqilge.supabase.co",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg",
+        "SUPERADMIN_EMAIL": "admin@kclmc.org",
+        "COMMITTEE_EMAILS": "president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org,remy.preston@outlook.com,remy.preston@kcl.ac.uk"
+      }
+    }
   }
 }

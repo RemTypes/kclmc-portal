@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { findMemberByCardNumber } from '@/lib/roster';
+import { isD1Available, queryOneD1 } from '@/lib/db/d1';
 
 export async function GET(
   request: Request,
@@ -29,7 +30,35 @@ export async function GET(
     return NextResponse.json({ valid: false, error: 'Invalid membership ID characters' }, { status: 400 });
   }
 
-  // 1. If Supabase is configured, check live database first
+  // 1. If Cloudflare D1 is available (preview or edge runtime), check D1 first
+  if (await isD1Available()) {
+    try {
+      const rosterData = await queryOneD1<any>(
+        'SELECT * FROM kclsu_roster WHERE UPPER(card_number) = ? LIMIT 1',
+        [cleanId]
+      );
+      if (rosterData) {
+        return NextResponse.json({
+          valid: true,
+          member: {
+            name: rosterData.full_name,
+            tier: rosterData.tier,
+            membership_number: rosterData.card_number,
+            student_id: rosterData.card_number,
+            expires: '2027-08-31',
+            transaction_id: rosterData.transaction_id,
+            product_name: rosterData.product_name,
+            source: 'Cloudflare D1 Database',
+            userId: rosterData.user_id,
+          },
+        });
+      }
+    } catch (err) {
+      console.warn('D1 verification query error:', err);
+    }
+  }
+
+  // 2. If Supabase is configured, check live database
   if (isSupabaseConfigured()) {
     try {
       const supabase = await createClient();

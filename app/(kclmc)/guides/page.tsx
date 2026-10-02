@@ -142,46 +142,34 @@ const SEED_GUIDES: EnhancedGuide[] = [
   },
 ];
 
+import { getPublishedGuides } from '@/lib/db';
+
 export default async function GuidesPage() {
+  let dbGuides: any[] = [];
+  try {
+    dbGuides = await getPublishedGuides();
+  } catch (err) {
+    console.warn('Error loading guides from DB layer:', err);
+  }
+
   let guides: EnhancedGuide[] = [];
-
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = await createClient();
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('timeout')), 3000)
+  if (dbGuides.length > 0) {
+    guides = dbGuides.map((d: any) => {
+      const seed = SEED_GUIDES.find(s => 
+        s.id === d.id || 
+        s.title.toLowerCase() === d.title.toLowerCase() ||
+        d.title.toLowerCase().includes(s.title.toLowerCase()) || 
+        s.title.toLowerCase().includes(d.title.toLowerCase())
       );
-      const fetchPromise = supabase
-        .from('guides')
-        .select('*')
-        .eq('is_published', true)
-        .order('sort_order', { ascending: true });
-
-      const result: any = await Promise.race([fetchPromise, timeoutPromise]);
-      const { data, error } = result || {};
-
-      if (!error && data) {
-        // Merge database records with seed metadata
-        guides = data.map((d: any) => {
-          const seed = SEED_GUIDES.find(s => 
-            s.id === d.id || 
-            s.title.toLowerCase() === d.title.toLowerCase() ||
-            d.title.toLowerCase().includes(s.title.toLowerCase()) || 
-            s.title.toLowerCase().includes(d.title.toLowerCase())
-          );
-          return {
-            ...seed,
-            ...d,
-            website_url: d.website_url || seed?.website_url || null,
-            map_url: seed?.map_url || `https://maps.google.com/?q=${encodeURIComponent(d.title + ' ' + (d.location || ''))}`,
-            topo_url: d.topo_url || seed?.topo_url,
-            tube_station: d.tube_station || seed?.tube_station,
-          };
-        });
-      }
-    } catch {
-      guides = [];
-    }
+      return {
+        ...seed,
+        ...d,
+        website_url: d.website_url || seed?.website_url || null,
+        map_url: seed?.map_url || `https://maps.google.com/?q=${encodeURIComponent(d.title + ' ' + (d.location || ''))}`,
+        topo_url: d.topo_url || seed?.topo_url,
+        tube_station: d.tube_station || seed?.tube_station,
+      };
+    });
   } else {
     guides = SEED_GUIDES;
   }

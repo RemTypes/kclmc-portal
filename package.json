@@ -8,6 +8,10 @@
     "build": "next build --webpack",
     "build:worker": "opennextjs-cloudflare build",
     "deploy:cloudflare": "opennextjs-cloudflare build && wrangler deploy",
+    "deploy:preview": "opennextjs-cloudflare build && wrangler deploy --env preview",
+    "d1:local:migrate": "wrangler d1 execute kclmc-db-preview --local --file=migrations/0001_d1_initial_schema.sql && wrangler d1 execute kclmc-db-preview --local --file=migrations/0002_d1_seed_from_supabase.sql",
+    "d1:remote:migrate": "wrangler d1 execute kclmc-db-preview --remote --file=migrations/0001_d1_initial_schema.sql && wrangler d1 execute kclmc-db-preview --remote --file=migrations/0002_d1_seed_from_supabase.sql",
+    "migrate:d1": "tsx scripts/migrate_supabase_to_d1.ts",
     "backup": "tsx scripts/backup_database.ts",
     "test": "vitest run",
     "test:security": "vitest run tests/security.test.ts",
@@ -36,6 +40,7 @@
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261002.1",
     "@opennextjs/cloudflare": "^1.20.6",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^26.5.1",
