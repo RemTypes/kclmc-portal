@@ -76,7 +76,11 @@ export default function MembershipCard({ profile, membership }: MembershipCardPr
 
       // Draw Student ID (Bottom Box - center x=178, y=352)
       ctx.font = 'bold 24px "Space_Mono", monospace, monospace';
-      ctx.letterSpacing = '2px';
+      try {
+        (ctx as any).letterSpacing = '2px';
+      } catch {
+        // Fallback for Safari/WebKit where Canvas letterSpacing parsing throws SYNTAX_ERR
+      }
       ctx.fillText(studentId, 178, 352);
 
       // Generate download

@@ -326,10 +326,34 @@ export default function MembershipDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ studentId: cleanId }),
       });
-      const data = await res.json();
 
-      if (!res.ok || !data.success) {
-        setSearchError(data.error || 'Failed to link Student ID.');
+      let data: any = null;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        try {
+          data = await res.json();
+        } catch (jsonErr) {
+          console.warn('JSON parsing error in handleLinkStudentId:', jsonErr);
+        }
+      } else {
+        const textBody = await res.text().catch(() => '');
+        console.warn('Non-JSON response from /api/roster/link:', res.status, textBody);
+      }
+
+      if (!res.ok || !data?.success) {
+        let errorMsg = data?.error;
+        if (!errorMsg) {
+          if (res.status === 401) {
+            errorMsg = 'Please sign in to link your Student ID to your account.';
+          } else if (res.status === 404) {
+            errorMsg = `Student ID "${cleanId}" was not found in the official KCLSU purchase list.`;
+          } else if (res.status === 409) {
+            errorMsg = `Student ID "${cleanId}" is already linked to another account.`;
+          } else {
+            errorMsg = `Verification server returned status ${res.status}. Please try again or contact committee@kclmc.org.`;
+          }
+        }
+        setSearchError(errorMsg);
         setLinkLoading(false);
         return;
       }
@@ -356,7 +380,13 @@ export default function MembershipDashboard() {
         });
       }
     } catch (err: any) {
-      setSearchError(err.message || 'Network error linking Student ID.');
+      console.error('Error linking student ID:', err);
+      const rawMsg = String(err?.message || '');
+      if (rawMsg.includes('pattern') || rawMsg.includes('SyntaxError') || rawMsg.includes('JSON')) {
+        setSearchError('Connection error communicating with verification server. Please try again.');
+      } else {
+        setSearchError(rawMsg || 'Network error linking Student ID. Please try again.');
+      }
     } finally {
       setLinkLoading(false);
     }
