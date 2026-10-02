@@ -4,11 +4,12 @@ import React, { useState, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
+import { getSafeRedirectUrl, sanitizeEmail, sanitizeStudentId } from '@/lib/auth';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get('next') || '/membership';
+  const next = getSafeRedirectUrl(searchParams.get('next'), '/membership');
   const urlError = searchParams.get('error');
 
   const initialView = searchParams.get('view') === 'sign_up' || searchParams.get('mode') === 'register' ? 'sign_up' : 'sign_in';
@@ -37,10 +38,21 @@ function LoginForm() {
     setLoading(true);
     setErrorMsg('');
 
-    if (view === 'sign_up' && !acceptedTerms) {
-      setErrorMsg('You must agree to the Terms & Conditions, Privacy Policy, and acknowledge the BMC Climbing Risk Statement.');
-      setLoading(false);
-      return;
+    const cleanEmail = sanitizeEmail(email);
+    const cleanStudentId = sanitizeStudentId(studentId);
+    const cleanFullName = (fullName || '').trim().slice(0, 100);
+
+    if (view === 'sign_up') {
+      if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        setErrorMsg('Please enter a valid King\'s or personal email address.');
+        setLoading(false);
+        return;
+      }
+      if (!acceptedTerms) {
+        setErrorMsg('You must agree to the Terms & Conditions, Privacy Policy, and acknowledge the BMC Climbing Risk Statement.');
+        setLoading(false);
+        return;
+      }
     }
 
     if (!isSupabaseConfigured()) {
@@ -52,12 +64,12 @@ function LoginForm() {
     try {
       if (view === 'sign_up') {
         const { error } = await supabase.auth.signUp({
-          email,
+          email: cleanEmail,
           password,
           options: {
             data: {
-              full_name: fullName,
-              student_id: studentId,
+              full_name: cleanFullName,
+              student_id: cleanStudentId,
             },
             emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
           },
@@ -67,7 +79,7 @@ function LoginForm() {
         router.refresh();
       } else {
         const { error } = await supabase.auth.signInWithPassword({
-          email,
+          email: cleanEmail,
           password,
         });
         if (error) throw error;
@@ -86,6 +98,13 @@ function LoginForm() {
     setLoading(true);
     setErrorMsg('');
 
+    const cleanEmail = sanitizeEmail(email);
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setErrorMsg('Please enter a valid email address.');
+      setLoading(false);
+      return;
+    }
+
     if (!isSupabaseConfigured()) {
       setErrorMsg('Supabase credentials are not connected yet.');
       setLoading(false);
@@ -94,7 +113,7 @@ function LoginForm() {
 
     try {
       const { error } = await supabase.auth.signInWithOtp({
-        email,
+        email: cleanEmail,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
         },
@@ -113,8 +132,9 @@ function LoginForm() {
     setLoading(true);
     setErrorMsg('');
 
-    if (!isSupabaseConfigured()) {
-      setErrorMsg('Supabase credentials are not connected yet.');
+    const cleanEmail = sanitizeEmail(email);
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setErrorMsg('Please enter a valid email address.');
       setLoading(false);
       return;
     }

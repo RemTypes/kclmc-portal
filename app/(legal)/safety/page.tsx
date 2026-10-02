@@ -35,7 +35,7 @@ export default function SafetyPage() {
             &ldquo;The British Mountaineering Council (BMC) recognises that climbing and mountaineering are activities with a danger of personal injury or death. Participants in these activities should be aware of and accept these risks and be responsible for their own actions and involvement.&rdquo;
           </blockquote>
           <p className="text-xs text-zinc-400 font-sans">
-            By participating in any KCLMC climbing wall meet, bouldering session, outdoor crag day, or mountain expedition, you formally acknowledge and accept this fundamental statement. Read the official <a href="https://www.thebmc.co.uk/participation-statement" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline font-semibold">BMC Participation Statement on thebmc.co.uk ↗</a>.
+            By participating in any KCLMC climbing wall meet, bouldering session, outdoor crag day, or mountain expedition, you formally acknowledge and accept this fundamental statement. Read the official <a href="https://www.thebmc.co.uk/en/bmc-participation-statement" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline font-semibold">BMC Participation Statement on thebmc.co.uk ↗</a>.
           </p>
         </div>
 

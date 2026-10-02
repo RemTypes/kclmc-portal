@@ -100,7 +100,7 @@ const SEED_GUIDES: EnhancedGuide[] = [
     location: 'Eridge Green, Tunbridge Wells, TN3 9LW',
     grade_range: 'Mod to HVS',
     discount_info: '£5 day permit at centre reception',
-    website_url: 'https://bowles.rocks/outdoor-climbing/',
+    website_url: 'https://bowles.rocks/individuals-and-families/rock-climbing/',
     map_url: 'https://maps.google.com/?q=Bowles+Outdoor+Centre',
     topo_url: 'https://www.ukclimbing.com/logbook/crags/bowles_rocks-54/',
     image_url: null,
