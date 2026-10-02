@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 export const metadata = {
   title: "Accessibility & Disability Inclusion Policy | King's College London Mountaineering Club",
-  description: "Equality Act 2010 compliance, paraclimbing protocols for blind, deaf, and mute climbers, and WCAG 2.2 AA digital accessibility statement.",
+  description: "Equality Act 2010 compliance, reasonable adjustments, and WCAG 2.2 AA digital accessibility statement.",
 };
 
 export default function AccessibilityPolicyPage() {
@@ -16,7 +16,7 @@ export default function AccessibilityPolicyPage() {
         {/* Header */}
         <div className="border-b border-[#084746] pb-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#084746] border border-[#FFBD59]/30 text-[#FFBD59] font-heading font-bold text-xs uppercase tracking-wider mb-4">
-            Equality Act 2010 // Paraclimbing &amp; Digital Inclusion
+            Equality Act 2010 // Accessibility &amp; Inclusion Policy
           </div>
           <h1 className="text-3xl sm:text-5xl font-black font-heading uppercase tracking-tight text-[#FFBD59]">
             Accessibility &amp; Disability Policy
@@ -25,7 +25,7 @@ export default function AccessibilityPolicyPage() {
             Last Updated: {lastUpdated} • Version 1.0 (Statutory Compliance Notice)
           </p>
           <p className="text-sm text-zinc-300 font-sans mt-4 leading-relaxed">
-            King&apos;s College London Mountaineering Club (&ldquo;KCLMC&rdquo;) is committed to fostering an inclusive, welcoming, and barrier-free community for all climbers. In accordance with the <strong>Equality Act 2010</strong> and <strong>British Mountaineering Council (BMC) Paraclimbing Guidelines</strong>, we take proactive steps to ensure that students with sensory, physical, cognitive, or neurodivergent disabilities can participate fully and safely in our climbing sessions, social activities, and digital platforms.
+            King&apos;s College London Mountaineering Club (&ldquo;KCLMC&rdquo;) is committed to fostering an inclusive, welcoming, and barrier-free community for all climbers. In accordance with the <strong>Equality Act 2010</strong>, we take proactive steps to ensure that students with sensory, physical, cognitive, or neurodivergent disabilities can participate fully and safely in our climbing sessions, social activities, and digital platforms.
           </p>
         </div>
 
@@ -45,128 +45,10 @@ export default function AccessibilityPolicyPage() {
           </div>
         </section>
 
-        {/* Section 2: Sensory Climbing Protocols (Blind, Deaf, Mute) */}
-        <section className="space-y-4">
-          <h2 className="text-xl sm:text-2xl font-bold font-heading uppercase text-white tracking-wide flex items-center gap-2">
-            <span className="text-[#FFBD59]">2.</span> Paraclimbing &amp; Sensory Impairment Field Protocols
-          </h2>
-          <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
-            Climbing is inherently a sensory and communicative discipline. To ensure total safety and autonomy, KCLMC adheres to the following codified protocols at all indoor walls and outdoor crag meets:
-          </p>
-
-          <div className="space-y-4 text-xs">
-            {/* Blind / Visually Impaired */}
-            <div className="bg-[#041F1E] border border-[#084746] rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-heading font-bold uppercase text-[#FFBD59] text-base flex items-center gap-2">
-                  <span>👁️</span> Blind &amp; Visually Impaired (VI) Climbers
-                </h3>
-                <span className="px-2 py-0.5 rounded bg-[#084746] text-[#FFBD59] font-mono text-[10px] uppercase font-bold">
-                  Sight-Guiding &amp; Clockface Beta
-                </span>
-              </div>
-              <ul className="list-disc list-inside text-zinc-300 space-y-1.5 leading-relaxed">
-                <li>
-                  <strong className="text-white">The Clockface Direction System:</strong> Sight guides (&ldquo;callers&rdquo;) provide standardized verbal cues referenced to a 12-hour clock relative to the climber&apos;s torso (e.g. <em>&ldquo;Right foot 2 o&apos;clock, 20 centimetres; left hand crimp at 11 o&apos;clock, positive hold&rdquo;</em>).
-                </li>
-                <li>
-                  <strong className="text-white">Two-Way Bluetooth Audio Headsets:</strong> Available for club meets to eliminate ambient noise in crowded climbing gyms and allow low-latency, clear communication between caller and climber.
-                </li>
-                <li>
-                  <strong className="text-white">Tactile Route Exploration:</strong> Climbers are provided dedicated orientation time to touch and explore start holds, wall topography, and bouldering pad boundaries prior to leaving the ground.
-                </li>
-                <li>
-                  <strong className="text-white">Top-Rope Prioritization:</strong> Indoor top-roping and outdoor bottom-fed top-ropes are prioritized to minimize swing vectors and ensure continuous rope tension.
-                </li>
-              </ul>
-            </div>
-
-            {/* Deaf / Hard of Hearing */}
-            <div className="bg-[#041F1E] border border-[#084746] rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-heading font-bold uppercase text-[#FFBD59] text-base flex items-center gap-2">
-                  <span>👂</span> Deaf &amp; Hard-of-Hearing (HoH) Climbers
-                </h3>
-                <span className="px-2 py-0.5 rounded bg-[#084746] text-[#FFBD59] font-mono text-[10px] uppercase font-bold">
-                  Tactile Rope &amp; Visual Beta
-                </span>
-              </div>
-              <ul className="list-disc list-inside text-zinc-300 space-y-1.5 leading-relaxed">
-                <li>
-                  <strong className="text-white">Standardized Tactile Rope-Tug System:</strong> In high mountain winds or when out of direct sight, climbers and belayers agree on mandatory rope-tug commands:
-                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono text-[11px] text-zinc-200">
-                    <div className="p-2 bg-[#052322] border border-[#084746] rounded-lg">
-                      <strong className="text-emerald-400">3 Sharp Tugs:</strong> &ldquo;Safe / At Anchor / Off Belay&rdquo;
-                    </div>
-                    <div className="p-2 bg-[#052322] border border-[#084746] rounded-lg">
-                      <strong className="text-[#FFBD59]">2 Sharp Tugs:</strong> &ldquo;Slack Required&rdquo;
-                    </div>
-                    <div className="p-2 bg-[#052322] border border-[#084746] rounded-lg">
-                      <strong className="text-amber-400">4 Sharp Tugs:</strong> &ldquo;Take / Full Tension&rdquo;
-                    </div>
-                  </div>
-                </li>
-                <li>
-                  <strong className="text-white">Universal Visual Hand Signals:</strong> Standardized British Mountain Training hand signals used when belayer and climber are in visual range.
-                </li>
-                <li>
-                  <strong className="text-white">Visual &amp; Written Briefings:</strong> Safety briefings, route descriptions, and meet itineraries are provided in written digital formats (WhatsApp/Email) rather than spoken announcements alone.
-                </li>
-              </ul>
-            </div>
-
-            {/* Mute / Non-Verbal */}
-            <div className="bg-[#041F1E] border border-[#084746] rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-heading font-bold uppercase text-[#FFBD59] text-base flex items-center gap-2">
-                  <span>🗣️</span> Mute &amp; Non-Verbal Climbers
-                </h3>
-                <span className="px-2 py-0.5 rounded bg-[#084746] text-[#FFBD59] font-mono text-[10px] uppercase font-bold">
-                  Whistle &amp; Mentor Pairing
-                </span>
-              </div>
-              <ul className="list-disc list-inside text-zinc-300 space-y-1.5 leading-relaxed">
-                <li>
-                  <strong className="text-white">Mountaineering Whistle Codes:</strong> Where verbal calls are not possible, standard alpine whistle signaling is established: <em>1 blast = &ldquo;Stop / Attention&rdquo;</em>, <em>3 blasts = &ldquo;Emergency / Assistance required&rdquo;</em>.
-                </li>
-                <li>
-                  <strong className="text-white">Dedicated Buddy Mentorship:</strong> Non-verbal climbers are paired with an experienced committee member or trained partner who is thoroughly briefed on the climber&apos;s pre-agreed signals.
-                </li>
-                <li>
-                  <strong className="text-white">Laminated Emergency Beta Cards:</strong> Climbers may carry a weatherproof emergency card attached to their harness detailing communication preferences and medical considerations for first aiders.
-                </li>
-              </ul>
-            </div>
-
-            {/* Physical & Mobility */}
-            <div className="bg-[#041F1E] border border-[#084746] rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-heading font-bold uppercase text-[#FFBD59] text-base flex items-center gap-2">
-                  <span>♿</span> Physical Disabilities &amp; Paraclimbing
-                </h3>
-                <span className="px-2 py-0.5 rounded bg-[#084746] text-[#FFBD59] font-mono text-[10px] uppercase font-bold">
-                  Adaptive Equipment &amp; Anchors
-                </span>
-              </div>
-              <ul className="list-disc list-inside text-zinc-300 space-y-1.5 leading-relaxed">
-                <li>
-                  <strong className="text-white">Adaptive Harness Compatibility:</strong> We support full-body, chest, and seated adaptive paraclimbing harnesses.
-                </li>
-                <li>
-                  <strong className="text-white">Mandatory Assisted-Braking Belaying:</strong> We utilize assisted-braking devices (e.g. Petzl Grigri, Beal Birdie) across all society sessions to provide redundant camming protection.
-                </li>
-                <li>
-                  <strong className="text-white">Ballast &amp; Floor Anchors:</strong> Sandbags and floor anchors are deployed at climbing centres to ensure seamless belaying regardless of weight disparity or wheelchair positioning.
-                </li>
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        {/* Section 3: Safety Boundaries */}
+        {/* Section 2: Safety Boundaries */}
         <section className="space-y-3">
           <h2 className="text-xl sm:text-2xl font-bold font-heading uppercase text-white tracking-wide flex items-center gap-2">
-            <span className="text-[#FFBD59]">3.</span> Objective Safety Boundaries &amp; Collaborative Assessment
+            <span className="text-[#FFBD59]">2.</span> Objective Safety Boundaries &amp; Collaborative Assessment
           </h2>
           <div className="p-4 bg-[#041F1E] border border-amber-500/30 rounded-2xl text-xs sm:text-sm text-zinc-300 leading-relaxed space-y-2">
             <p>
@@ -178,10 +60,10 @@ export default function AccessibilityPolicyPage() {
           </div>
         </section>
 
-        {/* Section 4: Requesting Adjustments */}
+        {/* Section 3: Requesting Adjustments */}
         <section className="space-y-3">
           <h2 className="text-xl sm:text-2xl font-bold font-heading uppercase text-white tracking-wide flex items-center gap-2">
-            <span className="text-[#FFBD59]">4.</span> How to Request Accommodations &amp; Adjustments
+            <span className="text-[#FFBD59]">3.</span> How to Request Accommodations &amp; Adjustments
           </h2>
           <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
             Prospective and current members requiring accommodations are encouraged to reach out before sessions or trips so we can ensure suitable gear, callers, and ratios are in place:
@@ -193,10 +75,10 @@ export default function AccessibilityPolicyPage() {
           </div>
         </section>
 
-        {/* Section 5: Web Content Accessibility Guidelines (WCAG 2.2 AA) */}
+        {/* Section 4: Web Content Accessibility Guidelines (WCAG 2.2 AA) */}
         <section className="space-y-3 border-t border-[#084746] pt-6">
           <h2 className="text-xl sm:text-2xl font-bold font-heading uppercase text-white tracking-wide flex items-center gap-2">
-            <span className="text-[#FFBD59]">5.</span> Digital Accessibility Statement (WCAG 2.2 Level AA)
+            <span className="text-[#FFBD59]">4.</span> Digital Accessibility Statement (WCAG 2.2 Level AA)
           </h2>
           <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
             The KCLMC web portal is designed and maintained in conformance with the <strong>Web Content Accessibility Guidelines (WCAG) 2.2 at Level AA</strong>:
