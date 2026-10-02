@@ -19,7 +19,7 @@ import { POST as reconcilePost } from '@/app/api/reconcile/route';
 import { GET as rosterGet, POST as rosterPost } from '@/app/api/roster/route';
 import { GET as telemetryGet, POST as telemetryPost } from '@/app/api/telemetry/route';
 import { parseKclsuCsv, sanitizeCsvCell } from '@/lib/roster';
-import { getUserRole, getSafeRedirectUrl, sanitizeStudentId, sanitizeEmail } from '@/lib/auth';
+import { getUserRole, getAuthenticatedUserRole, getSafeRedirectUrl, sanitizeStudentId, sanitizeEmail } from '@/lib/auth';
 
 describe('Security Testing Suite', () => {
   beforeEach(() => {
@@ -479,6 +479,61 @@ describe('Security Testing Suite', () => {
       expect(getUserRole('student@kcl.ac.uk', '-1')).toBe(0);
       expect(getUserRole('student@kcl.ac.uk', 'admin')).toBe(0);
       expect(getUserRole('student@kcl.ac.uk', '3')).toBe(0);
+    });
+
+    it('getAuthenticatedUserRole resolves role from profiles table when email is not whitelisted', async () => {
+      const mockSupabase = {
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: { role: 1 },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      };
+
+      const role = await getAuthenticatedUserRole(mockSupabase, {
+        id: 'user-officer-1',
+        email: 'officer.personal@gmail.com',
+      });
+      expect(role).toBe(1);
+    });
+
+    it('getAuthenticatedUserRole resolves superadmin role from whitelist without database query', async () => {
+      const mockSupabase = { from: vi.fn() };
+      const role = await getAuthenticatedUserRole(mockSupabase, {
+        id: 'user-admin-1',
+        email: 'admin@kclmc.org',
+      });
+      expect(role).toBe(2);
+      expect(mockSupabase.from).not.toHaveBeenCalled();
+    });
+
+    it('getAuthenticatedUserRole returns 0 for unauthenticated or non-committee users', async () => {
+      expect(await getAuthenticatedUserRole(null, null)).toBe(0);
+      expect(await getAuthenticatedUserRole(null, { id: 'u1', email: 'climber@kcl.ac.uk' })).toBe(0);
+
+      const mockSupabase = {
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: { role: 0 },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      };
+
+      const role = await getAuthenticatedUserRole(mockSupabase, {
+        id: 'user-regular-1',
+        email: 'climber@kcl.ac.uk',
+      });
+      expect(role).toBe(0);
     });
   });
 

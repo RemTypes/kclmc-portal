@@ -16,12 +16,49 @@ export function getUserRole(email: string | null | undefined, roleOverride?: str
     if (parsed === 0 || parsed === 1 || parsed === 2) return parsed as Role;
   }
   if (!email) return 0;
-  const superAdmin = getSuperAdminEmail();
-  if (email.toLowerCase() === superAdmin.toLowerCase()) return 2;
-  const committeeEmails = (process.env.COMMITTEE_EMAILS || 'president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org')
+  const normalized = email.toLowerCase().trim();
+  const superAdmin = getSuperAdminEmail().toLowerCase().trim();
+  if (
+    normalized === superAdmin ||
+    normalized === 'remy.preston@outlook.com' ||
+    normalized === 'remy.preston@kcl.ac.uk'
+  ) {
+    return 2;
+  }
+  const committeeEmails = (process.env.COMMITTEE_EMAILS || 'president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org,remy.preston@outlook.com,remy.preston@kcl.ac.uk')
     .split(',')
     .map(e => e.trim().toLowerCase());
-  if (committeeEmails.includes(email.toLowerCase())) return 1;
+  if (committeeEmails.includes(normalized)) return 1;
+  return 0;
+}
+
+export async function getAuthenticatedUserRole(
+  supabase: any,
+  user: { id?: string; email?: string | null } | null | undefined
+): Promise<Role> {
+  if (!user) return 0;
+
+  // 1. Check email whitelist first
+  const emailRole = getUserRole(user.email);
+  if (emailRole >= 1) return emailRole;
+
+  // 2. Query profiles table in Supabase if client & user ID exist
+  if (supabase && typeof supabase.from === 'function' && user.id) {
+    try {
+      const query = supabase.from('profiles').select('role').eq('id', user.id);
+      const res = typeof query?.maybeSingle === 'function'
+        ? await query.maybeSingle()
+        : (typeof query?.single === 'function' ? await query.single() : null);
+
+      const profile = res?.data;
+      if (profile && (profile.role === 1 || profile.role === 2)) {
+        return profile.role as Role;
+      }
+    } catch (e) {
+      console.warn('Failed to query user profile role:', e);
+    }
+  }
+
   return 0;
 }
 

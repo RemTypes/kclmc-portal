@@ -12,6 +12,8 @@
   },
   "vars": {
     "NEXT_PUBLIC_SUPABASE_URL": "https://bsvnyibipcwrcyzqilge.supabase.co",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg"
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg",
+    "SUPERADMIN_EMAIL": "admin@kclmc.org",
+    "COMMITTEE_EMAILS": "president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org,remy.preston@outlook.com,remy.preston@kcl.ac.uk"
   }
 }
