@@ -172,9 +172,10 @@ export async function POST(request: Request) {
             [cleanId, memberRecord.name, user.id]
           );
         } else {
+          const userMetaUniv = (user.user_metadata?.university as string) || "King's College London";
           await executeD1(
-            'INSERT INTO profiles (id, full_name, student_id, university, role, created_at, updated_at) VALUES (?, ?, ?, "King\'s College London", 0, datetime("now"), datetime("now"))',
-            [user.id, memberRecord.name, cleanId]
+            'INSERT INTO profiles (id, full_name, student_id, university, role, created_at, updated_at) VALUES (?, ?, ?, ?, 0, datetime("now"), datetime("now"))',
+            [user.id, memberRecord.name, cleanId, userMetaUniv]
           );
         }
 

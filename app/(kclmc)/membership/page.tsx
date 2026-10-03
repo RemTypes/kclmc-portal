@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import MembershipCard from '@/components/MembershipCard';
 import { findMemberByCardNumber, KclsuMemberRecord } from '@/lib/roster';
+import { UNIVERSITIES, DEFAULT_UNIVERSITY, sanitizeUniversity } from '@/lib/auth';
 import type { Profile, Membership } from '@/types/database';
 
 function MembershipTierGuide() {
@@ -222,7 +223,9 @@ export default function MembershipDashboard() {
   const [linkLoading, setLinkLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
 
-  // Form states for safety notes
+  // Form states for profile & safety notes
+  const [university, setUniversity] = useState<string>(DEFAULT_UNIVERSITY);
+  const [customUniversity, setCustomUniversity] = useState('');
   const [phone, setPhone] = useState('');
   const [emergencyName, setEmergencyName] = useState('');
   const [emergencyPhone, setEmergencyPhone] = useState('');
@@ -261,6 +264,16 @@ export default function MembershipDashboard() {
           setEmergencyName(profData.emergency_contact_name || '');
           setEmergencyPhone(profData.emergency_contact_phone || '');
           setDietary(profData.dietary_requirements || '');
+
+          if (profData.university) {
+            if ((UNIVERSITIES as readonly string[]).includes(profData.university)) {
+              setUniversity(profData.university);
+              setCustomUniversity('');
+            } else {
+              setUniversity('Other UK Institution');
+              setCustomUniversity(profData.university);
+            }
+          }
 
           let activeStudentId = profData.student_id;
           if (!activeStudentId) {
@@ -412,11 +425,16 @@ export default function MembershipDashboard() {
     setSaving(true);
     setSaveSuccess(false);
 
+    const effectiveUniversity = sanitizeUniversity(
+      university === 'Other UK Institution' ? customUniversity : university
+    );
+
     try {
       if (profile && isSupabaseConfigured()) {
         const { error } = await supabase
           .from('profiles')
           .update({
+            university: effectiveUniversity,
             phone,
             emergency_contact_name: emergencyName,
             emergency_contact_phone: emergencyPhone,
@@ -426,10 +444,28 @@ export default function MembershipDashboard() {
           .eq('id', profile.id);
 
         if (!error) {
+          setProfile(prev => prev ? {
+            ...prev,
+            university: effectiveUniversity,
+            phone,
+            emergency_contact_name: emergencyName,
+            emergency_contact_phone: emergencyPhone,
+            dietary_requirements: dietary,
+          } : null);
           setSaveSuccess(true);
           setTimeout(() => setSaveSuccess(false), 3000);
         }
       } else {
+        if (profile) {
+          setProfile(prev => prev ? {
+            ...prev,
+            university: effectiveUniversity,
+            phone,
+            emergency_contact_name: emergencyName,
+            emergency_contact_phone: emergencyPhone,
+            dietary_requirements: dietary,
+          } : null);
+        }
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
       }
@@ -715,7 +751,9 @@ export default function MembershipDashboard() {
                   <div>
                     <label className="block uppercase text-zinc-400 mb-1 flex items-center justify-between">
                       <span>Full Name</span>
-                      <span className="text-[10px] text-zinc-500 font-sans">Locked</span>
+                      <span className="text-[10px] text-zinc-500 font-sans">
+                        {boundStudentId ? 'Verified from SU' : 'Account Name'}
+                      </span>
                     </label>
                     <input
                       type="text"
@@ -727,31 +765,82 @@ export default function MembershipDashboard() {
                   </div>
                   <div>
                     <label className="block uppercase text-zinc-400 mb-1 flex items-center justify-between">
-                      <span>KCL Student ID</span>
-                      <span className="text-[10px] text-zinc-500 font-sans">Locked</span>
+                      <span>Student ID Number</span>
+                      <span className="text-[10px] text-zinc-500 font-sans">
+                        {boundStudentId ? 'Verified' : 'Optional for Guests'}
+                      </span>
                     </label>
                     <input
                       type="text"
-                      disabled
-                      value={boundStudentId || ''}
-                      placeholder="Link Student ID to unlock"
+                      disabled={!!boundStudentId}
+                      value={boundStudentId || profile?.student_id || ''}
+                      placeholder="Not linked"
                       className="w-full bg-[#041F1E]/60 border border-zinc-700 rounded-xl p-3 text-[#FFBD59] cursor-not-allowed text-xs font-mono font-bold placeholder:text-zinc-600"
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block uppercase text-zinc-300 mb-1 font-bold">
-                    Climber Mobile Phone
-                  </label>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={e => setPhone(e.target.value)}
-                    placeholder="+44 7000 000000"
-                    className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
-                  />
+                {/* University & Phone */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block uppercase text-zinc-300 mb-1 font-bold">
+                      University / Affiliation
+                    </label>
+                    <select
+                      value={university}
+                      onChange={e => setUniversity(e.target.value)}
+                      className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59] text-xs font-semibold cursor-pointer"
+                    >
+                      {UNIVERSITIES.map(u => (
+                        <option key={u} value={u} className="bg-[#041F1E] text-white">
+                          {u}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {university === 'Other UK Institution' ? (
+                    <div>
+                      <label className="block uppercase text-zinc-300 mb-1 font-bold">
+                        Institution Name
+                      </label>
+                      <input
+                        type="text"
+                        value={customUniversity}
+                        onChange={e => setCustomUniversity(e.target.value)}
+                        placeholder="e.g. University of Cambridge"
+                        className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59] text-xs font-semibold"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block uppercase text-zinc-300 mb-1 font-bold">
+                        Climber Mobile Phone
+                      </label>
+                      <input
+                        type="tel"
+                        value={phone}
+                        onChange={e => setPhone(e.target.value)}
+                        placeholder="+44 7000 000000"
+                        className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59] text-xs"
+                      />
+                    </div>
+                  )}
                 </div>
+
+                {university === 'Other UK Institution' && (
+                  <div>
+                    <label className="block uppercase text-zinc-300 mb-1 font-bold">
+                      Climber Mobile Phone
+                    </label>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={e => setPhone(e.target.value)}
+                      placeholder="+44 7000 000000"
+                      className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59] text-xs"
+                    />
+                  </div>
+                )}
 
                 <div className="pt-2 border-t border-[#FFBD59]/20">
                   <span className="block text-[11px] font-bold text-[#FFBD59] uppercase mb-3">
@@ -796,14 +885,14 @@ export default function MembershipDashboard() {
 
                 <button
                   type="submit"
-                  disabled={saving || (!boundStudentId && !profile)}
-                  className="w-full py-3 bg-[#FFBD59] text-[#052322] font-black rounded-xl hover:bg-[#FFE0A3] transition-colors font-mono uppercase tracking-wider disabled:opacity-50 text-xs shadow-lg"
+                  disabled={saving || !profile}
+                  className="w-full py-3 bg-[#FFBD59] text-[#052322] font-black rounded-xl hover:bg-[#FFE0A3] transition-colors font-mono uppercase tracking-wider disabled:opacity-50 text-xs shadow-lg cursor-pointer"
                 >
                   {saving 
-                    ? 'Saving...' 
-                    : (!boundStudentId && !profile) 
-                      ? 'Link Student ID to Unlock Notes' 
-                      : 'Update Emergency Details'}
+                    ? 'Saving Changes...' 
+                    : !profile 
+                      ? 'Loading Profile...' 
+                      : 'Save Profile & Safety Details'}
                 </button>
               </form>
             </div>
