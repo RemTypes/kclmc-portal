@@ -88,3 +88,30 @@ export function sanitizeEmail(email: string | null | undefined): string {
   if (!email) return '';
   return email.trim().toLowerCase().slice(0, 255);
 }
+
+export const UNIVERSITIES = [
+  "King's College London",
+  "University College London (UCL)",
+  "Imperial College London",
+  "Queen Mary University of London (QMUL)",
+  "London School of Economics (LSE)",
+  "Brunel University London",
+  "City, University of London",
+  "St George's, University of London",
+  "Birkbeck, University of London",
+  "Royal Holloway, University of London",
+  "SOAS University of London",
+  "Other UK Institution",
+  "Alumni / Associate / Guest",
+] as const;
+
+export type UniversityOption = (typeof UNIVERSITIES)[number] | string;
+
+export const DEFAULT_UNIVERSITY = "King's College London";
+
+export function sanitizeUniversity(uni: string | null | undefined): string {
+  if (!uni) return DEFAULT_UNIVERSITY;
+  const trimmed = uni.trim().slice(0, 150);
+  return trimmed || DEFAULT_UNIVERSITY;
+}
+
