@@ -4,7 +4,8 @@ import React, { useState, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
-import { getSafeRedirectUrl, sanitizeEmail, sanitizeStudentId } from '@/lib/auth';
+import { getSafeRedirectUrl, sanitizeEmail, sanitizeStudentId, UNIVERSITIES, DEFAULT_UNIVERSITY, sanitizeUniversity } from '@/lib/auth';
+
 
 function LoginForm() {
   const router = useRouter();
@@ -19,6 +20,8 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [studentId, setStudentId] = useState('');
+  const [university, setUniversity] = useState<string>(DEFAULT_UNIVERSITY);
+  const [customUniversity, setCustomUniversity] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(
     urlError === 'reset_link_expired'
@@ -41,10 +44,18 @@ function LoginForm() {
     const cleanEmail = sanitizeEmail(email);
     const cleanStudentId = sanitizeStudentId(studentId);
     const cleanFullName = (fullName || '').trim().slice(0, 100);
+    const cleanUniversity = sanitizeUniversity(
+      university === 'Other UK Institution' ? customUniversity : university
+    );
 
     if (view === 'sign_up') {
       if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
         setErrorMsg('Please enter a valid King\'s or personal email address.');
+        setLoading(false);
+        return;
+      }
+      if (university === 'Other UK Institution' && !customUniversity.trim()) {
+        setErrorMsg('Please enter the name of your university or institution.');
         setLoading(false);
         return;
       }
@@ -63,18 +74,38 @@ function LoginForm() {
 
     try {
       if (view === 'sign_up') {
-        const { error } = await supabase.auth.signUp({
+        const { data: authData, error } = await supabase.auth.signUp({
           email: cleanEmail,
           password,
           options: {
             data: {
               full_name: cleanFullName,
               student_id: cleanStudentId,
+              university: cleanUniversity,
             },
             emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
           },
         });
         if (error) throw error;
+
+        // If session is immediately available, ensure profiles row has university set
+        if (authData?.user) {
+          try {
+            await supabase.from('profiles').upsert(
+              {
+                id: authData.user.id,
+                full_name: cleanFullName,
+                student_id: cleanStudentId || null,
+                university: cleanUniversity,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'id' }
+            );
+          } catch (syncErr) {
+            console.warn('Profile sync on signup warning:', syncErr);
+          }
+        }
+
         router.push(next);
         router.refresh();
       } else {
@@ -368,17 +399,51 @@ function LoginForm() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
-                    KCL Student ID Number
+                  <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5 flex items-center justify-between">
+                    <span>Student ID Number</span>
+                    <span className="text-[10px] text-zinc-400 font-sans lowercase font-normal">(optional for guests / non-KCL)</span>
                   </label>
                   <input
                     type="text"
                     value={studentId}
                     onChange={e => setStudentId(e.target.value.toUpperCase())}
-                    placeholder="e.g. K1234567"
+                    placeholder="e.g. K23158797 or external ID"
                     className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-mono uppercase tracking-wider transition-colors"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
+                    University / Institution
+                  </label>
+                  <select
+                    value={university}
+                    onChange={e => setUniversity(e.target.value)}
+                    className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-sans transition-colors cursor-pointer"
+                  >
+                    {UNIVERSITIES.map(u => (
+                      <option key={u} value={u} className="bg-[#041F1E] text-white">
+                        {u}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {university === 'Other UK Institution' && (
+                  <div>
+                    <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
+                      Specify Institution Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={customUniversity}
+                      onChange={e => setCustomUniversity(e.target.value)}
+                      placeholder="e.g. University of Cambridge"
+                      className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-sans transition-colors"
+                    />
+                  </div>
+                )}
               </>
             )}
 

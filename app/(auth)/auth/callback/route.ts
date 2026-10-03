@@ -8,8 +8,28 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      if (data?.user) {
+        try {
+          const user = data.user;
+          const meta = user.user_metadata || {};
+          if (meta.university || meta.full_name || meta.student_id) {
+            await supabase.from('profiles').upsert(
+              {
+                id: user.id,
+                full_name: meta.full_name || '',
+                student_id: meta.student_id || null,
+                university: meta.university || "King's College London",
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'id' }
+            );
+          }
+        } catch (syncErr) {
+          console.warn('Auth callback profile sync warning:', syncErr);
+        }
+      }
       return NextResponse.redirect(`${origin}${next}`);
     }
   }
