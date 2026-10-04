@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState, useMemo, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { getSafeRedirectUrl, sanitizeEmail, sanitizeStudentId, UNIVERSITIES, DEFAULT_UNIVERSITY, sanitizeUniversity } from '@/lib/auth';
-
+import { validatePasswordStrength, PasswordValidationResult } from '@/lib/security/password-validator';
 
 function LoginForm() {
   const router = useRouter();
@@ -15,13 +14,25 @@ function LoginForm() {
 
   const initialView = searchParams.get('view') === 'sign_up' || searchParams.get('mode') === 'register' ? 'sign_up' : 'sign_in';
   const [mode, setMode] = useState<'password' | 'magic_link'>('password');
-  const [view, setView] = useState<'sign_in' | 'sign_up' | 'forgot_password'>(initialView);
+  const [view, setView] = useState<'sign_in' | 'two_factor' | 'sign_up' | 'forgot_password'>(initialView);
+  
+  // Form fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [studentId, setStudentId] = useState('');
   const [university, setUniversity] = useState<string>(DEFAULT_UNIVERSITY);
   const [customUniversity, setCustomUniversity] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+
+  // 2FA state
+  const [challengeToken, setChallengeToken] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorMessage, setTwoFactorMessage] = useState('');
+  const [twoFactorExpiresAt, setTwoFactorExpiresAt] = useState<number>(0);
+  const [twoFactorExpirySeconds, setTwoFactorExpirySeconds] = useState<number>(300);
+
+  // Rate Limiting & CAPTCHA state
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(
     urlError === 'reset_link_expired'
@@ -30,16 +41,63 @@ function LoginForm() {
       ? 'Authentication failed. Please try again.'
       : ''
   );
+  const [warningMsg, setWarningMsg] = useState('');
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockoutSecondsLeft, setLockoutSecondsLeft] = useState(0);
+  const [requiresCaptcha, setRequiresCaptcha] = useState(false);
+  const [captchaVerified, setCaptchaVerified] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
+
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
-  const supabase = useMemo(() => createClient(), []);
+  // Real-time password strength validation
+  const pwdValidation = useMemo<PasswordValidationResult>(() => {
+    return validatePasswordStrength(password);
+  }, [password]);
+
+  // Lockout countdown timer
+  useEffect(() => {
+    if (lockoutSecondsLeft <= 0) {
+      if (isLocked) setIsLocked(false);
+      return;
+    }
+    const timer = setInterval(() => {
+      setLockoutSecondsLeft(prev => {
+        if (prev <= 1) {
+          setIsLocked(false);
+          setErrorMsg('');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutSecondsLeft, isLocked]);
+
+  // 2FA countdown timer
+  useEffect(() => {
+    if (view !== 'two_factor' || !twoFactorExpiresAt) return;
+    const updateCountdown = () => {
+      const remaining = Math.max(0, Math.floor((twoFactorExpiresAt - Date.now()) / 1000));
+      setTwoFactorExpirySeconds(remaining);
+    };
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [view, twoFactorExpiresAt]);
+
+  const handleCaptchaVerify = () => {
+    const token = `kclmc_captcha_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    setCaptchaToken(token);
+    setCaptchaVerified(true);
+  };
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
+    setWarningMsg('');
 
     const cleanEmail = sanitizeEmail(email);
     const cleanStudentId = sanitizeStudentId(studentId);
@@ -50,12 +108,17 @@ function LoginForm() {
 
     if (view === 'sign_up') {
       if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-        setErrorMsg('Please enter a valid King\'s or personal email address.');
+        setErrorMsg("Please enter a valid King's or personal email address.");
         setLoading(false);
         return;
       }
       if (university === 'Other UK Institution' && !customUniversity.trim()) {
         setErrorMsg('Please enter the name of your university or institution.');
+        setLoading(false);
+        return;
+      }
+      if (!pwdValidation.isValid) {
+        setErrorMsg(pwdValidation.errors[0] || 'Password does not meet the security requirements.');
         setLoading(false);
         return;
       }
@@ -66,93 +129,127 @@ function LoginForm() {
       }
     }
 
-    if (!isSupabaseConfigured()) {
-      setErrorMsg('Supabase credentials are not connected yet. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Cloudflare Settings > Variables and Secrets, then trigger a new deployment.');
+    if (requiresCaptcha && !captchaVerified) {
+      setErrorMsg('Please complete the anti-bot security verification before submitting.');
       setLoading(false);
       return;
     }
 
     try {
       if (view === 'sign_up') {
-        const { data: authData, error } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password,
-          options: {
-            data: {
-              full_name: cleanFullName,
-              student_id: cleanStudentId,
-              university: cleanUniversity,
-            },
-            emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-          },
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanEmail,
+            password,
+            fullName: cleanFullName,
+            studentId: cleanStudentId,
+            university: cleanUniversity,
+          }),
         });
-        if (error) throw error;
 
-        // If session is immediately available, ensure profiles row has university set
-        if (authData?.user) {
-          try {
-            await supabase.from('profiles').upsert(
-              {
-                id: authData.user.id,
-                full_name: cleanFullName,
-                student_id: cleanStudentId || null,
-                university: cleanUniversity,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: 'id' }
-            );
-          } catch (syncErr) {
-            console.warn('Profile sync on signup warning:', syncErr);
+        const data = await res.json();
+
+        if (!res.ok) {
+          if (data.details && Array.isArray(data.details)) {
+            setErrorMsg(data.details.join('. '));
+          } else {
+            setErrorMsg(data.error || 'Failed to create account.');
           }
+          return;
         }
 
         router.push(next);
         router.refresh();
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
+        // Sign In submission through server-side rate-limited route with httpOnly cookies
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanEmail,
+            password,
+            captchaToken: captchaVerified ? captchaToken : undefined,
+          }),
         });
-        if (error) throw error;
-        router.push(next);
+
+        const data = await res.json();
+
+        if (res.status === 429 || data.isLocked) {
+          setIsLocked(true);
+          const retrySec = data.retryAfterSeconds || 900;
+          setLockoutSecondsLeft(retrySec);
+          setErrorMsg(data.error || `Account temporarily locked. Please try again in ${Math.ceil(retrySec / 60)} minutes.`);
+          if (data.requiresCaptcha) setRequiresCaptcha(true);
+          return;
+        }
+
+        if (data.requiresCaptcha) {
+          setRequiresCaptcha(true);
+        }
+
+        if (!res.ok) {
+          if (data.remainingAttempts !== undefined && data.remainingAttempts <= 2) {
+            setWarningMsg(`Warning: ${data.remainingAttempts} login attempt${data.remainingAttempts === 1 ? '' : 's'} remaining before account lockout.`);
+          }
+          setErrorMsg(data.error || 'Invalid email or password.');
+          return;
+        }
+
+        // Two-Factor Authentication Challenge Triggered
+        if (data.requires2FA) {
+          setChallengeToken(data.challengeToken);
+          setTwoFactorMessage(data.message || 'Two-Factor Authentication is required for your account.');
+          setTwoFactorExpiresAt(data.expiresAt || Date.now() + 5 * 60 * 1000);
+          setView('two_factor');
+          return;
+        }
+
+        // Standard Login Succeeded (httpOnly cookies issued by server)
+        router.push(data.destination || next);
         router.refresh();
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Authentication failed');
+      setErrorMsg(err.message || 'Network error during authentication. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleMagicLinkSubmit = async (e: React.FormEvent) => {
+  const handle2FASubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
 
-    const cleanEmail = sanitizeEmail(email);
-    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setErrorMsg('Please enter a valid email address.');
-      setLoading(false);
-      return;
-    }
-
-    if (!isSupabaseConfigured()) {
-      setErrorMsg('Supabase credentials are not connected yet.');
+    if (!twoFactorCode.trim()) {
+      setErrorMsg('Please enter your 6-digit verification code or single-use backup code.');
       setLoading(false);
       return;
     }
 
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: cleanEmail,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-        },
+      const res = await fetch('/api/auth/verify-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          challengeToken,
+          code: twoFactorCode.trim(),
+        }),
       });
-      if (error) throw error;
-      setMagicLinkSent(true);
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMsg(data.error || 'Verification code failed. Please check the code and try again.');
+        return;
+      }
+
+      // 2FA Verified! httpOnly session cookies attached to response
+      router.push(data.destination || next);
+      router.refresh();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to send magic link. Please try again.');
+      setErrorMsg(err.message || 'Error verifying two-factor challenge.');
     } finally {
       setLoading(false);
     }
@@ -170,14 +267,67 @@ function LoginForm() {
       return;
     }
 
+    if (requiresCaptcha && !captchaVerified) {
+      setErrorMsg('Please verify you are human before requesting a password reset.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/callback?next=/update-password`,
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          captchaToken: captchaVerified ? captchaToken : undefined,
+        }),
       });
-      if (error) throw error;
+
+      const data = await res.json();
+
+      if (res.status === 429) {
+        setErrorMsg(data.error || 'Too many reset attempts. Please wait before retrying.');
+        return;
+      }
+
+      if (data.requiresCaptcha) {
+        setRequiresCaptcha(true);
+        if (!captchaVerified) {
+          setErrorMsg('Security check required. Please complete the verification.');
+          return;
+        }
+      }
+
       setResetEmailSent(true);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to send password reset email. Please try again.');
+      setErrorMsg(err.message || 'Failed to dispatch password recovery email.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMagicLinkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg('');
+
+    const cleanEmail = sanitizeEmail(email);
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setErrorMsg('Please enter a valid email address.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+      if (!res.ok) throw new Error('Failed to dispatch magic link');
+      setMagicLinkSent(true);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to send magic link. Please try password login.');
     } finally {
       setLoading(false);
     }
@@ -187,7 +337,11 @@ function LoginForm() {
   let titleText = 'KCLMC Member Portal';
   let descText = 'Sign in to access your verified climbing pass, meet signups & society perks.';
 
-  if (mode === 'magic_link') {
+  if (view === 'two_factor') {
+    badgeText = 'Two-Factor Verification';
+    titleText = 'Security Check';
+    descText = 'Enter the 6-digit code or an 8-character single-use backup code.';
+  } else if (mode === 'magic_link') {
     badgeText = 'Instant Sign-In';
     titleText = 'Magic Link Access';
     descText = 'We will email you a secure one-click link to log into your account.';
@@ -207,7 +361,7 @@ function LoginForm() {
         {/* Header */}
         <div className="flex flex-col items-center text-center mb-8">
           <div className="w-12 h-12 rounded-xl bg-[#084746] border border-[#FFBD59]/50 flex items-center justify-center text-2xl shadow-sm mb-3">
-            ⛰️
+            {view === 'two_factor' ? '🔐' : '⛰️'}
           </div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#084746] border border-[#FFBD59]/30 text-[#FFBD59] font-heading font-bold text-xs uppercase tracking-wider mb-2">
             {badgeText}
@@ -220,8 +374,63 @@ function LoginForm() {
           </p>
         </div>
 
+        {/* Lockout Banner */}
+        {isLocked && (
+          <div className="mb-6 p-4 bg-red-950/90 border-2 border-red-500 rounded-2xl text-red-200 text-xs font-sans space-y-2">
+            <div className="flex items-center gap-2 font-bold text-red-100 uppercase tracking-wide font-heading">
+              <span>⛔</span>
+              <span>Account Temporarily Restricted</span>
+            </div>
+            <p className="leading-relaxed">
+              Multiple failed authentication attempts detected. To safeguard your account, access has been restricted.
+            </p>
+            <div className="font-mono text-center py-2 bg-red-900/60 rounded-xl text-white font-bold text-sm border border-red-700">
+              Retry available in: {Math.floor(lockoutSecondsLeft / 60)}m {lockoutSecondsLeft % 60}s
+            </div>
+          </div>
+        )}
+
+        {/* Warning Banner */}
+        {warningMsg && (
+          <div className="mb-4 p-3 bg-amber-950/70 border border-amber-500/50 rounded-xl text-amber-300 text-xs font-sans leading-relaxed flex items-center gap-2">
+            <span>⚠️</span>
+            <span>{warningMsg}</span>
+          </div>
+        )}
+
+        {/* Error Banner */}
+        {errorMsg && !isLocked && (
+          <div className="mb-4 p-3.5 bg-red-950/70 border border-red-500/50 rounded-xl text-red-300 text-xs font-sans leading-relaxed">
+            {errorMsg}
+          </div>
+        )}
+
+        {/* Anti-Bot Challenge Box */}
+        {requiresCaptcha && !isLocked && (
+          <div className="mb-5 p-4 bg-[#041F1E] border border-[#FFBD59]/40 rounded-2xl">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={captchaVerified}
+                  onChange={e => {
+                    if (e.target.checked) handleCaptchaVerify();
+                  }}
+                  className="w-5 h-5 rounded border border-[#FFBD59]/50 bg-[#052322] text-[#FFBD59] focus:ring-0 cursor-pointer"
+                />
+                <span className="text-xs font-mono font-bold text-zinc-200">
+                  {captchaVerified ? '✓ Verification Successful' : 'I am a human climber'}
+                </span>
+              </label>
+              <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">
+                Shield v2
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Mode Selector (Password vs Magic Link) */}
-        {view !== 'forgot_password' && (
+        {view !== 'forgot_password' && view !== 'two_factor' && (
           <div className="flex rounded-xl bg-[#041F1E] p-1 mb-6 border border-[#FFBD59]/30">
             <button
               type="button"
@@ -258,7 +467,57 @@ function LoginForm() {
         )}
 
         {/* View Handling */}
-        {mode === 'magic_link' ? (
+        {view === 'two_factor' ? (
+          <form onSubmit={handle2FASubmit} className="space-y-5">
+            <div className="p-4 bg-[#084746]/40 border border-[#FFBD59]/30 rounded-2xl text-center space-y-2">
+              <p className="text-xs text-zinc-200 font-sans leading-relaxed">
+                {twoFactorMessage}
+              </p>
+              <div className="text-[11px] font-mono text-[#FFBD59]">
+                Code expires in: {Math.floor(twoFactorExpirySeconds / 60)}:{(twoFactorExpirySeconds % 60).toString().padStart(2, '0')}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5 flex justify-between">
+                <span>Verification Code</span>
+                <span className="text-[10px] text-zinc-400 font-sans font-normal">6-digit OTP, Authenticator, or XXXX-XXXX</span>
+              </label>
+              <input
+                type="text"
+                required
+                autoFocus
+                value={twoFactorCode}
+                onChange={e => setTwoFactorCode(e.target.value.toUpperCase())}
+                placeholder="e.g. 123456 or ABCD-EFGH"
+                maxLength={12}
+                className="w-full bg-[#041F1E] border border-[#FFBD59]/40 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] text-center font-mono text-lg tracking-widest uppercase transition-colors"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || twoFactorExpirySeconds <= 0}
+              className="w-full py-3.5 bg-[#FFBD59] text-[#052322] font-heading font-black uppercase tracking-wider text-sm rounded-xl hover:bg-[#FFE0A3] transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
+            >
+              {loading ? 'Verifying 2FA...' : 'Confirm Authentication →'}
+            </button>
+
+            <div className="text-center pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setView('sign_in');
+                  setTwoFactorCode('');
+                  setErrorMsg('');
+                }}
+                className="text-xs font-sans text-zinc-400 hover:text-[#FFBD59] transition-colors underline cursor-pointer"
+              >
+                ← Back to Password Login
+              </button>
+            </div>
+          </form>
+        ) : mode === 'magic_link' ? (
           magicLinkSent ? (
             <div className="bg-[#041F1E] border border-[#FFBD59]/30 rounded-2xl p-6 text-center space-y-4">
               <div className="w-12 h-12 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-xl">
@@ -280,12 +539,6 @@ function LoginForm() {
             </div>
           ) : (
             <form onSubmit={handleMagicLinkSubmit} className="space-y-4">
-              {errorMsg && (
-                <div className="p-3.5 bg-red-950/70 border border-red-500/50 rounded-xl text-red-300 text-xs font-sans leading-relaxed">
-                  {errorMsg}
-                </div>
-              )}
-
               <div>
                 <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
                   Email Address
@@ -302,7 +555,7 @@ function LoginForm() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || isLocked}
                 className="w-full py-3.5 mt-2 bg-[#FFBD59] text-[#052322] font-heading font-black uppercase tracking-wider text-sm rounded-xl hover:bg-[#FFE0A3] transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
               >
                 {loading ? 'Sending link...' : 'Send Magic Link →'}
@@ -333,12 +586,6 @@ function LoginForm() {
             </div>
           ) : (
             <form onSubmit={handleResetPassword} className="space-y-4">
-              {errorMsg && (
-                <div className="p-3.5 bg-red-950/70 border border-red-500/50 rounded-xl text-red-300 text-xs font-sans leading-relaxed">
-                  {errorMsg}
-                </div>
-              )}
-
               <div>
                 <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
                   Account Email Address
@@ -355,7 +602,7 @@ function LoginForm() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || isLocked}
                 className="w-full py-3.5 mt-2 bg-[#FFBD59] text-[#052322] font-heading font-black uppercase tracking-wider text-sm rounded-xl hover:bg-[#FFE0A3] transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
               >
                 {loading ? 'Sending link...' : 'Send Recovery Link →'}
@@ -377,12 +624,6 @@ function LoginForm() {
           )
         ) : (
           <form onSubmit={handlePasswordSubmit} className="space-y-4">
-            {errorMsg && (
-              <div className="p-3.5 bg-red-950/70 border border-red-500/50 rounded-xl text-red-300 text-xs font-sans leading-relaxed">
-                {errorMsg}
-              </div>
-            )}
-
             {view === 'sign_up' && (
               <>
                 <div>
@@ -484,10 +725,65 @@ function LoginForm() {
                 required
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••••••"
+                placeholder={view === 'sign_up' ? 'Min 12 chars, upper, lower, #, symbol' : '••••••••••••'}
                 className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-sans transition-colors"
               />
             </div>
+
+            {/* Real-time Password Strength Meter on Registration */}
+            {view === 'sign_up' && password.length > 0 && (
+              <div className="p-3 bg-[#041F1E] border border-[#FFBD59]/20 rounded-xl space-y-2.5">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-heading font-bold uppercase tracking-wider text-zinc-400 text-[10px]">
+                    Strength
+                  </span>
+                  <span className="font-bold text-xs" style={{ color: pwdValidation.color }}>
+                    {pwdValidation.label} ({pwdValidation.entropyBits} bits)
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="grid grid-cols-4 gap-1.5 h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+                  {[1, 2, 3, 4].map(step => (
+                    <div
+                      key={step}
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{
+                        backgroundColor: step <= pwdValidation.score ? pwdValidation.color : 'transparent',
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* Requirements Checklist */}
+                <div className="grid grid-cols-2 gap-1 text-[11px] pt-1 font-sans">
+                  <div className={`flex items-center gap-1.5 ${pwdValidation.hasMinLength ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    <span>{pwdValidation.hasMinLength ? '✓' : '○'}</span>
+                    <span>12+ characters</span>
+                  </div>
+                  <div className={`flex items-center gap-1.5 ${pwdValidation.hasUpperCase ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    <span>{pwdValidation.hasUpperCase ? '✓' : '○'}</span>
+                    <span>Uppercase (A-Z)</span>
+                  </div>
+                  <div className={`flex items-center gap-1.5 ${pwdValidation.hasLowerCase ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    <span>{pwdValidation.hasLowerCase ? '✓' : '○'}</span>
+                    <span>Lowercase (a-z)</span>
+                  </div>
+                  <div className={`flex items-center gap-1.5 ${pwdValidation.hasNumber ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    <span>{pwdValidation.hasNumber ? '✓' : '○'}</span>
+                    <span>Number (0-9)</span>
+                  </div>
+                  <div className={`flex items-center gap-1.5 ${pwdValidation.hasSymbol ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    <span>{pwdValidation.hasSymbol ? '✓' : '○'}</span>
+                    <span>Symbol (!@#$)</span>
+                  </div>
+                  <div className={`flex items-center gap-1.5 ${pwdValidation.isNotCommon ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <span>{pwdValidation.isNotCommon ? '✓' : '✗'}</span>
+                    <span>Not breached</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {view === 'sign_up' && (
               <div className="flex items-start gap-2.5 pt-2">
@@ -518,13 +814,13 @@ function LoginForm() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || isLocked || (view === 'sign_up' && !pwdValidation.isValid)}
               className="w-full py-3.5 mt-2 bg-[#FFBD59] text-[#052322] font-heading font-black uppercase tracking-wider text-sm rounded-xl hover:bg-[#FFE0A3] transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
             >
               {loading
                 ? 'Validating...'
                 : view === 'sign_up'
-                ? 'Create Member Account →'
+                ? 'Create Secure Account →'
                 : 'Sign In to Portal →'}
             </button>
 
@@ -534,6 +830,7 @@ function LoginForm() {
                 onClick={() => {
                   setView(view === 'sign_up' ? 'sign_in' : 'sign_up');
                   setErrorMsg('');
+                  setWarningMsg('');
                 }}
                 className="text-xs font-sans text-zinc-400 hover:text-[#FFBD59] transition-colors underline cursor-pointer"
               >

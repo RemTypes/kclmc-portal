@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getModuleByRoute } from './config/modules.config';
+import { getAuthenticatedUserRole, getUserRole } from './lib/auth';
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -24,14 +25,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(`/403?from=${encodeURIComponent(path)}&req=disabled`, request.url));
   }
 
-  // 2. Strict route protection for /admin
+  // 2. Fallback check if Supabase is unconfigured
   if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder-project')) {
-    // If Supabase is not configured yet, still require login for admin routes
     if (path.startsWith('/admin')) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
       url.searchParams.set('next', path);
       return NextResponse.redirect(url);
+    }
+    if (path.startsWith('/api/reconcile')) {
+      return NextResponse.json({ error: 'Unauthorized: Committee access required' }, { status: 403 });
     }
     return supabaseResponse;
   }
@@ -47,7 +50,12 @@ export async function middleware(request: NextRequest) {
           request,
         });
         cookiesToSet.forEach(({ name, value, options }) =>
-          supabaseResponse.cookies.set(name, value, options)
+          supabaseResponse.cookies.set(name, value, {
+            ...options,
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+          })
         );
       },
     },
@@ -58,12 +66,39 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Route protection (Admin only)
-  if (path.startsWith('/admin') && !user) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.searchParams.set('next', path);
-    return NextResponse.redirect(url);
+  // 3. Server-side middleware protection for Admin API endpoints
+  const isAdminApi =
+    path.startsWith('/api/reconcile') ||
+    path === '/api/roster' ||
+    (path === '/api/telemetry' && request.method === 'GET');
+
+  if (isAdminApi) {
+    const role = user ? await getAuthenticatedUserRole(supabase, user) : 0;
+    if (role < 1) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Committee access required' },
+        { status: 403 }
+      );
+    }
+  }
+
+  // 4. Server-side middleware protection for /admin pages
+  if (path.startsWith('/admin')) {
+    if (!user) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      url.searchParams.set('next', path);
+      return NextResponse.redirect(url);
+    }
+
+    const role = await getAuthenticatedUserRole(supabase, user);
+    if (role < 1) {
+      return NextResponse.redirect(new URL(`/403?req=committee&from=${encodeURIComponent(path)}`, request.url));
+    }
+
+    if (path.startsWith('/admin/ml') && role < 2) {
+      return NextResponse.redirect(new URL(`/403?req=superadmin&from=${encodeURIComponent(path)}`, request.url));
+    }
   }
 
   return supabaseResponse;

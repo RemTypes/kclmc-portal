@@ -28,6 +28,11 @@ export default function Navigation() {
   }, [supabase]);
 
   const handleSignOut = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Ignore network errors on logout
+    }
     await supabase.auth.signOut();
     setUser(null);
     router.push('/');
