@@ -42,7 +42,12 @@ export async function createClient() {
         try {
           if (cookieStore) {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, {
+                ...options,
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+              })
             );
           }
         } catch {
