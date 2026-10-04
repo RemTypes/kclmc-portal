@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { checkRateLimit, recordFailedAttempt, recordSuccessfulAttempt, verifyCaptchaToken } from '@/lib/security/rate-limiter';
-import { requiresMandatory2FA, create2FAChallenge, create2FAEnrollmentChallenge, isUser2FAEnrolled } from '@/lib/security/two-factor';
+import { requiresMandatory2FA, create2FAChallenge, create2FAEnrollmentChallenge, isUser2FAEnrolled, getUserTOTPSecret, getUserHashedBackupCodes } from '@/lib/security/two-factor';
 import { setSessionCookies, applySessionCookies } from '@/lib/security/cookies';
 import { getUserRole, getAuthenticatedUserRole, sanitizeEmail } from '@/lib/auth';
 
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
           sessionPayload
         );
 
-        return NextResponse.json({
+        const response = NextResponse.json({
           requires2FASetup: true,
           challengeToken: setup.challengeToken,
           secret: setup.secret,
@@ -130,26 +130,50 @@ export async function POST(request: Request) {
           message: 'Two-factor authentication is required for committee accounts. Please scan the QR code into your authenticator app to complete activation.',
           destination: userRole >= 1 ? '/admin' : '/membership',
         });
+
+        response.cookies.set('kclmc_2fa_pending', setup.challengeToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          path: '/',
+          maxAge: 10 * 60, // 10 minutes
+        });
+
+        return response;
       }
 
-      // Create 2FA challenge and store cookies/session payload to promote upon success
-      const { challengeToken, otpCode, expiresAt } = create2FAChallenge(
+      // User is already enrolled, create standard 2FA verification challenge
+      const userTotpSecret = user.user_metadata?.totp_secret || getUserTOTPSecret(user.id);
+      const userBackupCodesList = user.user_metadata?.backup_codes || getUserHashedBackupCodes(user.id);
+
+      const challenge = create2FAChallenge(
         user.id,
         cleanEmail,
         userRole,
-        sessionPayload
+        sessionPayload,
+        userTotpSecret,
+        userBackupCodesList
       );
 
-      // In production or development, notify / log OTP issuance
-      console.log(`[2FA NOTICE] 2FA Challenge created for ${cleanEmail} (Role: ${userRole}). OTP: ${otpCode} (Expires in 5 min)`);
+      console.log(`[2FA NOTICE] 2FA Challenge created for ${cleanEmail} (Role: ${userRole}). OTP: ${challenge.otpCode} (Expires in 5 min)`);
 
-      return NextResponse.json({
+      const response = NextResponse.json({
         requires2FA: true,
-        challengeToken,
-        expiresAt,
+        challengeToken: challenge.challengeToken,
+        expiresAt: challenge.expiresAt,
         message: 'Please enter the 6-digit code from your authenticator app or an emergency backup code.',
         destination: userRole >= 1 ? '/admin' : '/membership',
       });
+
+      response.cookies.set('kclmc_2fa_pending', challenge.challengeToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 5 * 60, // 5 minutes
+      });
+
+      return response;
     }
 
     // 5. Successful login without 2FA: Reset rate limits & set httpOnly, Secure, SameSite=Strict cookies

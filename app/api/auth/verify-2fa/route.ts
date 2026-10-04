@@ -23,7 +23,14 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const { challengeToken, code } = body;
 
-    if (!challengeToken || !code) {
+    const cookieHeader = request.headers.get('cookie') || '';
+    const cookieMatch = cookieHeader.match(/kclmc_2fa_pending=([^;]+)/);
+    const cookieToken = cookieMatch ? decodeURIComponent(cookieMatch[1].trim()) : null;
+    const effectiveToken = (challengeToken && typeof challengeToken === 'string' && challengeToken.trim())
+      ? challengeToken.trim()
+      : cookieToken;
+
+    if (!effectiveToken || !code) {
       return NextResponse.json(
         { error: 'Challenge token and verification code are required' },
         { status: 400 }
@@ -38,7 +45,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = verify2FAChallenge(challengeToken, code);
+    const result = verify2FAChallenge(effectiveToken, code);
 
     if (!result.success || !result.sessionData) {
       recordFailedAttempt(ip, undefined, 'Invalid 2FA code');
@@ -120,6 +127,16 @@ export async function POST(request: Request) {
 
     // Issue httpOnly, Secure, SameSite=Strict cookies
     setSessionCookies(response, result.sessionData);
+
+    // Clear pending 2FA challenge cookie
+    response.cookies.set('kclmc_2fa_pending', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: 0,
+    });
+
     return response;
   } catch (err: any) {
     console.error('2FA verification handler error:', err);
