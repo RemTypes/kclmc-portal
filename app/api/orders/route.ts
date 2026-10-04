@@ -222,18 +222,18 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Invalid order status' }, { status: 400 });
     }
 
-    if (isSupabaseConfigured()) {
-      // Require committee privileges to modify order statuses
-      const userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      const role = await getAuthenticatedUserRole(userClient, user);
-      if (role < 1) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Committee privileges required to modify orders' },
-          { status: 403 }
-        );
-      }
+    // Require committee privileges to modify order statuses
+    const userClient = await createClient();
+    const { data: { user } } = await userClient.auth.getUser();
+    const role = await getAuthenticatedUserRole(userClient, user);
+    if (role < 1) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Committee privileges required to modify orders' },
+        { status: 403 }
+      );
+    }
 
+    if (isSupabaseConfigured()) {
       const admin = createAdminClient();
       await admin
         .from('merch_orders')

@@ -72,17 +72,15 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    if (isSupabaseConfigured()) {
-      const userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      const role = await getAuthenticatedUserRole(userClient, user);
+    const userClient = await createClient();
+    const { data: { user } } = await userClient.auth.getUser();
+    const role = await getAuthenticatedUserRole(userClient, user);
 
-      if (role < 1) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Committee access required to synchronize roster' },
-          { status: 403 }
-        );
-      }
+    if (role < 1) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Committee access required to synchronize roster' },
+        { status: 403 }
+      );
     }
 
     const body = await request.json();

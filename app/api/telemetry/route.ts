@@ -6,15 +6,15 @@ let fallbackTelemetry: any[] = [];
 
 export async function GET() {
   try {
+    const userClient = await createClient();
+    const { data: { user } } = await userClient.auth.getUser();
+    const role = await getAuthenticatedUserRole(userClient, user);
+
+    if (role < 1) {
+      return NextResponse.json({ error: 'Unauthorized: Committee access required' }, { status: 403 });
+    }
+
     if (isSupabaseConfigured()) {
-      const userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      const role = await getAuthenticatedUserRole(userClient, user);
-
-      if (role < 1) {
-        return NextResponse.json({ error: 'Unauthorized: Committee access required' }, { status: 403 });
-      }
-
       const { data, error } = await userClient
         .from('telemetry_events')
         .select('*')

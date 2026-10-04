@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
+import { validatePasswordStrength, PasswordValidationResult } from '@/lib/security/password-validator';
 
 function UpdatePasswordForm() {
   const router = useRouter();
@@ -16,6 +17,10 @@ function UpdatePasswordForm() {
   const [hasSession, setHasSession] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
+
+  const pwdValidation = useMemo<PasswordValidationResult>(() => {
+    return validatePasswordStrength(newPassword);
+  }, [newPassword]);
 
   useEffect(() => {
     let mounted = true;
@@ -66,8 +71,8 @@ function UpdatePasswordForm() {
     e.preventDefault();
     setErrorMsg('');
 
-    if (newPassword.length < 6) {
-      setErrorMsg('Password must be at least 6 characters long.');
+    if (!pwdValidation.isValid) {
+      setErrorMsg(pwdValidation.errors[0] || 'Password does not meet the security policy requirements.');
       return;
     }
 
@@ -79,11 +84,23 @@ function UpdatePasswordForm() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
+      // Submit to server-side rate-limited password reset endpoint
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: newPassword }),
       });
 
-      if (error) throw error;
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.details && Array.isArray(data.details)) {
+          setErrorMsg(data.details.join('. '));
+        } else {
+          setErrorMsg(data.error || 'Failed to update password. Your recovery link may have expired.');
+        }
+        return;
+      }
 
       setSuccess(true);
       setTimeout(() => {
@@ -174,13 +191,65 @@ function UpdatePasswordForm() {
               <input
                 type="password"
                 required
-                minLength={6}
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
-                placeholder="At least 6 characters"
+                placeholder="Min 12 chars, upper, lower, #, symbol"
                 className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-sans transition-colors"
               />
             </div>
+
+            {/* Real-time Password Strength Feedback */}
+            {newPassword.length > 0 && (
+              <div className="p-3 bg-[#041F1E] border border-[#FFBD59]/20 rounded-xl space-y-2.5">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-heading font-bold uppercase tracking-wider text-zinc-400 text-[10px]">
+                    Strength
+                  </span>
+                  <span className="font-bold text-xs" style={{ color: pwdValidation.color }}>
+                    {pwdValidation.label} ({pwdValidation.entropyBits} bits)
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1.5 h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+                  {[1, 2, 3, 4].map(step => (
+                    <div
+                      key={step}
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{
+                        backgroundColor: step <= pwdValidation.score ? pwdValidation.color : 'transparent',
+                      }}
+                    />
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-1 text-[11px] pt-1 font-sans">
+                  <div className={`flex items-center gap-1.5 ${pwdValidation.hasMinLength ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    <span>{pwdValidation.hasMinLength ? '✓' : '○'}</span>
+                    <span>12+ characters</span>
+                  </div>
+                  <div className={`flex items-center gap-1.5 ${pwdValidation.hasUpperCase ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    <span>{pwdValidation.hasUpperCase ? '✓' : '○'}</span>
+                    <span>Uppercase (A-Z)</span>
+                  </div>
+                  <div className={`flex items-center gap-1.5 ${pwdValidation.hasLowerCase ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    <span>{pwdValidation.hasLowerCase ? '✓' : '○'}</span>
+                    <span>Lowercase (a-z)</span>
+                  </div>
+                  <div className={`flex items-center gap-1.5 ${pwdValidation.hasNumber ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    <span>{pwdValidation.hasNumber ? '✓' : '○'}</span>
+                    <span>Number (0-9)</span>
+                  </div>
+                  <div className={`flex items-center gap-1.5 ${pwdValidation.hasSymbol ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    <span>{pwdValidation.hasSymbol ? '✓' : '○'}</span>
+                    <span>Symbol (!@#$)</span>
+                  </div>
+                  <div className={`flex items-center gap-1.5 ${pwdValidation.isNotCommon ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <span>{pwdValidation.isNotCommon ? '✓' : '✗'}</span>
+                    <span>Not breached</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
@@ -189,7 +258,6 @@ function UpdatePasswordForm() {
               <input
                 type="password"
                 required
-                minLength={6}
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
                 placeholder="Repeat new password"
@@ -199,7 +267,7 @@ function UpdatePasswordForm() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !pwdValidation.isValid}
               className="w-full py-3.5 mt-2 bg-[#FFBD59] text-[#052322] font-heading font-black uppercase tracking-wider text-sm rounded-xl hover:bg-[#FFE0A3] transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
             >
               {loading ? 'Updating Password...' : 'Save New Password →'}

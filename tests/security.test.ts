@@ -20,6 +20,18 @@ import { GET as rosterGet, POST as rosterPost } from '@/app/api/roster/route';
 import { GET as telemetryGet, POST as telemetryPost } from '@/app/api/telemetry/route';
 import { parseKclsuCsv, sanitizeCsvCell } from '@/lib/roster';
 import { getUserRole, getAuthenticatedUserRole, getSafeRedirectUrl, sanitizeStudentId, sanitizeEmail } from '@/lib/auth';
+import { validatePasswordStrength, COMMON_PASSWORDS_BLACKLIST, calculateEntropy } from '@/lib/security/password-validator';
+import { checkRateLimit, recordFailedAttempt, recordSuccessfulAttempt, verifyCaptchaToken, clearRateLimitStores, getSecurityAuditLogs } from '@/lib/security/rate-limiter';
+import { create2FAChallenge, verify2FAChallenge, requiresMandatory2FA, generateBackupCodes, getOrCreateBackupCodes, calculateTOTP, verifyTOTP, setUserTOTPSecret, clear2FAStores } from '@/lib/security/two-factor';
+import { applySessionCookies, setSessionCookies, clearSessionCookies, getAuthCookiePrefix, SESSION_COOKIE_OPTIONS } from '@/lib/security/cookies';
+import { POST as authLoginPost } from '@/app/api/auth/login/route';
+import { POST as authSignupPost } from '@/app/api/auth/signup/route';
+import { POST as authForgotPost } from '@/app/api/auth/forgot-password/route';
+import { POST as authResetPost } from '@/app/api/auth/reset-password/route';
+import { POST as authVerify2FAPost } from '@/app/api/auth/verify-2fa/route';
+import { POST as authVerifyOtpPost } from '@/app/api/auth/verify-otp/route';
+import { POST as authLogoutPost } from '@/app/api/auth/logout/route';
+import { NextResponse } from 'next/server';
 
 describe('Security Testing Suite', () => {
   beforeEach(() => {
@@ -386,7 +398,32 @@ describe('Security Testing Suite', () => {
   // 5. INPUT SANITIZATION & DEFENSIVE RECONCILIATION: /api/reconcile
   // =========================================================================
   describe('Input Sanitization: /api/reconcile', () => {
-    it('rejects non-array payloads', async () => {
+    it('requires committee privileges on POST /api/reconcile', async () => {
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1', email: 'climber@kcl.ac.uk' } } }),
+        },
+      } as any);
+
+      const request = new Request('http://localhost:3000/api/reconcile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([]),
+      });
+
+      const response = await reconcilePost(request);
+      expect(response.status).toBe(403);
+    });
+
+    it('rejects non-array payloads for authorized committee', async () => {
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'comm-1', email: 'kclmc.committee@gmail.com' } } }),
+        },
+      } as any);
+
       const request = new Request('http://localhost:3000/api/reconcile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -721,4 +758,416 @@ describe('Security Testing Suite', () => {
       expect(sanitizeEmail(null)).toBe('');
     });
   });
+
+  // =========================================================================
+  // 11. VULNERABILITY 5: PASSWORD STRENGTH & BLACKLIST VALIDATION
+  // =========================================================================
+  describe('Vulnerability 5: Password Strength & Blacklist Validation', () => {
+    it('rejects passwords shorter than 12 characters', () => {
+      const result = validatePasswordStrength('Short1!Aa');
+      expect(result.isValid).toBe(false);
+      expect(result.hasMinLength).toBe(false);
+      expect(result.errors).toContain('Password must be at least 12 characters long');
+    });
+
+    it('requires uppercase, lowercase, number, and symbol characters', () => {
+      // Missing uppercase
+      const noUpper = validatePasswordStrength('lowercaseonly123!');
+      expect(noUpper.isValid).toBe(false);
+      expect(noUpper.hasUpperCase).toBe(false);
+
+      // Missing lowercase
+      const noLower = validatePasswordStrength('UPPERCASEONLY123!');
+      expect(noLower.isValid).toBe(false);
+      expect(noLower.hasLowerCase).toBe(false);
+
+      // Missing number
+      const noNumber = validatePasswordStrength('LettersOnlyWithSymbols!');
+      expect(noNumber.isValid).toBe(false);
+      expect(noNumber.hasNumber).toBe(false);
+
+      // Missing symbol
+      const noSymbol = validatePasswordStrength('NoSymbolsInThis1234');
+      expect(noSymbol.isValid).toBe(false);
+      expect(noSymbol.hasSymbol).toBe(false);
+    });
+
+    it('blocks common breached passwords and dictionary variations', () => {
+      const breached1 = validatePasswordStrength('password123');
+      expect(breached1.isValid).toBe(false);
+      expect(breached1.isNotCommon).toBe(false);
+
+      const breached2 = validatePasswordStrength('12345678');
+      expect(breached2.isValid).toBe(false);
+      expect(breached2.isNotCommon).toBe(false);
+
+      const breached3 = validatePasswordStrength('climbing123');
+      expect(breached3.isValid).toBe(false);
+      expect(breached3.isNotCommon).toBe(false);
+
+      const breached4 = validatePasswordStrength('p@ssw0rd123');
+      expect(breached4.isValid).toBe(false);
+      expect(breached4.isNotCommon).toBe(false);
+    });
+
+    it('detects sequential numbers, repeated characters, and keyboard walks', () => {
+      const seq = validatePasswordStrength('Abcdefg1234!Xy');
+      expect(seq.isNotCommon).toBe(false);
+
+      const repeated = validatePasswordStrength('Aaaaa1234567!Z');
+      expect(repeated.isNotCommon).toBe(false);
+
+      const walk = validatePasswordStrength('Qwerty123456!Z');
+      expect(walk.isNotCommon).toBe(false);
+    });
+
+    it('accepts strong production-grade passwords with high entropy and score 4', () => {
+      const strong = validatePasswordStrength('KCLMC-Alpine#Summit2026!');
+      expect(strong.isValid).toBe(true);
+      expect(strong.score).toBeGreaterThanOrEqual(3);
+      expect(strong.label).toBe('Strong');
+      expect(strong.errors.length).toBe(0);
+      expect(strong.hasMinLength).toBe(true);
+      expect(strong.hasUpperCase).toBe(true);
+      expect(strong.hasLowerCase).toBe(true);
+      expect(strong.hasNumber).toBe(true);
+      expect(strong.hasSymbol).toBe(true);
+      expect(strong.isNotCommon).toBe(true);
+      expect(strong.entropyBits).toBeGreaterThan(60);
+    });
+
+    it('calculates entropy correctly for various character sets', () => {
+      expect(calculateEntropy('')).toBe(0);
+      expect(calculateEntropy('abc')).toBeGreaterThan(0);
+      expect(calculateEntropy('KCLMC#2026!Alpine')).toBeGreaterThan(calculateEntropy('abcdefghijklmnop'));
+    });
+  });
+
+  // =========================================================================
+  // 12. VULNERABILITY 4: RATE LIMITING, ACCOUNT LOCKOUT & CAPTCHA
+  // =========================================================================
+  describe('Vulnerability 4: Rate Limiting, Account Lockout & CAPTCHA Engine', () => {
+    beforeEach(() => {
+      clearRateLimitStores();
+    });
+
+    it('allows initial authentication attempts within limits', () => {
+      const check = checkRateLimit('192.168.1.100', 'climber@kcl.ac.uk');
+      expect(check.allowed).toBe(true);
+      expect(check.remaining).toBe(5);
+      expect(check.requiresCaptcha).toBe(false);
+    });
+
+    it('triggers CAPTCHA requirement after 3 failed attempts', () => {
+      const ip = '192.168.1.101';
+      const email = 'target@kcl.ac.uk';
+
+      recordFailedAttempt(ip, email);
+      recordFailedAttempt(ip, email);
+      const third = recordFailedAttempt(ip, email);
+
+      expect(third.attemptCount).toBe(3);
+      expect(third.requiresCaptcha).toBe(true);
+
+      const check = checkRateLimit(ip, email);
+      expect(check.allowed).toBe(true);
+      expect(check.requiresCaptcha).toBe(true);
+      expect(check.remaining).toBe(2);
+    });
+
+    it('locks account and triggers exponential backoff after 5 failed attempts', () => {
+      const ip = '192.168.1.102';
+      const email = 'lockout.test@kcl.ac.uk';
+
+      for (let i = 0; i < 4; i++) {
+        recordFailedAttempt(ip, email);
+      }
+
+      const fifth = recordFailedAttempt(ip, email);
+      expect(fifth.attemptCount).toBe(5);
+      expect(fifth.isLocked).toBe(true);
+      expect(fifth.backoffSeconds).toBeGreaterThanOrEqual(900); // 15 minutes in seconds
+
+      const check = checkRateLimit(ip, email);
+      expect(check.allowed).toBe(false);
+      expect(check.remaining).toBe(0);
+      expect(check.requiresCaptcha).toBe(true);
+      expect(check.reason).toContain('temporarily locked');
+    });
+
+    it('resets attempts and logs success on recordSuccessfulAttempt', () => {
+      const ip = '192.168.1.103';
+      const email = 'reset.test@kcl.ac.uk';
+
+      recordFailedAttempt(ip, email);
+      recordFailedAttempt(ip, email);
+      expect(checkRateLimit(ip, email).remaining).toBe(3);
+
+      recordSuccessfulAttempt(ip, email);
+      const afterSuccess = checkRateLimit(ip, email);
+      expect(afterSuccess.remaining).toBe(5);
+      expect(afterSuccess.requiresCaptcha).toBe(false);
+    });
+
+    it('generates security audit logs for all security actions', () => {
+      const ip = '192.168.1.104';
+      recordFailedAttempt(ip, 'audit@kcl.ac.uk', 'Bad password test');
+
+      const logs = getSecurityAuditLogs(10);
+      expect(logs.length).toBeGreaterThan(0);
+      const found = logs.find(l => l.ip === ip && l.email === 'audit@kcl.ac.uk');
+      expect(found).toBeDefined();
+      expect(found?.status).toBe('failed');
+      expect(found?.action).toBe('login_attempt');
+    });
+
+    it('validates CAPTCHA challenge tokens correctly', () => {
+      expect(verifyCaptchaToken(null)).toBe(false);
+      expect(verifyCaptchaToken('')).toBe(false);
+      expect(verifyCaptchaToken('abc')).toBe(false);
+      expect(verifyCaptchaToken('cf_1234567890abcdef')).toBe(true);
+      expect(verifyCaptchaToken('kclmc_captcha_1700000000_abc123')).toBe(true);
+      expect(verifyCaptchaToken('a_very_long_security_token_greater_than_20_chars')).toBe(true);
+    });
+  });
+
+  // =========================================================================
+  // 13. VULNERABILITY 3: 2FA / OTP, RFC 6238 TOTP & SINGLE-USE BACKUP CODES
+  // =========================================================================
+  describe('Vulnerability 3: Two-Factor Authentication, TOTP & Backup Codes', () => {
+    beforeEach(() => {
+      clear2FAStores();
+    });
+
+    it('enforces mandatory 2FA for committee and admin accounts (Role >= 1)', () => {
+      expect(requiresMandatory2FA('kclmc.committee@gmail.com', 1)).toBe(true);
+      expect(requiresMandatory2FA('president@kclmc.org', 1)).toBe(true);
+      expect(requiresMandatory2FA('admin@kclmc.org', 2)).toBe(true);
+      expect(requiresMandatory2FA('remy.preston@outlook.com', 2)).toBe(true);
+      expect(requiresMandatory2FA('climber@kcl.ac.uk', 0)).toBe(false);
+      expect(requiresMandatory2FA('')).toBe(false);
+    });
+
+    it('generates 6-digit Email OTP with 5-minute expiry', () => {
+      const challenge = create2FAChallenge('user-2fa-1', 'admin@kclmc.org', 1, { token: 'session-jwt' });
+      expect(challenge.challengeToken).toBeDefined();
+      expect(challenge.otpCode).toMatch(/^[0-9]{6}$/);
+      expect(challenge.expiresAt).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+      expect(challenge.expiresAt).toBeLessThanOrEqual(Date.now() + 5 * 60 * 1000);
+    });
+
+    it('verifies valid Email OTP code and returns session payload', () => {
+      const challenge = create2FAChallenge('user-2fa-2', 'president@kclmc.org', 1, { customData: 'session-data' });
+      const verify = verify2FAChallenge(challenge.challengeToken, challenge.otpCode);
+
+      expect(verify.success).toBe(true);
+      expect(verify.userId).toBe('user-2fa-2');
+      expect(verify.email).toBe('president@kclmc.org');
+      expect(verify.role).toBe(1);
+      expect(verify.usedEmailOTP).toBe(true);
+      expect(verify.sessionData).toEqual({ customData: 'session-data' });
+    });
+
+    it('decrements attempts on invalid OTP and invalidates challenge after 3 attempts', () => {
+      const challenge = create2FAChallenge('user-2fa-3', 'admin@kclmc.org', 2);
+
+      const fail1 = verify2FAChallenge(challenge.challengeToken, '000000');
+      expect(fail1.success).toBe(false);
+      expect(fail1.error).toContain('2 attempts remaining');
+
+      const fail2 = verify2FAChallenge(challenge.challengeToken, '000001');
+      expect(fail2.success).toBe(false);
+      expect(fail2.error).toContain('1 attempt remaining');
+
+      const fail3 = verify2FAChallenge(challenge.challengeToken, '000002');
+      expect(fail3.success).toBe(false);
+      expect(fail3.error).toContain('invalidated');
+
+      // Subsequent attempt should report challenge gone/invalid
+      const fail4 = verify2FAChallenge(challenge.challengeToken, challenge.otpCode);
+      expect(fail4.success).toBe(false);
+      expect(fail4.error).toContain('Invalid or expired');
+    });
+
+    it('generates single-use backup codes and burns them upon verification', () => {
+      const userId = 'user-backup-1';
+      const codes = generateBackupCodes(userId);
+      expect(codes.length).toBe(8);
+      expect(codes[0]).toMatch(/^[A-F0-9]{4}-[A-F0-9]{4}$/);
+
+      const challenge = create2FAChallenge(userId, 'admin@kclmc.org', 1);
+      const codeToUse = codes[0];
+
+      // Use backup code
+      const verify = verify2FAChallenge(challenge.challengeToken, codeToUse);
+      expect(verify.success).toBe(true);
+      expect(verify.usedBackupCode).toBe(true);
+
+      // Re-using the same backup code must be rejected (burned)
+      const challenge2 = create2FAChallenge(userId, 'admin@kclmc.org', 1);
+      const reuseAttempt = verify2FAChallenge(challenge2.challengeToken, codeToUse);
+      expect(reuseAttempt.success).toBe(false);
+      expect(reuseAttempt.error).toContain('Invalid verification code');
+    });
+
+    it('computes and verifies RFC 6238 TOTP tokens for authenticator apps', () => {
+      const secret = 'JBSWY3DPEHPK3PXP'; // Standard Base32 test secret
+      const now = Date.now();
+      const currentCode = calculateTOTP(secret, now);
+      expect(currentCode).toMatch(/^[0-9]{6}$/);
+
+      expect(verifyTOTP(secret, currentCode)).toBe(true);
+      expect(verifyTOTP(secret, '999999')).toBe(false);
+
+      // Verify integration in verify2FAChallenge
+      const userId = 'user-totp-1';
+      setUserTOTPSecret(userId, secret);
+      const challenge = create2FAChallenge(userId, 'totp@kclmc.org', 1);
+
+      const verifyResult = verify2FAChallenge(challenge.challengeToken, currentCode);
+      expect(verifyResult.success).toBe(true);
+      expect(verifyResult.usedTOTP).toBe(true);
+    });
+  });
+
+  // =========================================================================
+  // 14. VULNERABILITY 1: SESSION TOKEN COOKIES & HTTPONLY HARDENING
+  // =========================================================================
+  describe('Vulnerability 1: Session Token Cookie Hardening', () => {
+    it('guarantees SESSION_COOKIE_OPTIONS has httpOnly=true and sameSite=strict', () => {
+      expect(SESSION_COOKIE_OPTIONS.httpOnly).toBe(true);
+      expect(SESSION_COOKIE_OPTIONS.sameSite).toBe('strict');
+      expect(SESSION_COOKIE_OPTIONS.path).toBe('/');
+      expect(SESSION_COOKIE_OPTIONS.maxAge).toBe(7 * 24 * 60 * 60);
+    });
+
+    it('applies chunked cookies to NextResponse with httpOnly=true and sameSite=strict', () => {
+      const response = NextResponse.json({ ok: true });
+      const chunks = [
+        { name: 'sb-bsvnyibipcwrcyzqilge-auth-token.0', value: 'chunk0_data' },
+        { name: 'sb-bsvnyibipcwrcyzqilge-auth-token.1', value: 'chunk1_data' },
+      ];
+
+      applySessionCookies(response, chunks);
+
+      const cookieHeader = response.headers.get('set-cookie') || '';
+      expect(cookieHeader).toContain('sb-bsvnyibipcwrcyzqilge-auth-token.0=chunk0_data');
+      expect(cookieHeader).toContain('HttpOnly');
+      expect(cookieHeader.toLowerCase()).toContain('samesite=strict');
+    });
+
+    it('clearSessionCookies expires base cookie, chunks, and session indicator', () => {
+      const response = NextResponse.json({ ok: true });
+      clearSessionCookies(response);
+
+      const cookieHeader = response.headers.get('set-cookie') || '';
+      expect(cookieHeader).toContain('Max-Age=0');
+      expect(cookieHeader).toContain(getAuthCookiePrefix());
+      expect(cookieHeader).toContain('kclmc_session=;');
+    });
+  });
+
+  // =========================================================================
+  // 15. AUTH ROUTE HANDLERS: RATE LIMITING & SECURITY GATING
+  // =========================================================================
+  describe('Auth Route Handlers: Security Integration', () => {
+    beforeEach(() => {
+      clearRateLimitStores();
+      clear2FAStores();
+    });
+
+    it('POST /api/auth/signup rejects passwords failing the security policy', async () => {
+      const req = new Request('http://localhost:3000/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'newuser@kcl.ac.uk',
+          password: 'password123',
+          fullName: 'Test Climber',
+        }),
+      });
+
+      const res = await authSignupPost(req);
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error.toLowerCase()).toContain('at least 12 characters');
+    });
+
+    it('POST /api/auth/login requires email and password', async () => {
+      const req = new Request('http://localhost:3000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: '' }),
+      });
+
+      const res = await authLoginPost(req);
+      expect(res.status).toBe(400);
+    });
+
+    it('POST /api/auth/forgot-password enforces email validation and rate limiting', async () => {
+      const invalidReq = new Request('http://localhost:3000/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'notanemail' }),
+      });
+
+      const res = await authForgotPost(invalidReq);
+      expect(res.status).toBe(400);
+
+      // Valid email dispatches recovery and returns clean message
+      const validReq = new Request('http://localhost:3000/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'valid@kcl.ac.uk' }),
+      });
+
+      const validRes = await authForgotPost(validReq);
+      expect(validRes.status).toBe(200);
+      const data = await validRes.json();
+      expect(data.success).toBe(true);
+    });
+
+    it('POST /api/auth/reset-password rejects weak passwords', async () => {
+      const req = new Request('http://localhost:3000/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: '123' }),
+      });
+
+      const res = await authResetPost(req);
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error.toLowerCase()).toContain('at least 12 characters');
+    });
+
+    it('POST /api/auth/verify-2fa and /api/auth/verify-otp require challenge token and code', async () => {
+      const req1 = new Request('http://localhost:3000/api/auth/verify-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const res1 = await authVerify2FAPost(req1);
+      expect(res1.status).toBe(400);
+
+      const req2 = new Request('http://localhost:3000/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeToken: 'test-tok', code: '123456' }),
+      });
+      const res2 = await authVerifyOtpPost(req2);
+      expect(res2.status).toBe(400);
+    });
+
+    it('POST /api/auth/logout clears session cookies', async () => {
+      const req = new Request('http://localhost:3000/api/auth/logout', {
+        method: 'POST',
+      });
+
+      const res = await authLogoutPost(req);
+      expect(res.status).toBe(200);
+      const cookieHeader = res.headers.get('set-cookie') || '';
+      expect(cookieHeader).toContain('Max-Age=0');
+    });
+  });
 });
+
