@@ -59,13 +59,19 @@ export function setSessionCookies(
     return;
   }
 
+  if (sessionOrCookies?.cookiesToSet && Array.isArray(sessionOrCookies.cookiesToSet) && sessionOrCookies.cookiesToSet.length > 0) {
+    applySessionCookies(response, sessionOrCookies.cookiesToSet);
+    return;
+  }
+
+  const sessionObj = sessionOrCookies?.session || sessionOrCookies;
   const prefix = getAuthCookiePrefix();
-  if (sessionOrCookies?.access_token && sessionOrCookies?.refresh_token) {
+  if (sessionObj?.access_token && sessionObj?.refresh_token) {
     const payload = JSON.stringify([
-      sessionOrCookies.access_token,
-      sessionOrCookies.refresh_token,
-      sessionOrCookies.user?.id || null,
-      sessionOrCookies.expires_at || Math.floor(Date.now() / 1000) + 3600,
+      sessionObj.access_token,
+      sessionObj.refresh_token,
+      sessionObj.user?.id || null,
+      sessionObj.expires_at || Math.floor(Date.now() / 1000) + 3600,
     ]);
 
     response.cookies.set(prefix, payload, SESSION_COOKIE_OPTIONS);

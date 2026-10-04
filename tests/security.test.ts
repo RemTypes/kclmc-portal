@@ -22,7 +22,7 @@ import { parseKclsuCsv, sanitizeCsvCell } from '@/lib/roster';
 import { getUserRole, getAuthenticatedUserRole, getSafeRedirectUrl, sanitizeStudentId, sanitizeEmail } from '@/lib/auth';
 import { validatePasswordStrength, COMMON_PASSWORDS_BLACKLIST, calculateEntropy } from '@/lib/security/password-validator';
 import { checkRateLimit, recordFailedAttempt, recordSuccessfulAttempt, verifyCaptchaToken, clearRateLimitStores, getSecurityAuditLogs } from '@/lib/security/rate-limiter';
-import { create2FAChallenge, verify2FAChallenge, requiresMandatory2FA, generateBackupCodes, getOrCreateBackupCodes, calculateTOTP, verifyTOTP, setUserTOTPSecret, clear2FAStores } from '@/lib/security/two-factor';
+import { create2FAChallenge, create2FAEnrollmentChallenge, isUser2FAEnrolled, verify2FAChallenge, requiresMandatory2FA, generateBackupCodes, getOrCreateBackupCodes, getUserHashedBackupCodes, setUserHashedBackupCodes, calculateTOTP, verifyTOTP, setUserTOTPSecret, clear2FAStores } from '@/lib/security/two-factor';
 import { applySessionCookies, setSessionCookies, clearSessionCookies, getAuthCookiePrefix, SESSION_COOKIE_OPTIONS } from '@/lib/security/cookies';
 import { POST as authLoginPost } from '@/app/api/auth/login/route';
 import { POST as authSignupPost } from '@/app/api/auth/signup/route';
@@ -1028,6 +1028,60 @@ describe('Security Testing Suite', () => {
       expect(verifyResult.success).toBe(true);
       expect(verifyResult.usedTOTP).toBe(true);
     });
+
+    it('provides seamless self-service 2FA enrollment flow for un-enrolled committee members', () => {
+      const committeeUserId = 'committee-unenrolled-user-1';
+      expect(isUser2FAEnrolled(committeeUserId)).toBe(false);
+
+      // Create enrollment challenge
+      const setup = create2FAEnrollmentChallenge(committeeUserId, 'remy.preston@outlook.com', 2, { testSession: true });
+      expect(setup.challengeToken).toBeDefined();
+      expect(setup.secret).toBeDefined();
+      expect(setup.totpUri).toContain('otpauth://totp/KCLMC:remy.preston%40outlook.com');
+      expect(setup.totpUri).toContain(setup.secret);
+      expect(setup.backupCodes).toHaveLength(8);
+      expect(setup.backupCodes[0]).toMatch(/^[A-F0-9]{4}-[A-F0-9]{4}$/);
+
+      // Generate valid TOTP from returned setup secret
+      const totpCode = calculateTOTP(setup.secret);
+
+      // Confirm verification
+      const verifyResult = verify2FAChallenge(setup.challengeToken, totpCode);
+      expect(verifyResult.success).toBe(true);
+      expect(verifyResult.userId).toBe(committeeUserId);
+      expect(verifyResult.usedTOTP).toBe(true);
+      expect(verifyResult.enrolledSecret).toBe(setup.secret);
+      expect(verifyResult.hashedBackupCodes).toHaveLength(8);
+
+      // User must now be enrolled
+      expect(isUser2FAEnrolled(committeeUserId)).toBe(true);
+
+      // Subsequent login can now verify using standard 2FA
+      const nextChallenge = create2FAChallenge(committeeUserId, 'remy.preston@outlook.com', 2);
+      const nextCode = calculateTOTP(setup.secret);
+      const nextVerify = verify2FAChallenge(nextChallenge.challengeToken, nextCode);
+      expect(nextVerify.success).toBe(true);
+    });
+
+    it('hydrates 2FA enrollment and backup codes from user metadata', () => {
+      const metadataUserId = 'meta-user-999';
+      const testSecret = 'JBSWY3DPEHPK3PXP';
+      expect(isUser2FAEnrolled(metadataUserId)).toBe(false);
+
+      const enrolled = isUser2FAEnrolled(metadataUserId, {
+        is_2fa_enrolled: true,
+        totp_secret: testSecret,
+      });
+
+      expect(enrolled).toBe(true);
+      expect(isUser2FAEnrolled(metadataUserId)).toBe(true);
+
+      // Now verify standard challenge
+      const challenge = create2FAChallenge(metadataUserId, 'meta@kclmc.org', 1);
+      const code = calculateTOTP(testSecret);
+      const verify = verify2FAChallenge(challenge.challengeToken, code);
+      expect(verify.success).toBe(true);
+    });
   });
 
   // =========================================================================
@@ -1156,6 +1210,33 @@ describe('Security Testing Suite', () => {
       });
       const res2 = await authVerifyOtpPost(req2);
       expect(res2.status).toBe(400);
+    });
+
+    it('POST /api/auth/verify-2fa completes first-time 2FA enrollment and issues session cookies', async () => {
+      const userId = 'api-verify-enroll-user';
+      const setup = create2FAEnrollmentChallenge(userId, 'remy.preston@outlook.com', 2, {
+        session: { access_token: 'fake-access', refresh_token: 'fake-refresh', user: { id: userId } },
+      });
+
+      const validCode = calculateTOTP(setup.secret);
+      const req = new Request('http://localhost:3000/api/auth/verify-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          challengeToken: setup.challengeToken,
+          code: validCode,
+        }),
+      });
+
+      const res = await authVerify2FAPost(req);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.destination).toBe('/admin');
+      expect(isUser2FAEnrolled(userId)).toBe(true);
+
+      const cookieHeader = res.headers.get('set-cookie') || '';
+      expect(cookieHeader).toContain('kclmc_session=active');
     });
 
     it('POST /api/auth/logout clears session cookies', async () => {

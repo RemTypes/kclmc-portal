@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { QRCodeSVG } from 'qrcode.react';
 import { getSafeRedirectUrl, sanitizeEmail, sanitizeStudentId, UNIVERSITIES, DEFAULT_UNIVERSITY, sanitizeUniversity } from '@/lib/auth';
 import { validatePasswordStrength, PasswordValidationResult } from '@/lib/security/password-validator';
 
@@ -14,7 +15,7 @@ function LoginForm() {
 
   const initialView = searchParams.get('view') === 'sign_up' || searchParams.get('mode') === 'register' ? 'sign_up' : 'sign_in';
   const [mode, setMode] = useState<'password' | 'magic_link'>('password');
-  const [view, setView] = useState<'sign_in' | 'two_factor' | 'sign_up' | 'forgot_password'>(initialView);
+  const [view, setView] = useState<'sign_in' | 'two_factor' | 'two_factor_setup' | 'sign_up' | 'forgot_password'>(initialView);
   
   // Form fields
   const [email, setEmail] = useState('');
@@ -31,6 +32,15 @@ function LoginForm() {
   const [twoFactorMessage, setTwoFactorMessage] = useState('');
   const [twoFactorExpiresAt, setTwoFactorExpiresAt] = useState<number>(0);
   const [twoFactorExpirySeconds, setTwoFactorExpirySeconds] = useState<number>(300);
+
+  // 2FA First-time Setup state
+  const [setupSecret, setSetupSecret] = useState('');
+  const [setupTotpUri, setSetupTotpUri] = useState('');
+  const [setupBackupCodes, setSetupBackupCodes] = useState<string[]>([]);
+  const [showSecretKey, setShowSecretKey] = useState(false);
+  const [copiedSecret, setCopiedSecret] = useState(false);
+  const [copiedCodes, setCopiedCodes] = useState(false);
+  const [setupCode, setSetupCode] = useState('');
 
   // Rate Limiting & CAPTCHA state
   const [loading, setLoading] = useState(false);
@@ -77,7 +87,7 @@ function LoginForm() {
 
   // 2FA countdown timer
   useEffect(() => {
-    if (view !== 'two_factor' || !twoFactorExpiresAt) return;
+    if ((view !== 'two_factor' && view !== 'two_factor_setup') || !twoFactorExpiresAt) return;
     const updateCountdown = () => {
       const remaining = Math.max(0, Math.floor((twoFactorExpiresAt - Date.now()) / 1000));
       setTwoFactorExpirySeconds(remaining);
@@ -86,6 +96,21 @@ function LoginForm() {
     const interval = setInterval(updateCountdown, 1000);
     return () => clearInterval(interval);
   }, [view, twoFactorExpiresAt]);
+
+  const copyToClipboard = async (text: string, type: 'secret' | 'codes') => {
+    try {
+      await navigator.clipboard.writeText(text);
+      if (type === 'secret') {
+        setCopiedSecret(true);
+        setTimeout(() => setCopiedSecret(false), 2500);
+      } else {
+        setCopiedCodes(true);
+        setTimeout(() => setCopiedCodes(false), 2500);
+      }
+    } catch {
+      // Fallback
+    }
+  };
 
   const handleCaptchaVerify = () => {
     const token = `kclmc_captcha_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
@@ -197,7 +222,19 @@ function LoginForm() {
           return;
         }
 
-        // Two-Factor Authentication Challenge Triggered
+        // Two-Factor Authentication Setup Challenge Triggered (Unenrolled committee member)
+        if (data.requires2FASetup) {
+          setChallengeToken(data.challengeToken);
+          setSetupSecret(data.secret || '');
+          setSetupTotpUri(data.totpUri || '');
+          setSetupBackupCodes(data.backupCodes || []);
+          setTwoFactorMessage(data.message || 'Two-factor authentication is required for committee accounts. Please scan the QR code into your authenticator app to complete activation.');
+          setTwoFactorExpiresAt(data.expiresAt || Date.now() + 10 * 60 * 1000);
+          setView('two_factor_setup');
+          return;
+        }
+
+        // Two-Factor Authentication Challenge Triggered (Already enrolled)
         if (data.requires2FA) {
           setChallengeToken(data.challengeToken);
           setTwoFactorMessage(data.message || 'Two-Factor Authentication is required for your account.');
@@ -212,6 +249,45 @@ function LoginForm() {
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Network error during authentication. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSetup2FASubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg('');
+
+    const cleanCode = setupCode.trim().replace(/[^0-9]/g, '');
+    if (cleanCode.length !== 6) {
+      setErrorMsg('Please enter the 6-digit code shown in your authenticator app.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth/verify-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          challengeToken,
+          code: cleanCode,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMsg(data.error || 'Invalid 6-digit code. Please verify the code displayed on your device and try again.');
+        return;
+      }
+
+      // 2FA Verified & setup complete! httpOnly session cookies attached to response
+      router.push(data.destination || next);
+      router.refresh();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Error verifying setup code. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -337,7 +413,11 @@ function LoginForm() {
   let titleText = 'KCLMC Member Portal';
   let descText = 'Sign in to access your verified climbing pass, meet signups & society perks.';
 
-  if (view === 'two_factor') {
+  if (view === 'two_factor_setup') {
+    badgeText = 'Committee Security Setup';
+    titleText = 'Activate 2FA';
+    descText = 'Scan the QR code with your authenticator app to enable your committee account.';
+  } else if (view === 'two_factor') {
     badgeText = 'Two-Factor Verification';
     titleText = 'Security Check';
     descText = 'Enter the 6-digit code or an 8-character single-use backup code.';
@@ -357,11 +437,11 @@ function LoginForm() {
 
   return (
     <div className="min-h-screen bg-[#041F1E] text-slate-100 flex items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans topo-pattern">
-      <div className="max-w-md w-full bg-[#052322] border-2 border-[#FFBD59]/35 rounded-3xl p-6 sm:p-10 shadow-2xl relative z-10">
+      <div className={`w-full ${view === 'two_factor_setup' ? 'max-w-lg' : 'max-w-md'} bg-[#052322] border-2 border-[#FFBD59]/35 rounded-3xl p-6 sm:p-10 shadow-2xl relative z-10 transition-all`}>
         {/* Header */}
         <div className="flex flex-col items-center text-center mb-8">
           <div className="w-12 h-12 rounded-xl bg-[#084746] border border-[#FFBD59]/50 flex items-center justify-center text-2xl shadow-sm mb-3">
-            {view === 'two_factor' ? '🔐' : '⛰️'}
+            {view === 'two_factor' || view === 'two_factor_setup' ? '🔐' : '⛰️'}
           </div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#084746] border border-[#FFBD59]/30 text-[#FFBD59] font-heading font-bold text-xs uppercase tracking-wider mb-2">
             {badgeText}
@@ -430,7 +510,7 @@ function LoginForm() {
         )}
 
         {/* Mode Selector (Password vs Magic Link) */}
-        {view !== 'forgot_password' && view !== 'two_factor' && (
+        {view !== 'forgot_password' && view !== 'two_factor' && view !== 'two_factor_setup' && (
           <div className="flex rounded-xl bg-[#041F1E] p-1 mb-6 border border-[#FFBD59]/30">
             <button
               type="button"
@@ -467,7 +547,135 @@ function LoginForm() {
         )}
 
         {/* View Handling */}
-        {view === 'two_factor' ? (
+        {view === 'two_factor_setup' ? (
+          <form onSubmit={handleSetup2FASubmit} className="space-y-4">
+            <div className="p-3.5 bg-[#084746]/50 border border-[#FFBD59]/30 rounded-2xl text-center space-y-1">
+              <p className="text-xs text-zinc-200 font-sans leading-relaxed">
+                {twoFactorMessage}
+              </p>
+              <div className="text-[11px] font-mono text-[#FFBD59]">
+                Session expires in: {Math.floor(twoFactorExpirySeconds / 60)}:{(twoFactorExpirySeconds % 60).toString().padStart(2, '0')}
+              </div>
+            </div>
+
+            {/* Step 1: Scan QR Code */}
+            <div className="p-4 bg-[#041F1E] border border-[#FFBD59]/40 rounded-2xl space-y-2.5">
+              <div className="flex items-center gap-2 text-xs font-heading font-bold uppercase tracking-wider text-[#FFBD59]">
+                <span className="w-5 h-5 rounded-full bg-[#FFBD59] text-[#052322] flex items-center justify-center text-[10px] font-black">1</span>
+                <span>Scan QR with Authenticator App</span>
+              </div>
+              <p className="text-[11px] text-zinc-300 font-sans leading-relaxed">
+                Open Google Authenticator, Apple Passwords, 1Password, or Microsoft Authenticator and scan this code:
+              </p>
+
+              {setupTotpUri && (
+                <div className="flex flex-col items-center justify-center p-3 bg-white rounded-xl shadow-inner mx-auto w-fit">
+                  <QRCodeSVG value={setupTotpUri} size={150} level="M" />
+                </div>
+              )}
+
+              {/* Manual Secret Key Fallback */}
+              <div className="pt-0.5 text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowSecretKey(!showSecretKey)}
+                  className="text-[11px] text-[#FFBD59] hover:underline cursor-pointer font-sans"
+                >
+                  {showSecretKey ? 'Hide manual secret key' : 'Cannot scan? Enter key manually'}
+                </button>
+
+                {showSecretKey && (
+                  <div className="mt-2 p-2.5 bg-[#052322] border border-[#FFBD59]/30 rounded-xl space-y-1.5 text-center">
+                    <div className="text-[10px] text-zinc-400 font-heading uppercase tracking-wider">
+                      Base32 Secret Key
+                    </div>
+                    <div className="font-mono text-xs text-amber-300 select-all break-all tracking-widest bg-[#041F1E] p-2 rounded border border-[#FFBD59]/20">
+                      {setupSecret}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(setupSecret, 'secret')}
+                      className="text-[10px] py-1 px-3 bg-[#084746] text-[#FFBD59] rounded hover:bg-[#0a5a59] transition-colors border border-[#FFBD59]/30 font-heading font-bold uppercase tracking-wider cursor-pointer"
+                    >
+                      {copiedSecret ? '✓ Key Copied!' : 'Copy Secret Key'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Step 2: Emergency Backup Codes */}
+            {setupBackupCodes.length > 0 && (
+              <div className="p-4 bg-[#041F1E] border border-amber-500/40 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-heading font-bold uppercase tracking-wider text-amber-400">
+                    <span className="w-5 h-5 rounded-full bg-amber-400 text-[#052322] flex items-center justify-center text-[10px] font-black">2</span>
+                    <span>Emergency Backup Codes</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(setupBackupCodes.join('\n'), 'codes')}
+                    className="text-[10px] py-0.5 px-2 bg-amber-950/80 text-amber-300 border border-amber-500/40 rounded hover:bg-amber-900 transition-colors font-mono cursor-pointer"
+                  >
+                    {copiedCodes ? '✓ Copied All' : 'Copy All Codes'}
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-zinc-300 font-sans leading-relaxed">
+                  Save these 8 single-use codes in a safe place. If you lose your phone, each code can be used once to access your account.
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-2 bg-[#052322] rounded-xl border border-amber-500/20 font-mono text-xs text-amber-200 text-center">
+                  {setupBackupCodes.map(code => (
+                    <div key={code} className="py-1 px-1 bg-[#041F1E] rounded border border-amber-500/10 tracking-wider">
+                      {code}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Confirmation Code */}
+            <div className="p-4 bg-[#041F1E] border border-[#FFBD59]/40 rounded-2xl space-y-2">
+              <div className="flex items-center gap-2 text-xs font-heading font-bold uppercase tracking-wider text-[#FFBD59]">
+                <span className="w-5 h-5 rounded-full bg-[#FFBD59] text-[#052322] flex items-center justify-center text-[10px] font-black">3</span>
+                <span>Enter 6-Digit Code to Confirm</span>
+              </div>
+              <input
+                type="text"
+                required
+                autoFocus
+                value={setupCode}
+                onChange={e => setSetupCode(e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder="123456"
+                maxLength={6}
+                className="w-full bg-[#052322] border-2 border-[#FFBD59]/50 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] text-center font-mono text-2xl tracking-[0.3em] font-black transition-colors"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || setupCode.length !== 6 || twoFactorExpirySeconds <= 0}
+              className="w-full py-3.5 bg-[#FFBD59] text-[#052322] font-heading font-black uppercase tracking-wider text-sm rounded-xl hover:bg-[#FFE0A3] transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
+            >
+              {loading ? 'Activating 2FA...' : 'Activate 2FA & Complete Sign In →'}
+            </button>
+
+            <div className="text-center pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setView('sign_in');
+                  setSetupCode('');
+                  setErrorMsg('');
+                }}
+                className="text-xs font-sans text-zinc-400 hover:text-[#FFBD59] transition-colors underline cursor-pointer"
+              >
+                ← Cancel and Return to Sign In
+              </button>
+            </div>
+          </form>
+        ) : view === 'two_factor' ? (
           <form onSubmit={handle2FASubmit} className="space-y-5">
             <div className="p-4 bg-[#084746]/40 border border-[#FFBD59]/30 rounded-2xl text-center space-y-2">
               <p className="text-xs text-zinc-200 font-sans leading-relaxed">
