@@ -31,6 +31,8 @@ import { POST as authResetPost } from '@/app/api/auth/reset-password/route';
 import { POST as authVerify2FAPost } from '@/app/api/auth/verify-2fa/route';
 import { POST as authVerifyOtpPost } from '@/app/api/auth/verify-otp/route';
 import { POST as authLogoutPost } from '@/app/api/auth/logout/route';
+import { GET as authMeGet } from '@/app/api/auth/me/route';
+import { GET as membershipGet, POST as membershipPost } from '@/app/api/membership/route';
 import { NextResponse } from 'next/server';
 
 describe('Security Testing Suite', () => {
@@ -1269,6 +1271,176 @@ describe('Security Testing Suite', () => {
       expect(res.status).toBe(200);
       const cookieHeader = res.headers.get('set-cookie') || '';
       expect(cookieHeader).toContain('Max-Age=0');
+    });
+
+    it('GET /api/auth/me returns authenticated: false when unauthenticated', async () => {
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+        },
+      } as any);
+
+      const res = await authMeGet();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.authenticated).toBe(false);
+      expect(data.user).toBeNull();
+    });
+
+    it('GET /api/auth/me returns user profile and role when session cookie is valid', async () => {
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      const mockUser = { id: 'u-123', email: 'committee@kclmc.org', user_metadata: {} };
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({ data: { user: mockUser }, error: null }),
+        },
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: { id: 'u-123', full_name: 'Test Committee', role: 1, student_id: 'K23158797' },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      } as any);
+
+      const res = await authMeGet();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.authenticated).toBe(true);
+      expect(data.user.email).toBe('committee@kclmc.org');
+      expect(data.user.role).toBe(1);
+      expect(data.user.fullName).toBe('Test Committee');
+    });
+
+    it('GET /api/membership returns membership pass data for authenticated users', async () => {
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      const mockUser = { id: 'u-123', email: 'alice@kcl.ac.uk', user_metadata: {} };
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({ data: { user: mockUser }, error: null }),
+        },
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === 'profiles') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({
+                    data: { id: 'u-123', full_name: 'Alice Richardson', student_id: 'K23158797', university: "King's College London" },
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          if (table === 'kclsu_roster') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({
+                    data: {
+                      card_number: 'K23158797',
+                      full_name: 'Alice Richardson',
+                      tier: 'Social',
+                      product_name: 'Social Membership',
+                      transaction_id: 'TXN-9988',
+                      purchase_date: '2026-09-15',
+                    },
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          return { select: vi.fn().mockReturnThis() };
+        }),
+      } as any);
+
+      vi.mocked(createAdminClient).mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        }),
+      } as any);
+
+      const res = await membershipGet();
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.authenticated).toBe(true);
+      expect(data.boundStudentId).toBe('K23158797');
+      expect(data.membership).toBeDefined();
+      expect(data.membership.membership_number).toBe('K23158797');
+      expect(data.suRecord.name).toBe('Alice Richardson');
+    });
+
+    it('POST /api/membership updates safety notes on the server', async () => {
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      const mockUser = { id: 'u-123', email: 'alice@kcl.ac.uk' };
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({ data: { user: mockUser }, error: null }),
+        },
+        from: vi.fn().mockReturnValue({
+          update: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({
+                  data: { id: 'u-123', phone: '07123456789', emergency_contact_name: 'Jane' },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        }),
+      } as any);
+
+      const req = new Request('http://localhost:3000/api/membership', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: '07123456789',
+          emergencyName: 'Jane',
+          emergencyPhone: '07987654321',
+          dietary: 'Vegetarian',
+        }),
+      });
+
+      const res = await membershipPost(req);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.profile.phone).toBe('07123456789');
+    });
+
+    it('POST /api/auth/login and verify-2fa honor requested next parameter for destination', async () => {
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+
+      const userId = 'u-committee-redirect-test';
+      const email = 'kclmc.committee@gmail.com';
+      const setup = create2FAEnrollmentChallenge(userId, email, 1, {});
+
+      const validCode = calculateTOTP(setup.secret);
+      const req = new Request('http://localhost:3000/api/auth/verify-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          challengeToken: setup.challengeToken,
+          code: validCode,
+          next: '/membership',
+        }),
+      });
+
+      const res = await authVerify2FAPost(req);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.destination).toBe('/membership');
     });
   });
 });

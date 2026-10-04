@@ -196,6 +196,7 @@ function LoginForm() {
             email: cleanEmail,
             password,
             captchaToken: captchaVerified ? captchaToken : undefined,
+            next: searchParams.get('next'),
           }),
         });
 
@@ -244,7 +245,8 @@ function LoginForm() {
         }
 
         // Standard Login Succeeded (httpOnly cookies issued by server)
-        router.push(data.destination || next);
+        const targetUrl = searchParams.get('next') ? next : (data.destination || next);
+        router.push(targetUrl);
         router.refresh();
       }
     } catch (err: any) {
@@ -273,6 +275,7 @@ function LoginForm() {
         body: JSON.stringify({
           challengeToken,
           code: cleanCode,
+          next: searchParams.get('next'),
         }),
       });
 
@@ -284,7 +287,8 @@ function LoginForm() {
       }
 
       // 2FA Verified & setup complete! httpOnly session cookies attached to response
-      router.push(data.destination || next);
+      const targetUrl = searchParams.get('next') ? next : (data.destination || next);
+      router.push(targetUrl);
       router.refresh();
     } catch (err: any) {
       setErrorMsg(err.message || 'Error verifying setup code. Please try again.');
@@ -311,6 +315,7 @@ function LoginForm() {
         body: JSON.stringify({
           challengeToken,
           code: twoFactorCode.trim(),
+          next: searchParams.get('next'),
         }),
       });
 
@@ -322,7 +327,8 @@ function LoginForm() {
       }
 
       // 2FA Verified! httpOnly session cookies attached to response
-      router.push(data.destination || next);
+      const targetUrl = searchParams.get('next') ? next : (data.destination || next);
+      router.push(targetUrl);
       router.refresh();
     } catch (err: any) {
       setErrorMsg(err.message || 'Error verifying two-factor challenge.');

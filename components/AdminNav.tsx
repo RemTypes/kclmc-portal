@@ -9,6 +9,7 @@ export default function AdminNav({ userRole }: { userRole: number }) {
 
   const links = [
     { label: '📊 Dashboard', href: '/admin' },
+    { label: '★ My Membership Pass', href: '/membership' },
     { label: '📝 Content CMS', href: '/admin/content' },
     { label: '💳 KCLSU Reconcile', href: '/admin/reconcile' },
     { label: '📦 Factory Export', href: '/admin/export' },

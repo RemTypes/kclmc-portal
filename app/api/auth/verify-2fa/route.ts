@@ -5,6 +5,7 @@ import { setSessionCookies } from '@/lib/security/cookies';
 
 import { createAdminClient } from '@/lib/supabase/server';
 import { createServerClient } from '@supabase/ssr';
+import { getSafeRedirectUrl } from '@/lib/auth';
 
 function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -21,7 +22,8 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const { challengeToken, code } = body;
+    const { challengeToken, code, next: nextParam } = body;
+    const requestedNext = typeof nextParam === 'string' && nextParam.trim() ? getSafeRedirectUrl(nextParam, '') : '';
 
     const cookieHeader = request.headers.get('cookie') || '';
     const cookieMatch = cookieHeader.match(/kclmc_2fa_pending=([^;]+)/);
@@ -122,7 +124,7 @@ export async function POST(request: Request) {
         email: result.email,
         role: result.role,
       },
-      destination: (result.role || 0) >= 1 ? '/admin' : '/membership',
+      destination: requestedNext || ((result.role || 0) >= 1 ? '/admin' : '/membership'),
     });
 
     // Issue httpOnly, Secure, SameSite=Strict cookies

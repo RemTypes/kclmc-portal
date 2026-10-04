@@ -3,7 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { checkRateLimit, recordFailedAttempt, recordSuccessfulAttempt, verifyCaptchaToken } from '@/lib/security/rate-limiter';
 import { requiresMandatory2FA, create2FAChallenge, create2FAEnrollmentChallenge, isUser2FAEnrolled, getUserTOTPSecret, getUserHashedBackupCodes } from '@/lib/security/two-factor';
 import { setSessionCookies, applySessionCookies } from '@/lib/security/cookies';
-import { getUserRole, getAuthenticatedUserRole, sanitizeEmail } from '@/lib/auth';
+import { getUserRole, getAuthenticatedUserRole, sanitizeEmail, getSafeRedirectUrl } from '@/lib/auth';
 
 function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -20,7 +20,8 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const { email, password, captchaToken } = body;
+    const { email, password, captchaToken, next: nextParam } = body;
+    const requestedNext = typeof nextParam === 'string' && nextParam.trim() ? getSafeRedirectUrl(nextParam, '') : '';
 
     const cleanEmail = sanitizeEmail(email);
 
@@ -128,7 +129,7 @@ export async function POST(request: Request) {
           backupCodes: setup.backupCodes,
           expiresAt: setup.expiresAt,
           message: 'Two-factor authentication is required for committee accounts. Please scan the QR code into your authenticator app to complete activation.',
-          destination: userRole >= 1 ? '/admin' : '/membership',
+          destination: requestedNext || (userRole >= 1 ? '/admin' : '/membership'),
         });
 
         response.cookies.set('kclmc_2fa_pending', setup.challengeToken, {
@@ -162,7 +163,7 @@ export async function POST(request: Request) {
         challengeToken: challenge.challengeToken,
         expiresAt: challenge.expiresAt,
         message: 'Please enter the 6-digit code from your authenticator app or an emergency backup code.',
-        destination: userRole >= 1 ? '/admin' : '/membership',
+        destination: requestedNext || (userRole >= 1 ? '/admin' : '/membership'),
       });
 
       response.cookies.set('kclmc_2fa_pending', challenge.challengeToken, {
@@ -186,7 +187,7 @@ export async function POST(request: Request) {
         email: user.email,
         role: userRole,
       },
-      destination: userRole >= 1 ? '/admin' : '/membership',
+      destination: requestedNext || (userRole >= 1 ? '/admin' : '/membership'),
     });
 
     if (cookiesToSet.length > 0) {
