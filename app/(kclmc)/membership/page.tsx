@@ -363,7 +363,7 @@ export default function MembershipDashboard() {
           } else if (res.status === 409) {
             errorMsg = `Student ID "${cleanId}" is already linked to another account.`;
           } else {
-            errorMsg = `Verification server returned status ${res.status}. Please try again or contact committee@kclmc.org.`;
+            errorMsg = `Verification server returned status ${res.status}. Please try again or contact kclmc.committee@gmail.com.`;
           }
         }
         setSearchError(errorMsg);
@@ -577,7 +577,7 @@ export default function MembershipDashboard() {
             </div>
             <div className="text-xs font-mono text-zinc-400 text-left md:text-right shrink-0">
               <span className="block text-zinc-400">Need to update or re-link?</span>
-              <a href="mailto:committee@kclmc.org" className="text-[#FFBD59] hover:underline">
+              <a href="mailto:kclmc.committee@gmail.com" className="text-[#FFBD59] hover:underline">
                 Contact Committee →
               </a>
             </div>

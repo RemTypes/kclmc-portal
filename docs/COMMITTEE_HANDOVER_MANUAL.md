@@ -196,7 +196,7 @@ export type Role = 0 | 1 | 2;
    - `SUPERADMIN_EMAIL`: Defaults to `admin@kclmc.org` (and whitelists platform lead `remy.preston@outlook.com`). Anyone authenticated with this email receives **Role 2**.
    - `COMMITTEE_EMAILS`: Comma-separated list in `.env.local` or Cloudflare dashboard:
      ```bash
-     COMMITTEE_EMAILS=president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org,remy.preston@outlook.com,remy.preston@kcl.ac.uk
+     COMMITTEE_EMAILS=kclmc.committee@gmail.com,president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org,remy.preston@outlook.com,remy.preston@kcl.ac.uk
      ```
      Any user signing in with an email in this list automatically resolves to **Role 1 (Committee Member)** (or Role 2 if lead).
 3. **Admin Layout Protection**: The `app/admin/layout.tsx` component automatically checks user authentication via `getAuthenticatedUserRole()`. If unauthenticated, it redirects to `/login?next=/admin`. If the authenticated user is not committee, it renders `app/403/page.tsx` (Forbidden).
@@ -292,7 +292,7 @@ The following table documents all external canonical links used across the platf
 | **The Castle Climbing Centre** | `https://www.castle-climbing.co.uk/` | Partner roped climbing gym portal |
 | **The Arch (Climbing District)**| `https://climbingdistrict.uk/` | Partner bouldering gym portal |
 | **Instagram** | `https://www.instagram.com/kclmc/` | Official club social updates & dispatches |
-| **Club Email** | `mailto:committee@kclmc.org` / `mailto:portal@kclmc.org` | Official committee contact |
+| **Club Email** | `mailto:kclmc.committee@gmail.com` | Official committee contact |
 
 ---
 
@@ -316,7 +316,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key-here
 # 3. Role-Based Access Control (RBAC) Whitelists
 # ------------------------------------------------------------------------------
 SUPERADMIN_EMAIL=admin@kclmc.org
-COMMITTEE_EMAILS=president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org
+COMMITTEE_EMAILS=kclmc.committee@gmail.com,president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org
 
 # ------------------------------------------------------------------------------
 # 4. Email Delivery & SMTP Configuration (Purelymail)
@@ -432,7 +432,7 @@ Under Article 32 of UK GDPR, the club must maintain off-site data availability.
 | :--- | :--- | :--- |
 | **Pass lookup shows "Database not configured" or local preview** | `NEXT_PUBLIC_SUPABASE_URL` is missing or pointing to placeholder | Check `.env.local` or Cloudflare dashboard variables. Ensure valid HTTPS Supabase URL is set. |
 | **Pass shows "No official KCLMC membership found"** | Member hasn't been uploaded via KCLSU CSV or entered wrong K-number | Have member verify their K-number from their student ID card. Check `/admin/reconcile` to verify the KCLSU CSV report was uploaded. |
-| **Pass says "Student ID already linked to another account"** | Student registered with a personal email and is trying to link from a different account | Search student ID in Supabase `profiles` or `kclsu_roster`. Clear the conflicting `user_id` or contact `committee@kclmc.org`. |
+| **Pass says "Student ID already linked to another account"** | Student registered with a personal email and is trying to link from a different account | Search student ID in Supabase `profiles` or `kclsu_roster`. Clear the conflicting `user_id` or contact `kclmc.committee@gmail.com`. |
 | **Supabase database paused** | Free-tier 7-day inactivity pause triggered | Log into `supabase.com`, click **Restore Project**. Verify the uptime keep-alive ping to `https://kclmc.org/api/health` is firing daily. |
 | **Committee user gets redirected to 403 Forbidden on /admin** | Their email is not in the `COMMITTEE_EMAILS` whitelist | Add their email to `COMMITTEE_EMAILS` in Cloudflare Variables and trigger a redeploy, or update their `role` to `1` in `public.profiles`. |
 | **QR code scanner doesn't open camera on phone** | Camera permissions blocked or site accessed via insecure HTTP | Ensure accessing via `https://kclmc.org/admin/scan` (cameras require HTTPS context). Allow browser camera permissions in phone settings. |

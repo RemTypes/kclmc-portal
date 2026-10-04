@@ -124,10 +124,10 @@ export default function Footer() {
             Inquiries, emergency contact verification, or data subject requests:
           </p>
           <a
-            href="mailto:portal@kclmc.org"
+            href="mailto:kclmc.committee@gmail.com"
             className="inline-block text-xs font-mono text-[#FFBD59] hover:underline"
           >
-            portal@kclmc.org
+            kclmc.committee@gmail.com
           </a>
           <div className="pt-2 flex flex-col gap-2">
             <a

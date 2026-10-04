@@ -462,6 +462,7 @@ describe('Security Testing Suite', () => {
       expect(getUserRole('treasurer@kclmc.org')).toBe(1);
       expect(getUserRole('gear@kclmc.org')).toBe(1);
       expect(getUserRole('portal@kclmc.org')).toBe(1);
+      expect(getUserRole('kclmc.committee@gmail.com')).toBe(1);
     });
 
     it('assigns Role 2 (SuperAdmin) strictly to superadmin email', () => {

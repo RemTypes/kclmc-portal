@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
     if (existingProfile && existingProfile.id !== user.id) {
       return NextResponse.json(
-        { error: `Student ID "${safeDisplayId}" is already linked to another KCLMC account. If this is your student ID, please contact committee@kclmc.org.` },
+        { error: `Student ID "${safeDisplayId}" is already linked to another KCLMC account. If this is your student ID, please contact kclmc.committee@gmail.com.` },
         { status: 409, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
 
     if (existingRoster && existingRoster.user_id && existingRoster.user_id !== user.id) {
       return NextResponse.json(
-        { error: `Student ID "${safeDisplayId}" is already linked to another KCLMC account. If this is your student ID, please contact committee@kclmc.org.` },
+        { error: `Student ID "${safeDisplayId}" is already linked to another KCLMC account. If this is your student ID, please contact kclmc.committee@gmail.com.` },
         { status: 409, headers: { 'Content-Type': 'application/json' } }
       );
     }

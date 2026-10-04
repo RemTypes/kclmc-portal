@@ -42,7 +42,7 @@ export default function PrivacyPolicyPage() {
             <div><strong className="text-white">Charity Umbrella:</strong> King&apos;s College London Students&apos; Union (KCLSU)</div>
             <div><strong className="text-white">Registered Address:</strong> Student Centre, Macadam Building, Surrey Street, London WC2R 2NS, UK</div>
             <div><strong className="text-white">ICO Fee Status:</strong> Exempt under Data Protection (Charges and Information) Regulations 2018 (Not-for-Profit Exemption; operates under KCLSU Charity No. 1136043 ICO registration)</div>
-            <div><strong className="text-white">Data Protection Contact:</strong> <a href="mailto:portal@kclmc.org" className="text-[#FFBD59] underline">portal@kclmc.org</a></div>
+            <div><strong className="text-white">Data Protection Contact:</strong> <a href="mailto:kclmc.committee@gmail.com" className="text-[#FFBD59] underline">kclmc.committee@gmail.com</a></div>
           </div>
         </section>
 
@@ -168,7 +168,7 @@ export default function PrivacyPolicyPage() {
             </div>
           </div>
           <p className="text-xs text-zinc-400 mt-2">
-            To exercise any of these rights, email us at <a href="mailto:portal@kclmc.org" className="text-[#FFBD59] underline">portal@kclmc.org</a>. We respond to all verified requests within 30 days as required by UK law. You also have the right to lodge a complaint with the <strong>Information Commissioner&apos;s Office (ICO)</strong> at <a href="https://ico.org.uk" target="_blank" rel="noopener noreferrer" className="text-[#FFBD59] underline">ico.org.uk</a>.
+            To exercise any of these rights, email us at <a href="mailto:kclmc.committee@gmail.com" className="text-[#FFBD59] underline">kclmc.committee@gmail.com</a>. We respond to all verified requests within 30 days as required by UK law. You also have the right to lodge a complaint with the <strong>Information Commissioner&apos;s Office (ICO)</strong> at <a href="https://ico.org.uk" target="_blank" rel="noopener noreferrer" className="text-[#FFBD59] underline">ico.org.uk</a>.
           </p>
         </section>
 
