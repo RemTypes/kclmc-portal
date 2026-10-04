@@ -4,18 +4,20 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { modulesConfig, ModuleDefinition } from '@/config/modules.config';
 import { ROLE_NAMES, Role } from '@/lib/auth';
-import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
 export default function AdminModulesPage() {
   const [modules, setModules] = useState<Record<string, ModuleDefinition>>(modulesConfig);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setCurrentUser(user);
-    });
+    fetch('/api/auth/me')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.authenticated && data?.user) {
+          setCurrentUser(data.user);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleToggle = (id: string) => {

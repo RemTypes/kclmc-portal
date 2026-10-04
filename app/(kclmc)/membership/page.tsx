@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import MembershipCard from '@/components/MembershipCard';
 import { findMemberByCardNumber, KclsuMemberRecord } from '@/lib/roster';
 import { UNIVERSITIES, DEFAULT_UNIVERSITY, sanitizeUniversity } from '@/lib/auth';
@@ -194,7 +193,6 @@ function MembershipTierGuide() {
 
 export default function MembershipDashboard() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
 
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -218,111 +216,49 @@ export default function MembershipDashboard() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  useEffect(() => {
-    async function loadUserData() {
-      try {
-        if (!isSupabaseConfigured()) {
-          setLoading(false);
+  const loadUserData = async () => {
+    try {
+      const res = await fetch('/api/membership', { method: 'GET', cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          setCurrentUser(data.user);
+          setProfile(data.profile || null);
+          setBoundStudentId(data.boundStudentId || null);
+          setSuRecord(data.suRecord || null);
+          setMembership(data.membership || null);
+
+          if (data.profile) {
+            setPhone(data.profile.phone || '');
+            setEmergencyName(data.profile.emergency_contact_name || '');
+            setEmergencyPhone(data.profile.emergency_contact_phone || '');
+            setDietary(data.profile.dietary_requirements || '');
+
+            if (data.profile.university) {
+              if ((UNIVERSITIES as readonly string[]).includes(data.profile.university)) {
+                setUniversity(data.profile.university);
+                setCustomUniversity('');
+              } else {
+                setUniversity('Other UK Institution');
+                setCustomUniversity(data.profile.university);
+              }
+            }
+          }
           return;
         }
-
-        const { data: { user } } = await supabase.auth.getUser();
-
-        if (!user) {
-          setCurrentUser(null);
-          setLoading(false);
-          return;
-        }
-
-        setCurrentUser(user);
-
-        // Fetch profile
-        const { data: profData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .maybeSingle();
-
-        if (profData) {
-          setProfile(profData);
-          setPhone(profData.phone || '');
-          setEmergencyName(profData.emergency_contact_name || '');
-          setEmergencyPhone(profData.emergency_contact_phone || '');
-          setDietary(profData.dietary_requirements || '');
-
-          if (profData.university) {
-            if ((UNIVERSITIES as readonly string[]).includes(profData.university)) {
-              setUniversity(profData.university);
-              setCustomUniversity('');
-            } else {
-              setUniversity('Other UK Institution');
-              setCustomUniversity(profData.university);
-            }
-          }
-
-          let activeStudentId = profData.student_id;
-          if (!activeStudentId) {
-            const { data: linkedRoster } = await supabase
-              .from('kclsu_roster')
-              .select('card_number')
-              .eq('user_id', user.id)
-              .maybeSingle();
-            if (linkedRoster) {
-              activeStudentId = linkedRoster.card_number;
-            }
-          }
-
-          if (activeStudentId) {
-            const cleanId = activeStudentId.trim().toUpperCase();
-            setBoundStudentId(cleanId);
-
-            // Fetch official verified details for this user's bound student ID
-            let matched: KclsuMemberRecord | null = null;
-            const { data: rosterRow } = await supabase
-              .from('kclsu_roster')
-              .select('*')
-              .eq('card_number', cleanId)
-              .maybeSingle();
-
-            if (rosterRow) {
-              matched = {
-                cardNumber: rosterRow.card_number,
-                name: rosterRow.full_name,
-                rawPurchaser: rosterRow.raw_purchaser || '',
-                tier: rosterRow.tier,
-                productName: rosterRow.product_name,
-                transactionId: rosterRow.transaction_id,
-                purchaseDate: rosterRow.purchase_date || '',
-              };
-            } else {
-              matched = findMemberByCardNumber(cleanId) || null;
-            }
-
-            if (matched) {
-              setSuRecord(matched);
-              setMembership({
-                id: matched.cardNumber,
-                user_id: user.id,
-                membership_number: matched.cardNumber,
-                tier: matched.tier,
-                valid_from: '2026-09-01',
-                valid_until: '2027-08-31',
-                payment_reference: matched.transactionId,
-                is_active: true,
-                created_at: new Date().toISOString(),
-              });
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Error loading membership data:', err);
-      } finally {
-        setLoading(false);
       }
+      setCurrentUser(null);
+    } catch (err) {
+      console.error('Error loading membership data:', err);
+      setCurrentUser(null);
+    } finally {
+      setLoading(false);
     }
+  };
 
+  useEffect(() => {
     loadUserData();
-  }, [supabase]);
+  }, []);
 
   // Handle one-time student ID linking to authenticated account
   const handleLinkStudentId = async (e: React.FormEvent) => {
@@ -410,60 +346,42 @@ export default function MembershipDashboard() {
     setSaving(true);
     setSaveSuccess(false);
 
-    const effectiveUniversity = sanitizeUniversity(
-      university === 'Other UK Institution' ? customUniversity : university
-    );
-
     try {
-      if (profile && isSupabaseConfigured()) {
-        const { error } = await supabase
-          .from('profiles')
-          .update({
-            university: effectiveUniversity,
-            phone,
-            emergency_contact_name: emergencyName,
-            emergency_contact_phone: emergencyPhone,
-            dietary_requirements: dietary,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', profile.id);
+      const res = await fetch('/api/membership', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          university,
+          customUniversity,
+          phone,
+          emergencyName,
+          emergencyPhone,
+          dietary,
+        }),
+      });
 
-        if (!error) {
-          setProfile(prev => prev ? {
-            ...prev,
-            university: effectiveUniversity,
-            phone,
-            emergency_contact_name: emergencyName,
-            emergency_contact_phone: emergencyPhone,
-            dietary_requirements: dietary,
-          } : null);
-          setSaveSuccess(true);
-          setTimeout(() => setSaveSuccess(false), 3000);
-        }
-      } else {
-        if (profile) {
-          setProfile(prev => prev ? {
-            ...prev,
-            university: effectiveUniversity,
-            phone,
-            emergency_contact_name: emergencyName,
-            emergency_contact_phone: emergencyPhone,
-            dietary_requirements: dietary,
-          } : null);
-        }
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update safety notes');
       }
+
+      if (data.profile) {
+        setProfile(data.profile);
+      }
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
-      console.error(err);
+      console.error('Error updating safety notes:', err);
     } finally {
       setSaving(false);
     }
   };
 
   const handleSignOut = async () => {
-    if (isSupabaseConfigured()) {
-      await supabase.auth.signOut();
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Ignore network errors on logout
     }
     setCurrentUser(null);
     setProfile(null);

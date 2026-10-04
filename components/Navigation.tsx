@@ -1,31 +1,36 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
 export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [user, setUser] = useState<any>(null);
 
+  const checkAuth = async () => {
+    try {
+      const res = await fetch('/api/auth/me', { method: 'GET', cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          setUser(data.user);
+          return;
+        }
+      }
+      setUser(null);
+    } catch {
+      setUser(null);
+    }
+  };
+
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
-
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => {
-      subscription?.unsubscribe();
-    };
-  }, [supabase]);
+    checkAuth();
+    const handleFocus = () => checkAuth();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [pathname]);
 
   const handleSignOut = async () => {
     try {
@@ -33,7 +38,6 @@ export default function Navigation() {
     } catch {
       // Ignore network errors on logout
     }
-    await supabase.auth.signOut();
     setUser(null);
     router.push('/');
     router.refresh();
