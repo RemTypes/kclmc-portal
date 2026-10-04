@@ -25,7 +25,7 @@ export function getUserRole(email: string | null | undefined, roleOverride?: str
   ) {
     return 2;
   }
-  const committeeEmails = (process.env.COMMITTEE_EMAILS || 'president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org,remy.preston@outlook.com,remy.preston@kcl.ac.uk')
+  const committeeEmails = (process.env.COMMITTEE_EMAILS || 'kclmc.committee@gmail.com,president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org,remy.preston@outlook.com,remy.preston@kcl.ac.uk')
     .split(',')
     .map(e => e.trim().toLowerCase());
   if (committeeEmails.includes(normalized)) return 1;

@@ -69,7 +69,7 @@ export default function AccessibilityPolicyPage() {
             Prospective and current members requiring accommodations are encouraged to reach out before sessions or trips so we can ensure suitable gear, callers, and ratios are in place:
           </p>
           <div className="bg-[#041F1E] border border-[#084746] rounded-2xl p-4 text-xs font-mono text-zinc-300 space-y-2">
-            <div><strong className="text-white">Email Contact:</strong> <a href="mailto:portal@kclmc.org" className="text-[#FFBD59] underline">portal@kclmc.org</a> / <a href="mailto:committee@kclmc.org" className="text-[#FFBD59] underline">committee@kclmc.org</a></div>
+            <div><strong className="text-white">Email Contact:</strong> <a href="mailto:kclmc.committee@gmail.com" className="text-[#FFBD59] underline">kclmc.committee@gmail.com</a></div>
             <div><strong className="text-white">Confidentiality:</strong> Medical and disability disclosures are treated as Special Category Data under UK GDPR Article 9 and shared strictly on a need-to-know basis with your designated trip leader.</div>
             <div><strong className="text-white">KCLSU Disability Officer:</strong> We liaise directly with the KCLSU Student Societies Inclusion team to fund specialized equipment where required.</div>
           </div>
@@ -98,7 +98,7 @@ export default function AccessibilityPolicyPage() {
             </div>
           </div>
           <p className="text-xs text-zinc-400 mt-2">
-            If you encounter any accessibility barriers on our digital platform or require documents in an alternative format (large print, audio transcript, plain text), please contact <a href="mailto:portal@kclmc.org" className="text-[#FFBD59] underline">portal@kclmc.org</a>.
+            If you encounter any accessibility barriers on our digital platform or require documents in an alternative format (large print, audio transcript, plain text), please contact <a href="mailto:kclmc.committee@gmail.com" className="text-[#FFBD59] underline">kclmc.committee@gmail.com</a>.
           </p>
         </section>
 
