@@ -24,10 +24,15 @@ export interface Pending2FAChallenge {
   sessionData?: any; // Stored session payload or cookie tuples to promote upon successful 2FA
   enrollSecret?: string;
   isSetup?: boolean;
+  totpSecret?: string;
+  hashedBackupCodes?: string[];
 }
 
 // In-memory challenge store (keyed by challengeToken)
 const pendingChallenges = new Map<string, Pending2FAChallenge>();
+
+// Set of invalidated or consumed challenge tokens (to prevent replay and reuse)
+const invalidatedChallenges = new Set<string>();
 
 // Account backup codes store (in-memory with hashing, persistent across session in memory)
 // Map<userId, Set<hashedBackupCode>>
@@ -41,6 +46,72 @@ const MAX_OTP_ATTEMPTS = 3;
 
 function hashToken(val: string): string {
   return crypto.createHash('sha256').update(val).digest('hex');
+}
+
+function getTwoFactorSecretKey(): Buffer {
+  const secret =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXTAUTH_SECRET ||
+    process.env.SUPABASE_JWT_SECRET ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    'kclmc-secure-production-2fa-token-salt-2026';
+  return crypto.createHash('sha256').update(`kclmc-2fa-seal:${secret}`).digest();
+}
+
+/**
+ * Statelessly seal a 2FA challenge using AES-256-GCM authenticated encryption.
+ * Survives across Cloudflare Workers isolates, serverless cold starts, and multi-region routing.
+ */
+export function sealChallenge(challenge: Pending2FAChallenge): string {
+  try {
+    const key = getTwoFactorSecretKey();
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const plainText = JSON.stringify(challenge);
+    let ciphertext = cipher.update(plainText, 'utf8', 'base64url');
+    ciphertext += cipher.final('base64url');
+    const authTag = cipher.getAuthTag().toString('base64url');
+    return `${iv.toString('base64url')}.${authTag}.${ciphertext}`;
+  } catch (e) {
+    console.error('Failed to seal 2FA challenge:', e);
+    return challenge.challengeToken || crypto.randomBytes(32).toString('hex');
+  }
+}
+
+/**
+ * Unseal and verify a sealed 2FA challenge token.
+ */
+export function unsealChallenge(token: string): Pending2FAChallenge | null {
+  if (!token) return null;
+  if (invalidatedChallenges.has(token)) {
+    return null;
+  }
+  // If in-memory map has it (e.g. unit test or same isolate)
+  if (pendingChallenges.has(token)) {
+    return pendingChallenges.get(token) || null;
+  }
+
+  // Check if token is sealed (iv.tag.ciphertext format)
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  try {
+    const [ivB64, tagB64, cipherB64] = parts;
+    const key = getTwoFactorSecretKey();
+    const iv = Buffer.from(ivB64, 'base64url');
+    const tag = Buffer.from(tagB64, 'base64url');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(tag);
+    let decrypted = decipher.update(cipherB64, 'base64url', 'utf8');
+    decrypted += decipher.final('utf8');
+    const payload = JSON.parse(decrypted) as Pending2FAChallenge;
+    return payload;
+  } catch (e) {
+    console.warn('Failed to unseal 2FA challenge token:', e);
+    return null;
+  }
 }
 
 /**
@@ -69,14 +140,14 @@ export function create2FAEnrollmentChallenge(
   role: number,
   sessionData?: any
 ): { challengeToken: string; secret: string; totpUri: string; backupCodes: string[]; expiresAt: number } {
-  const challengeToken = crypto.randomBytes(32).toString('hex');
   const secret = generateTOTPSecret();
   const totpUri = `otpauth://totp/KCLMC:${encodeURIComponent(email)}?secret=${secret}&issuer=KCLMC&period=30&digits=6`;
   const backupCodes = generateBackupCodes(userId);
   const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes for setup
+  const hashedBackupCodes = getUserHashedBackupCodes(userId);
 
-  pendingChallenges.set(challengeToken, {
-    challengeToken,
+  const rawChallenge: Pending2FAChallenge = {
+    challengeToken: '',
     userId,
     email,
     role,
@@ -86,7 +157,13 @@ export function create2FAEnrollmentChallenge(
     sessionData,
     enrollSecret: secret,
     isSetup: true,
-  });
+    hashedBackupCodes,
+  };
+
+  const challengeToken = sealChallenge(rawChallenge);
+  rawChallenge.challengeToken = challengeToken;
+
+  pendingChallenges.set(challengeToken, rawChallenge);
 
   return { challengeToken, secret, totpUri, backupCodes, expiresAt };
 }
@@ -188,16 +265,20 @@ export function create2FAChallenge(
   userId: string,
   email: string,
   role: number,
-  sessionData?: any
+  sessionData?: any,
+  totpSecret?: string,
+  userBackupCodesList?: string[]
 ): { challengeToken: string; otpCode: string; expiresAt: number } {
-  const challengeToken = crypto.randomBytes(32).toString('hex');
   // Generate 6-digit numeric OTP
   const otpCode = crypto.randomInt(100000, 999999).toString();
   const hashedOtp = hashToken(otpCode);
   const expiresAt = Date.now() + OTP_EXPIRY_MS;
 
-  pendingChallenges.set(challengeToken, {
-    challengeToken,
+  const resolvedTotpSecret = totpSecret || userTotpSecrets.get(userId);
+  const resolvedBackupCodes = userBackupCodesList || getUserHashedBackupCodes(userId);
+
+  const rawChallenge: Pending2FAChallenge = {
+    challengeToken: '',
     userId,
     email,
     role,
@@ -205,7 +286,14 @@ export function create2FAChallenge(
     expiresAt,
     attemptsLeft: MAX_OTP_ATTEMPTS,
     sessionData,
-  });
+    totpSecret: resolvedTotpSecret,
+    hashedBackupCodes: resolvedBackupCodes,
+  };
+
+  const challengeToken = sealChallenge(rawChallenge);
+  rawChallenge.challengeToken = challengeToken;
+
+  pendingChallenges.set(challengeToken, rawChallenge);
 
   return { challengeToken, otpCode, expiresAt };
 }
@@ -283,18 +371,20 @@ export function verify2FAChallenge(
     return { success: false, error: 'Challenge token and verification code are required' };
   }
 
-  const challenge = pendingChallenges.get(challengeToken);
+  const challenge = unsealChallenge(challengeToken);
   if (!challenge) {
     return { success: false, error: 'Invalid or expired 2FA session. Please log in again.' };
   }
 
   const now = Date.now();
   if (now > challenge.expiresAt) {
+    invalidatedChallenges.add(challengeToken);
     pendingChallenges.delete(challengeToken);
-    return { success: false, error: '2FA code has expired. Please request a new code.' };
+    return { success: false, error: '2FA session has expired. Please log in again.' };
   }
 
   if (challenge.attemptsLeft <= 0) {
+    invalidatedChallenges.add(challengeToken);
     pendingChallenges.delete(challengeToken);
     return { success: false, error: 'Maximum verification attempts exceeded. Please log in again.' };
   }
@@ -307,8 +397,9 @@ export function verify2FAChallenge(
   if (challenge.isSetup && challenge.enrollSecret) {
     if (cleanNumeric.length === 6 && verifyTOTP(challenge.enrollSecret, cleanNumeric)) {
       setUserTOTPSecret(challenge.userId, challenge.enrollSecret);
+      invalidatedChallenges.add(challengeToken);
       pendingChallenges.delete(challengeToken);
-      const hashedBackupCodes = getUserHashedBackupCodes(challenge.userId);
+      const hashedBackupCodes = challenge.hashedBackupCodes || getUserHashedBackupCodes(challenge.userId);
       return {
         success: true,
         userId: challenge.userId,
@@ -326,6 +417,7 @@ export function verify2FAChallenge(
   if (cleanNumeric.length === 6) {
     const hashedAttempt = hashToken(cleanNumeric);
     if (challenge.hashedOtp && hashedAttempt === challenge.hashedOtp) {
+      invalidatedChallenges.add(challengeToken);
       pendingChallenges.delete(challengeToken);
       return {
         success: true,
@@ -337,9 +429,10 @@ export function verify2FAChallenge(
       };
     }
 
-    // Check TOTP if user has authenticator secret configured
-    const userTotpSecret = userTotpSecrets.get(challenge.userId);
+    // Check TOTP if user has authenticator secret configured (in challenge or memory)
+    const userTotpSecret = challenge.totpSecret || userTotpSecrets.get(challenge.userId);
     if (userTotpSecret && verifyTOTP(userTotpSecret, cleanNumeric)) {
+      invalidatedChallenges.add(challengeToken);
       pendingChallenges.delete(challengeToken);
       return {
         success: true,
@@ -354,11 +447,18 @@ export function verify2FAChallenge(
 
   // 2. Check Backup Code (8 chars e.g. XXXX-XXXX or XXXXXXXX)
   const userCodes = userBackupCodes.get(challenge.userId);
-  if (userCodes && cleanBackup.length === 8) {
+  const challengeCodesSet = challenge.hashedBackupCodes && challenge.hashedBackupCodes.length > 0
+    ? new Set(challenge.hashedBackupCodes)
+    : null;
+  const codesSet = userCodes || challengeCodesSet;
+
+  if (codesSet && cleanBackup.length === 8) {
     const hashedAttempt = hashToken(cleanBackup);
-    if (userCodes.has(hashedAttempt)) {
+    if (codesSet.has(hashedAttempt)) {
       // Burn the single-use backup code
-      userCodes.delete(hashedAttempt);
+      if (userCodes) userCodes.delete(hashedAttempt);
+      if (challengeCodesSet) challengeCodesSet.delete(hashedAttempt);
+      invalidatedChallenges.add(challengeToken);
       pendingChallenges.delete(challengeToken);
       return {
         success: true,
@@ -367,7 +467,7 @@ export function verify2FAChallenge(
         role: challenge.role,
         sessionData: challenge.sessionData,
         usedBackupCode: true,
-        remainingBackupCodes: Array.from(userCodes),
+        remainingBackupCodes: Array.from(codesSet),
       };
     }
   }
@@ -375,6 +475,7 @@ export function verify2FAChallenge(
   // Failed attempt
   challenge.attemptsLeft -= 1;
   if (challenge.attemptsLeft <= 0) {
+    invalidatedChallenges.add(challengeToken);
     pendingChallenges.delete(challengeToken);
     return {
       success: false,
@@ -390,6 +491,7 @@ export function verify2FAChallenge(
 
 export function clear2FAStores(): void {
   pendingChallenges.clear();
+  invalidatedChallenges.clear();
   userBackupCodes.clear();
   userTotpSecrets.clear();
 }

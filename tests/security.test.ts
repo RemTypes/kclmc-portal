@@ -1082,6 +1082,27 @@ describe('Security Testing Suite', () => {
       const verify = verify2FAChallenge(challenge.challengeToken, code);
       expect(verify.success).toBe(true);
     });
+
+    it('verifies 2FA setup across different Cloudflare Worker isolates without in-memory state', () => {
+      // Simulate Worker Isolate A creating enrollment challenge
+      const userId = 'worker-isolate-user';
+      const setup = create2FAEnrollmentChallenge(userId, 'comm@kclmc.org', 1, { session: { token: 'jwt' } });
+      const challengeToken = setup.challengeToken;
+      const setupSecret = setup.secret;
+
+      // Simulate Worker Isolate A recycling or Request B hitting separate Isolate B with zero shared memory
+      clear2FAStores();
+
+      // Verify code on Isolate B
+      const validCode = calculateTOTP(setupSecret);
+      const result = verify2FAChallenge(challengeToken, validCode);
+
+      expect(result.success).toBe(true);
+      expect(result.userId).toBe(userId);
+      expect(result.usedTOTP).toBe(true);
+      expect(result.enrolledSecret).toBe(setupSecret);
+      expect(result.sessionData).toEqual({ session: { token: 'jwt' } });
+    });
   });
 
   // =========================================================================
