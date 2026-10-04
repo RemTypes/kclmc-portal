@@ -3,6 +3,9 @@ import { verify2FAChallenge } from '@/lib/security/two-factor';
 import { checkRateLimit, recordFailedAttempt, recordSuccessfulAttempt } from '@/lib/security/rate-limiter';
 import { setSessionCookies } from '@/lib/security/cookies';
 
+import { createAdminClient } from '@/lib/supabase/server';
+import { createServerClient } from '@supabase/ssr';
+
 function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) return forwarded.split(',')[0].trim();
@@ -46,6 +49,61 @@ export async function POST(request: Request) {
     }
 
     recordSuccessfulAttempt(ip, result.email);
+
+    // Persist 2FA enrollment to Supabase user metadata
+    if (result.enrolledSecret && result.userId) {
+      try {
+        const adminSupabase = createAdminClient();
+        if (adminSupabase?.auth?.admin?.updateUserById) {
+          await adminSupabase.auth.admin.updateUserById(result.userId, {
+            user_metadata: {
+              is_2fa_enrolled: true,
+              totp_secret: result.enrolledSecret,
+              backup_codes: result.hashedBackupCodes || [],
+            },
+          });
+        }
+      } catch (adminErr) {
+        console.warn('[2FA] Admin persistence warning:', adminErr);
+      }
+
+      const accessToken = result.sessionData?.session?.access_token;
+      if (accessToken) {
+        try {
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsvnyibipcwrcyzqilge.supabase.co';
+          const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg';
+          const userSupabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+            global: { headers: { Authorization: `Bearer ${accessToken}` } },
+            cookies: { getAll() { return []; }, setAll() {} },
+          });
+          await userSupabase.auth.updateUser({
+            data: {
+              is_2fa_enrolled: true,
+              totp_secret: result.enrolledSecret,
+              backup_codes: result.hashedBackupCodes || [],
+            },
+          });
+        } catch (userErr) {
+          console.warn('[2FA] User metadata update warning:', userErr);
+        }
+      }
+    }
+
+    // Update remaining backup codes if a backup code was burned
+    if (result.usedBackupCode && result.userId && result.remainingBackupCodes) {
+      try {
+        const adminSupabase = createAdminClient();
+        if (adminSupabase?.auth?.admin?.updateUserById) {
+          await adminSupabase.auth.admin.updateUserById(result.userId, {
+            user_metadata: {
+              backup_codes: result.remainingBackupCodes,
+            },
+          });
+        }
+      } catch (e) {
+        // non-fatal
+      }
+    }
 
     const response = NextResponse.json({
       success: true,

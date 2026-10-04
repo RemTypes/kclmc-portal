@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { checkRateLimit, recordFailedAttempt, recordSuccessfulAttempt, verifyCaptchaToken } from '@/lib/security/rate-limiter';
-import { requiresMandatory2FA, create2FAChallenge } from '@/lib/security/two-factor';
+import { requiresMandatory2FA, create2FAChallenge, create2FAEnrollmentChallenge, isUser2FAEnrolled } from '@/lib/security/two-factor';
 import { setSessionCookies, applySessionCookies } from '@/lib/security/cookies';
 import { getUserRole, getAuthenticatedUserRole, sanitizeEmail } from '@/lib/auth';
 
@@ -106,12 +106,38 @@ export async function POST(request: Request) {
 
     // 4. Check 2FA Requirement
     if (requiresMandatory2FA(cleanEmail, userRole)) {
+      const isEnrolled = isUser2FAEnrolled(user.id, user.user_metadata);
+      const sessionPayload = {
+        session,
+        cookiesToSet: cookiesToSet.length > 0 ? cookiesToSet : undefined,
+      };
+
+      if (!isEnrolled) {
+        const setup = create2FAEnrollmentChallenge(
+          user.id,
+          cleanEmail,
+          userRole,
+          sessionPayload
+        );
+
+        return NextResponse.json({
+          requires2FASetup: true,
+          challengeToken: setup.challengeToken,
+          secret: setup.secret,
+          totpUri: setup.totpUri,
+          backupCodes: setup.backupCodes,
+          expiresAt: setup.expiresAt,
+          message: 'Two-factor authentication is required for committee accounts. Please scan the QR code into your authenticator app to complete activation.',
+          destination: userRole >= 1 ? '/admin' : '/membership',
+        });
+      }
+
       // Create 2FA challenge and store cookies/session payload to promote upon success
       const { challengeToken, otpCode, expiresAt } = create2FAChallenge(
         user.id,
         cleanEmail,
         userRole,
-        cookiesToSet.length > 0 ? cookiesToSet : session
+        sessionPayload
       );
 
       // In production or development, notify / log OTP issuance
@@ -121,7 +147,7 @@ export async function POST(request: Request) {
         requires2FA: true,
         challengeToken,
         expiresAt,
-        message: 'A 6-digit verification code has been sent to your email address.',
+        message: 'Please enter the 6-digit code from your authenticator app or an emergency backup code.',
         destination: userRole >= 1 ? '/admin' : '/membership',
       });
     }

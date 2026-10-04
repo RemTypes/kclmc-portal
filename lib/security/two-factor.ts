@@ -22,6 +22,8 @@ export interface Pending2FAChallenge {
   expiresAt: number;
   attemptsLeft: number;
   sessionData?: any; // Stored session payload or cookie tuples to promote upon successful 2FA
+  enrollSecret?: string;
+  isSetup?: boolean;
 }
 
 // In-memory challenge store (keyed by challengeToken)
@@ -39,6 +41,54 @@ const MAX_OTP_ATTEMPTS = 3;
 
 function hashToken(val: string): string {
   return crypto.createHash('sha256').update(val).digest('hex');
+}
+
+/**
+ * Check whether a user already has an enrolled 2FA authenticator secret.
+ */
+export function isUser2FAEnrolled(userId: string, userMetadata?: any): boolean {
+  if (!userId) return false;
+  if (userMetadata?.totp_secret || userMetadata?.is_2fa_enrolled) {
+    if (userMetadata.totp_secret && !userTotpSecrets.has(userId)) {
+      setUserTOTPSecret(userId, userMetadata.totp_secret);
+    }
+    if (userMetadata.backup_codes && Array.isArray(userMetadata.backup_codes)) {
+      setUserHashedBackupCodes(userId, userMetadata.backup_codes);
+    }
+    return true;
+  }
+  return userTotpSecrets.has(userId);
+}
+
+/**
+ * Create a first-time 2FA setup/enrollment challenge for an un-enrolled committee member.
+ */
+export function create2FAEnrollmentChallenge(
+  userId: string,
+  email: string,
+  role: number,
+  sessionData?: any
+): { challengeToken: string; secret: string; totpUri: string; backupCodes: string[]; expiresAt: number } {
+  const challengeToken = crypto.randomBytes(32).toString('hex');
+  const secret = generateTOTPSecret();
+  const totpUri = `otpauth://totp/KCLMC:${encodeURIComponent(email)}?secret=${secret}&issuer=KCLMC&period=30&digits=6`;
+  const backupCodes = generateBackupCodes(userId);
+  const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes for setup
+
+  pendingChallenges.set(challengeToken, {
+    challengeToken,
+    userId,
+    email,
+    role,
+    hashedOtp: '',
+    expiresAt,
+    attemptsLeft: 5,
+    sessionData,
+    enrollSecret: secret,
+    isSetup: true,
+  });
+
+  return { challengeToken, secret, totpUri, backupCodes, expiresAt };
 }
 
 /**
@@ -181,6 +231,21 @@ export function generateBackupCodes(userId: string): string[] {
 }
 
 /**
+ * Retrieve user's hashed backup codes.
+ */
+export function getUserHashedBackupCodes(userId: string): string[] {
+  const existing = userBackupCodes.get(userId);
+  return existing ? Array.from(existing) : [];
+}
+
+/**
+ * Set user's hashed backup codes.
+ */
+export function setUserHashedBackupCodes(userId: string, hashedCodes: string[]): void {
+  userBackupCodes.set(userId, new Set(hashedCodes));
+}
+
+/**
  * Ensure an account has backup codes available (generates default set if not yet initialized).
  */
 export function getOrCreateBackupCodes(userId: string): string[] {
@@ -201,6 +266,9 @@ export interface Verify2FAResult {
   usedBackupCode?: boolean;
   usedTOTP?: boolean;
   usedEmailOTP?: boolean;
+  enrolledSecret?: string;
+  hashedBackupCodes?: string[];
+  remainingBackupCodes?: string[];
 }
 
 /**
@@ -235,10 +303,29 @@ export function verify2FAChallenge(
   const cleanNumeric = cleanCode.replace(/[^0-9]/g, '');
   const cleanBackup = cleanCode.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 
+  // 0. Check first-time enrollment setup challenge
+  if (challenge.isSetup && challenge.enrollSecret) {
+    if (cleanNumeric.length === 6 && verifyTOTP(challenge.enrollSecret, cleanNumeric)) {
+      setUserTOTPSecret(challenge.userId, challenge.enrollSecret);
+      pendingChallenges.delete(challengeToken);
+      const hashedBackupCodes = getUserHashedBackupCodes(challenge.userId);
+      return {
+        success: true,
+        userId: challenge.userId,
+        email: challenge.email,
+        role: challenge.role,
+        sessionData: challenge.sessionData,
+        usedTOTP: true,
+        enrolledSecret: challenge.enrollSecret,
+        hashedBackupCodes,
+      };
+    }
+  }
+
   // 1. Check Email OTP code
   if (cleanNumeric.length === 6) {
     const hashedAttempt = hashToken(cleanNumeric);
-    if (hashedAttempt === challenge.hashedOtp) {
+    if (challenge.hashedOtp && hashedAttempt === challenge.hashedOtp) {
       pendingChallenges.delete(challengeToken);
       return {
         success: true,
@@ -280,6 +367,7 @@ export function verify2FAChallenge(
         role: challenge.role,
         sessionData: challenge.sessionData,
         usedBackupCode: true,
+        remainingBackupCodes: Array.from(userCodes),
       };
     }
   }
