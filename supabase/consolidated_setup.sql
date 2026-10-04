@@ -442,11 +442,40 @@ create index if not exists idx_kclsu_roster_user on public.kclsu_roster(user_id)
 create index if not exists idx_kclsu_roster_tier on public.kclsu_roster(tier);
 create index if not exists idx_kclsu_roster_year on public.kclsu_roster(academic_year);
 
--- Public can verify membership cards (e.g. wall scanners, QR codes)
+-- Revoke open public SELECT on kclsu_roster; restrict to owner or committee
 drop policy if exists "Anyone can verify membership roster" on public.kclsu_roster;
-create policy "Anyone can verify membership roster"
+drop policy if exists "Members and committee can read roster" on public.kclsu_roster;
+create policy "Members and committee can read roster"
   on public.kclsu_roster for select
-  using (true);
+  using (
+    user_id = auth.uid() 
+    or (select public.get_user_role()) >= 1
+  );
+
+-- Dedicated secure verification RPC for public scanners/QR without leaking student roster
+create or replace function public.verify_membership_card(card_num text)
+returns table (
+  is_valid boolean,
+  full_name text,
+  tier text,
+  academic_year text
+)
+language plpgsql
+security definer set search_path = ''
+as $$
+begin
+  return query
+  select 
+    true as is_valid,
+    r.full_name,
+    r.tier,
+    r.academic_year
+  from public.kclsu_roster r
+  where upper(r.card_number) = upper(trim(card_num))
+  limit 1;
+end;
+$$;
+grant execute on function public.verify_membership_card(text) to anon, authenticated;
 
 -- Authenticated users can claim/link their verified student ID to their profile
 drop policy if exists "Users can link own card_number" on public.kclsu_roster;
