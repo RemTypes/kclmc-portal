@@ -1,12 +1,19 @@
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function NotFound() {
   return (
     <div className="min-h-[75vh] flex items-center justify-center px-6 py-20 bg-[#052322] text-white">
       <div className="max-w-md w-full text-center space-y-6">
-        <div className="w-20 h-20 mx-auto rounded-2xl bg-[#084746] border border-[#FFBD59]/40 flex items-center justify-center text-4xl shadow-xl shadow-black/40">
-          🏔️
+        <div className="w-20 h-20 mx-auto rounded-2xl bg-[#084746] border border-[#FFBD59]/40 overflow-hidden flex items-center justify-center p-2.5 shadow-xl shadow-black/40">
+          <Image
+            src="/images/kclmc-logo.png"
+            alt="KCLMC Logo"
+            width={72}
+            height={72}
+            className="w-full h-full object-contain"
+          />
         </div>
 
         <div className="space-y-2">
