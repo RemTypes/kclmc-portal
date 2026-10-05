@@ -34,7 +34,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://kclmc.org'),
   title: {
-    default: "King's College London Mountaineering & Climbing Club (KCLMC)",
+    default: "KCLMC | Mountaineering & Climbing Club",
     template: "%s | KCLMC",
   },
   description: "Official student climbing and mountaineering society at King's College London. KCLSU Accredited society.",

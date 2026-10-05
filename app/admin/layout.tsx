@@ -2,7 +2,13 @@ import React from 'react';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getUserRole, getAuthenticatedUserRole } from '@/lib/auth';
+import type { Metadata } from 'next';
 import AdminNav from '@/components/AdminNav';
+
+export const metadata: Metadata = {
+  title: 'Committee Admin Portal',
+  description: 'Official KCLMC committee administration, payment reconciliation, and membership verification.',
+};
 
 export default async function AdminLayout({
   children,

@@ -1,5 +1,11 @@
 import React from 'react';
 import Link from 'next/link';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: "KCLMC | Mountaineering & Climbing",
+  description: "Official student climbing and mountaineering society at King's College London. KCLSU Accredited.",
+};
 
 export const dynamic = 'force-dynamic';
 

@@ -2,6 +2,13 @@ import React from 'react';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import type { Guide } from '@/types/database';
 
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Where We Climb',
+  description: 'London climbing wall directory, student discounts, and crag guides for King\'s College London students.',
+};
+
 export const revalidate = 60; // revalidate every minute
 
 interface EnhancedGuide extends Guide {

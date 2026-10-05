@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 
 export const metadata = {
-  title: "Terms & Conditions | King's College London Mountaineering Club",
+  title: "Terms & Conditions",
   description: "Official Terms of Service, Membership Rules, Merch Drop Policies, and Trip Regulations for KCLMC.",
 };
 

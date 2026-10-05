@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 
 export const metadata = {
-  title: "Climbing Safety & BMC Risk Notice | King's College London Mountaineering Club",
+  title: "Safety & BMC Risk Notice",
   description: "Official BMC Participation Statement, Mountaineering Risk Acknowledgment, and Climbing Liability Notice.",
 };
 

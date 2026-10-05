@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 
 export const metadata = {
-  title: "Accessibility & Disability Inclusion Policy | King's College London Mountaineering Club",
+  title: "Accessibility Policy",
   description: "Equality Act 2010 compliance, reasonable adjustments, and WCAG 2.2 AA digital accessibility statement.",
 };
 
