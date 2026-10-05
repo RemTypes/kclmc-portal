@@ -13,7 +13,7 @@ export default async function HomePage() {
         <div className="relative z-10 max-w-5xl mx-auto">
           {/* Top Badge */}
           <div className="inline-flex items-center gap-2 px-3 py-1 mb-6 rounded-full bg-[#084746] border border-[#FFBD59]/40 text-[#FFBD59] text-xs font-heading font-bold uppercase tracking-wider">
-            <span>Est. 1928</span>
+            <span>KCLSU Accredited</span>
             <span className="text-zinc-500">•</span>
             <span>King's College London</span>
           </div>

@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     default: "King's College London Mountaineering & Climbing Club (KCLMC)",
     template: "%s | KCLMC",
   },
-  description: "Official student climbing and mountaineering society at King's College London. KCLSU Accredited society founded in 1928.",
+  description: "Official student climbing and mountaineering society at King's College London. KCLSU Accredited society.",
   keywords: [
     "KCLMC",
     "King's College London Mountaineering Club",

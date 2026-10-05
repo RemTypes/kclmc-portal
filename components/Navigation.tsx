@@ -107,7 +107,7 @@ export default function Navigation() {
                 KCLMC
               </div>
               <div className="text-[10px] font-sans uppercase tracking-widest text-zinc-400 leading-tight">
-                Est. 1928
+                Climbing Club
               </div>
             </div>
           </Link>
