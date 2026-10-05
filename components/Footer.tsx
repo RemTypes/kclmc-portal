@@ -25,7 +25,7 @@ export default function Footer() {
                 KCLMC
               </div>
               <div className="text-[10px] font-sans uppercase tracking-widest text-zinc-400 mt-1">
-                Est. 1928 // London
+                Climbing Club // London
               </div>
             </div>
           </Link>
