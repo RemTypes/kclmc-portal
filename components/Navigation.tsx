@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 
 export default function Navigation() {
@@ -91,8 +92,15 @@ export default function Navigation() {
         <div className="flex items-center gap-8">
           {/* Logo / Crest */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-9 h-9 rounded bg-[#084746] border border-[#FFBD59]/50 flex items-center justify-center text-base shadow-sm group-hover:border-[#FFBD59] transition-colors">
-              🏔️
+            <div className="w-10 h-10 rounded-lg bg-[#084746] border border-[#FFBD59]/50 overflow-hidden flex items-center justify-center shadow-sm group-hover:border-[#FFBD59] transition-all p-1">
+              <Image
+                src="/images/kclmc-logo.png"
+                alt="KCLMC Logo"
+                width={36}
+                height={36}
+                priority
+                className="w-full h-full object-contain"
+              />
             </div>
             <div>
               <div className="font-heading font-black text-xl tracking-wider text-[#FFBD59] group-hover:text-[#FFE0A3] transition-colors leading-none">

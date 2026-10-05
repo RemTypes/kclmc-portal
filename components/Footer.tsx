@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
@@ -10,8 +11,14 @@ export default function Footer() {
         {/* Col 1: Club Identity & Affiliation */}
         <div className="md:col-span-1 space-y-4">
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 rounded-xl bg-[#084746] border border-[#FFBD59]/50 flex items-center justify-center text-lg shadow-sm group-hover:border-[#FFBD59] transition-colors">
-              🏔️
+            <div className="w-10 h-10 rounded-xl bg-[#084746] border border-[#FFBD59]/50 overflow-hidden flex items-center justify-center shadow-sm group-hover:border-[#FFBD59] transition-all p-1">
+              <Image
+                src="/images/kclmc-logo.png"
+                alt="KCLMC Logo"
+                width={36}
+                height={36}
+                className="w-full h-full object-contain"
+              />
             </div>
             <div>
               <div className="font-heading font-black text-xl tracking-wider text-[#FFBD59] group-hover:text-[#FFE0A3] transition-colors leading-none">

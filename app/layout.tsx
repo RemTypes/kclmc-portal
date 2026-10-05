@@ -52,6 +52,14 @@ export const metadata: Metadata = {
     description: "Official student climbing and mountaineering society at King's College London. Digital membership passes, trips, and London wall discounts.",
     url: 'https://kclmc.org',
     siteName: 'KCLMC',
+    images: [
+      {
+        url: '/images/kclmc-logo.png',
+        width: 987,
+        height: 987,
+        alt: 'KCLMC Official Logo',
+      },
+    ],
     locale: 'en_GB',
     type: 'website',
   },
@@ -59,11 +67,18 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: "King's College London Mountaineering & Climbing Club (KCLMC)",
     description: "Official student climbing and mountaineering society at King's College London. KCLSU Accredited.",
+    images: ['/images/kclmc-logo.png'],
   },
   icons: {
-    icon: '/icon.svg',
-    shortcut: '/icon.svg',
-    apple: '/icon.svg',
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
   },
 };
 
