@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 
 export const metadata = {
-  title: "Privacy & Cookie Policy | King's College London Mountaineering Club",
+  title: "Privacy & Cookie Policy",
   description: "Official UK GDPR and Data Protection Act 2018 Privacy Notice for KCLMC members and visitors.",
 };
 

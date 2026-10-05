@@ -228,6 +228,12 @@ export default function MembershipDashboard() {
           setSuRecord(data.suRecord || null);
           setMembership(data.membership || null);
 
+          // Update browser tab description dynamically
+          if (typeof document !== 'undefined') {
+            const memberName = data.membership?.memberName || data.user.fullName;
+            document.title = memberName ? `${memberName} | Pass | KCLMC` : 'My Digital Pass | KCLMC';
+          }
+
           if (data.profile) {
             setPhone(data.profile.phone || '');
             setEmergencyName(data.profile.emergency_contact_name || '');
