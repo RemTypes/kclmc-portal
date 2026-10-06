@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { findMemberByCardNumber, KclsuMemberRecord } from '@/lib/roster';
 import { getAuthenticatedUserRole, sanitizeUniversity } from '@/lib/auth';
+import { checkSafetyProfileCompleteness } from '@/lib/safety';
 import type { Profile, Membership } from '@/types/database';
 
 export async function GET() {
@@ -121,6 +122,8 @@ export async function GET() {
       }
     }
 
+    const safetyCheck = checkSafetyProfileCompleteness(profile);
+
     return NextResponse.json({
       authenticated: true,
       user: {
@@ -133,6 +136,7 @@ export async function GET() {
       boundStudentId,
       suRecord,
       membership,
+      safetyCheck,
     });
   } catch (err: any) {
     console.error('API /api/membership GET error:', err);
@@ -199,9 +203,12 @@ export async function POST(request: Request) {
       updatedProfile = adminProf;
     }
 
+    const safetyCheck = checkSafetyProfileCompleteness(updatedProfile);
+
     return NextResponse.json({
       success: true,
       profile: updatedProfile,
+      safetyCheck,
       message: 'Safety notes and profile updated successfully.',
     });
   } catch (err: any) {

@@ -67,6 +67,7 @@ export default function PrivacyPolicyPage() {
             <div className="bg-[#041F1E] border border-[#084746] rounded-xl p-4 space-y-2">
               <h3 className="font-heading font-bold uppercase text-[#FFBD59] text-sm">Safety &amp; Emergency Beta</h3>
               <ul className="list-disc list-inside text-zinc-300 space-y-1">
+                <li>Climber mobile phone number (for safety, trip logistics, and duty of care)</li>
                 <li>Emergency contact (next-of-kin name and phone)</li>
                 <li>Voluntarily declared medical notes (allergies, asthma)</li>
                 <li>Accessibility, paraclimbing, or sensory accommodation preferences</li>
@@ -103,13 +104,13 @@ export default function PrivacyPolicyPage() {
               <strong className="text-white">Contractual Necessity (Art. 6(1)(b)):</strong> Processing your membership pass, event signups, and club stash orders in fulfillment of your society membership contract.
             </div>
             <div className="p-3.5 bg-[#041F1E] rounded-xl border border-[#084746]">
-              <strong className="text-white">Vital Interests (Art. 6(1)(d)):</strong> Holding emergency contact information and critical medical notes for handover to Mountain Rescue, emergency medical services, or NHS personnel during severe mountain or crag incidents.
+              <strong className="text-white">Vital Interests &amp; Duty of Care (Art. 6(1)(d)):</strong> Holding climber mobile numbers and emergency contact information under British Mountaineering Council (BMC) safety guidelines for emergency incident response, crag check-ins, or handover to Mountain Rescue / NHS personnel.
             </div>
             <div className="p-3.5 bg-[#041F1E] rounded-xl border border-[#084746]">
               <strong className="text-white">Legitimate Interests (Art. 6(1)(f)):</strong> Verifying active student status with KCLSU, preventing fraudulent pass duplication, maintaining equipment loan safety logs, and securing the platform.
             </div>
             <div className="p-3.5 bg-[#041F1E] rounded-xl border border-[#084746]">
-              <strong className="text-white">Explicit Consent (Art. 9(2)(a)):</strong> Special category health data (e.g. medical conditions, paraclimbing adjustments, or dietary requirements) disclosed specifically for residential trips or climbing sessions.
+              <strong className="text-white">Consent (Art. 6(1)(a) &amp; Art. 9(2)(a)):</strong> Special category health data (e.g. allergies, asthma, dietary requirements) are strictly voluntary and based on freely given consent.
             </div>
           </div>
         </section>
