@@ -654,8 +654,8 @@ export default function MembershipDashboard() {
                       </div>
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-zinc-400">3. Emergency Contact (Next of Kin):</span>
-                        <span className={profileSafetyCheck.hasEmergencyPhone ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
-                          {profileSafetyCheck.hasEmergencyPhone ? '✔ Recorded' : '⏳ Action Required'}
+                        <span className={profileSafetyCheck.hasEmergencyContact && profileSafetyCheck.hasEmergencyPhone ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                          {profileSafetyCheck.hasEmergencyContact && profileSafetyCheck.hasEmergencyPhone ? '✔ Recorded' : '⏳ Action Required'}
                         </span>
                       </div>
                     </div>

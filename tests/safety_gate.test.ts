@@ -80,6 +80,22 @@ describe('Safety Gate & Mandatory Profile Verification', () => {
     expect(result.missingFields).not.toContain('Dietary Notes');
   });
 
+  it('supports snake_case database models directly from Supabase', () => {
+    const dbProfile: SafetyProfileFields = {
+      phone: '07885622646',
+      emergency_contact_name: 'Jacqueline Lines',
+      emergency_contact_phone: '07885622646',
+      dietary_requirements: 'None',
+      medical_notes: null,
+    };
+    const result = checkSafetyProfileCompleteness(dbProfile);
+    expect(result.isComplete).toBe(true);
+    expect(result.missingFields).toHaveLength(0);
+    expect(result.hasPhone).toBe(true);
+    expect(result.hasEmergencyContact).toBe(true);
+    expect(result.hasEmergencyPhone).toBe(true);
+  });
+
   it('correctly cleans and formats phone numbers', () => {
     expect(formatPhoneNumber('07123 456 789')).toBe('07123456789');
     expect(formatPhoneNumber('+44 (0) 7123-456-789')).toBe('+4407123456789');
