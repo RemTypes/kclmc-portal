@@ -9,10 +9,16 @@
 
 export interface SafetyProfileFields {
   phone?: string | null;
+  // camelCase conventions (from forms)
   emergencyContact?: string | null;
   emergencyPhone?: string | null;
   medicalNotes?: string | null;
   dietaryNotes?: string | null;
+  // snake_case conventions (from database models)
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  dietary_requirements?: string | null;
+  medical_notes?: string | null;
 }
 
 export interface SafetyCompletenessResult {
@@ -26,6 +32,7 @@ export interface SafetyCompletenessResult {
 /**
  * Validates whether a member has provided the compulsory safety requirements
  * needed to activate and display their digital climbing membership pass.
+ * Accepts both camelCase form inputs and snake_case Supabase Profile database records.
  */
 export function checkSafetyProfileCompleteness(
   profile: SafetyProfileFields | null | undefined
@@ -41,8 +48,16 @@ export function checkSafetyProfileCompleteness(
   }
 
   const phone = (profile.phone || '').trim();
-  const emergencyContact = (profile.emergencyContact || '').trim();
-  const emergencyPhone = (profile.emergencyPhone || '').trim();
+  const emergencyContact = (
+    profile.emergencyContact || 
+    profile.emergency_contact_name || 
+    ''
+  ).trim();
+  const emergencyPhone = (
+    profile.emergencyPhone || 
+    profile.emergency_contact_phone || 
+    ''
+  ).trim();
 
   // Basic length validations (valid phone must have at least 7 digits/characters)
   const hasPhone = phone.length >= 7;
