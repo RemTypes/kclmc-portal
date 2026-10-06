@@ -32,16 +32,41 @@ export async function GET() {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
-      const members = (data || []).map((row: any) => ({
-        cardNumber: row.card_number,
-        name: row.full_name,
-        rawPurchaser: row.raw_purchaser,
-        tier: row.tier,
-        productName: row.product_name,
-        transactionId: row.transaction_id,
-        purchaseDate: row.purchase_date || '',
-        userId: row.user_id,
-      }));
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, student_id, phone, emergency_contact_name, emergency_contact_phone, university');
+
+      const profileByUserId = new Map<string, any>();
+      const profileByStudentId = new Map<string, any>();
+      (profilesData || []).forEach((p: any) => {
+        if (p.id) profileByUserId.set(p.id, p);
+        if (p.student_id) profileByStudentId.set(p.student_id.toUpperCase(), p);
+      });
+
+      const members = (data || []).map((row: any) => {
+        const prof = (row.user_id ? profileByUserId.get(row.user_id) : null) || 
+                     (row.card_number ? profileByStudentId.get(row.card_number.toUpperCase()) : null);
+
+        const hasPhone = Boolean(prof?.phone && prof.phone.trim().length >= 8);
+        const hasEmergency = Boolean(prof?.emergency_contact_phone && prof.emergency_contact_phone.trim().length >= 8);
+        const safetyComplete = hasPhone && hasEmergency;
+
+        return {
+          cardNumber: row.card_number,
+          name: row.full_name,
+          rawPurchaser: row.raw_purchaser,
+          tier: row.tier,
+          productName: row.product_name,
+          transactionId: row.transaction_id,
+          purchaseDate: row.purchase_date || '',
+          userId: row.user_id,
+          phone: prof?.phone || null,
+          emergencyContactName: prof?.emergency_contact_name || null,
+          emergencyContactPhone: prof?.emergency_contact_phone || null,
+          university: prof?.university || "King's College London",
+          safetyComplete,
+        };
+      });
 
       const socialCount = members.filter(m => m.tier === 'social').length;
       const recCount = members.filter(m => m.tier === 'recreational').length;

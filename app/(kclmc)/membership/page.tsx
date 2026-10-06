@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import MembershipCard from '@/components/MembershipCard';
 import { findMemberByCardNumber, KclsuMemberRecord } from '@/lib/roster';
 import { UNIVERSITIES, DEFAULT_UNIVERSITY, sanitizeUniversity } from '@/lib/auth';
+import confetti from 'canvas-confetti';
+import { checkSafetyProfileCompleteness } from '@/lib/safety';
 import type { Profile, Membership } from '@/types/database';
 
 function MembershipTierGuide() {
@@ -215,6 +217,8 @@ export default function MembershipDashboard() {
   const [dietary, setDietary] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [safetyConsent, setSafetyConsent] = useState(true);
 
   const loadUserData = async () => {
     try {
@@ -347,8 +351,23 @@ export default function MembershipDashboard() {
     }
   };
 
+  const profileSafetyCheck = checkSafetyProfileCompleteness(profile);
+  const currentSafetyCheck = checkSafetyProfileCompleteness({
+    phone,
+    emergencyContact: emergencyName,
+    emergencyPhone,
+    dietaryNotes: dietary,
+  });
+
   const handleUpdateSafetyNotes = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError('');
+
+    if (!currentSafetyCheck.isComplete) {
+      setFormError(`Please complete required safety fields: ${currentSafetyCheck.missingFields.join(', ')}`);
+      return;
+    }
+
     setSaving(true);
     setSaveSuccess(false);
 
@@ -371,13 +390,30 @@ export default function MembershipDashboard() {
         throw new Error(data.error || 'Failed to update safety notes');
       }
 
+      const wasIncomplete = !profileSafetyCheck.isComplete;
+
       if (data.profile) {
         setProfile(data.profile);
       }
       setSaveSuccess(true);
+
+      // Celebrate pass activation if newly unlocked
+      if (wasIncomplete && currentSafetyCheck.isComplete) {
+        try {
+          confetti({
+            particleCount: 80,
+            spread: 70,
+            origin: { y: 0.6 },
+          });
+        } catch {
+          // Confetti optional
+        }
+      }
+
       setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error updating safety notes:', err);
+      setFormError(err?.message || 'Failed to update safety details. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -566,22 +602,69 @@ export default function MembershipDashboard() {
             {/* Left Column: Official Card */}
             <div className="lg:col-span-6 space-y-6">
               {suRecord && boundStudentId ? (
-                <MembershipCard
-                  profile={{
-                    full_name: suRecord.name,
-                    student_id: suRecord.cardNumber,
-                    avatar_url: profile?.avatar_url || null,
-                  }}
-                  membership={{
-                    id: suRecord.cardNumber,
-                    membership_number: suRecord.cardNumber,
-                    tier: suRecord.tier,
-                    valid_from: '2026-09-01',
-                    valid_until: '2027-08-31',
-                    is_active: true,
-                    payment_reference: suRecord.transactionId,
-                  }}
-                />
+                profileSafetyCheck.isComplete ? (
+                  <MembershipCard
+                    profile={{
+                      full_name: suRecord.name,
+                      student_id: suRecord.cardNumber,
+                      avatar_url: profile?.avatar_url || null,
+                    }}
+                    membership={{
+                      id: suRecord.cardNumber,
+                      membership_number: suRecord.cardNumber,
+                      tier: suRecord.tier,
+                      valid_from: '2026-09-01',
+                      valid_until: '2027-08-31',
+                      is_active: true,
+                      payment_reference: suRecord.transactionId,
+                    }}
+                  />
+                ) : (
+                  <div className="bg-[#084746]/80 border-2 border-amber-500/50 rounded-3xl p-8 shadow-2xl space-y-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-amber-950/80 border border-amber-500/50 flex items-center justify-center text-amber-400 text-2xl shrink-0">
+                        🛡️
+                      </div>
+                      <span className="bg-amber-950/90 text-amber-300 border border-amber-500/40 text-[10px] font-mono px-2.5 py-1 rounded-full uppercase tracking-wider font-bold">
+                        Safety Activation Required
+                      </span>
+                    </div>
+
+                    <div>
+                      <h3 className="text-2xl font-black font-heading uppercase tracking-tight text-white">
+                        Climbing Pass Inactive
+                      </h3>
+                      <p className="text-xs text-zinc-300 leading-relaxed font-sans mt-1">
+                        Under British Mountaineering Council (BMC) guidelines and club duty of care, your digital climbing pass is locked until your safety contact details are recorded.
+                      </p>
+                    </div>
+
+                    <div className="bg-[#041F1E] border border-[#084746] rounded-2xl p-4 font-mono text-xs space-y-2.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-zinc-400">1. KCLSU Purchase Roster:</span>
+                        <span className="text-emerald-400 font-bold flex items-center gap-1">
+                          <span>✔</span> Linked ({boundStudentId})
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-zinc-400">2. Climber Mobile Phone:</span>
+                        <span className={profileSafetyCheck.hasPhone ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                          {profileSafetyCheck.hasPhone ? '✔ Recorded' : '⏳ Action Required'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-zinc-400">3. Emergency Contact (Next of Kin):</span>
+                        <span className={profileSafetyCheck.hasEmergencyPhone ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                          {profileSafetyCheck.hasEmergencyPhone ? '✔ Recorded' : '⏳ Action Required'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] font-mono text-[#FFBD59] bg-[#041F1E]/80 border border-[#FFBD59]/30 rounded-xl p-3">
+                      👉 Please complete your mobile phone and emergency contact in the form on the right and click <strong>&quot;Save Details &amp; Activate Pass&quot;</strong> to unlock your climbing card.
+                    </p>
+                  </div>
+                )
               ) : (
                 <div className="bg-[#084746]/60 border-2 border-dashed border-[#FFBD59]/40 rounded-3xl p-8 text-center space-y-4">
                   <div className="w-12 h-12 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-2xl">
@@ -595,7 +678,7 @@ export default function MembershipDashboard() {
               )}
 
               {/* KCLSU Purchase Verification Receipt */}
-              {suRecord && boundStudentId && (
+              {suRecord && boundStudentId && profileSafetyCheck.isComplete && (
                 <div className="bg-[#084746]/60 border border-[#FFBD59]/30 rounded-2xl p-6 font-mono text-xs shadow-lg">
                   <div className="flex items-center justify-between border-b border-[#FFBD59]/20 pb-3 mb-3">
                     <span className="text-[#FFBD59] font-bold uppercase tracking-wider">
@@ -632,26 +715,38 @@ export default function MembershipDashboard() {
             </div>
 
             {/* Right Column: Climber Safety Profile */}
-            <div className="lg:col-span-6 bg-[#084746]/70 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl p-6 md:p-8 shadow-xl">
+            <div id="safety-form" className="lg:col-span-6 bg-[#084746]/70 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl p-6 md:p-8 shadow-xl">
               <div className="flex justify-between items-start mb-2">
                 <h2 className="text-2xl font-black font-heading uppercase tracking-wide text-white">
                   Climber Safety &amp; Expedition Notes
                 </h2>
                 <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                  suRecord && boundStudentId
+                  profileSafetyCheck.isComplete
                     ? 'text-emerald-400 bg-emerald-950/60 border-emerald-500/40' 
+                    : boundStudentId
+                    ? 'text-amber-400 bg-amber-950/60 border-amber-500/40'
                     : 'text-[#FFBD59] bg-[#041F1E] border-[#FFBD59]/30'
                 }`}>
-                  {suRecord && boundStudentId ? 'Verified Member' : 'Pass Locked'}
+                  {profileSafetyCheck.isComplete 
+                    ? '✔ Pass Active' 
+                    : boundStudentId 
+                    ? '⏳ Safety Required' 
+                    : 'Pass Locked'}
                 </span>
               </div>
               <p className="text-xs text-zinc-300 mb-6 font-sans leading-relaxed">
-                Your name and student ID are permanently locked to your authenticated account. Below you can keep your emergency contact and medical details up to date for expedition leaders.
+                Your name and student ID are verified from KCLSU. Provide your mobile number and emergency contact below to activate your digital climbing pass.
               </p>
 
               {saveSuccess && (
                 <div className="mb-4 p-3 bg-emerald-950/80 border border-emerald-500/60 rounded-xl text-emerald-300 text-xs font-mono">
-                  ✔ Emergency and safety notes saved successfully.
+                  ✔ Safety profile saved and climbing pass activated successfully!
+                </div>
+              )}
+
+              {formError && (
+                <div className="mb-4 p-3 bg-red-950/80 border border-red-500/60 rounded-xl text-red-300 text-xs font-mono">
+                  ✖ {formError}
                 </div>
               )}
 
@@ -722,15 +817,22 @@ export default function MembershipDashboard() {
                     </div>
                   ) : (
                     <div>
-                      <label className="block uppercase text-zinc-300 mb-1 font-bold">
-                        Climber Mobile Phone
+                      <label className="block uppercase text-zinc-300 mb-1 font-bold flex items-center justify-between">
+                        <span>Climber Mobile Phone</span>
+                        <span className="text-[10px] text-amber-400 font-sans font-normal bg-[#041F1E] px-2 py-0.5 rounded border border-amber-500/30">
+                          * Required
+                        </span>
                       </label>
                       <input
                         type="tel"
+                        required
                         value={phone}
-                        onChange={e => setPhone(e.target.value)}
-                        placeholder="+44 7000 000000"
-                        className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59] text-xs"
+                        onChange={e => {
+                          setPhone(e.target.value);
+                          setFormError('');
+                        }}
+                        placeholder="e.g. +44 7123 456789 or 07123..."
+                        className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59] text-xs font-mono"
                       />
                     </div>
                   )}
@@ -738,31 +840,47 @@ export default function MembershipDashboard() {
 
                 {university === 'Other UK Institution' && (
                   <div>
-                    <label className="block uppercase text-zinc-300 mb-1 font-bold">
-                      Climber Mobile Phone
+                    <label className="block uppercase text-zinc-300 mb-1 font-bold flex items-center justify-between">
+                      <span>Climber Mobile Phone</span>
+                      <span className="text-[10px] text-amber-400 font-sans font-normal bg-[#041F1E] px-2 py-0.5 rounded border border-amber-500/30">
+                        * Required
+                      </span>
                     </label>
                     <input
                       type="tel"
+                      required
                       value={phone}
-                      onChange={e => setPhone(e.target.value)}
-                      placeholder="+44 7000 000000"
-                      className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59] text-xs"
+                      onChange={e => {
+                        setPhone(e.target.value);
+                        setFormError('');
+                      }}
+                      placeholder="e.g. +44 7123 456789 or 07123..."
+                      className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59] text-xs font-mono"
                     />
                   </div>
                 )}
 
                 <div className="pt-2 border-t border-[#FFBD59]/20">
-                  <span className="block text-[11px] font-bold text-[#FFBD59] uppercase mb-3">
-                    Emergency Contact (Required for Expeditions)
-                  </span>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[11px] font-bold text-[#FFBD59] uppercase">
+                      Emergency Contact (Next of Kin)
+                    </span>
+                    <span className="text-[10px] text-amber-400 font-sans bg-[#041F1E] px-2 py-0.5 rounded border border-amber-500/30">
+                      * Required
+                    </span>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block uppercase text-zinc-300 mb-1">Contact Name</label>
                       <input
                         type="text"
+                        required
                         value={emergencyName}
-                        onChange={e => setEmergencyName(e.target.value)}
-                        placeholder="e.g. Next of Kin / Parent"
+                        onChange={e => {
+                          setEmergencyName(e.target.value);
+                          setFormError('');
+                        }}
+                        placeholder="e.g. Sarah Smith (Parent/Next of Kin)"
                         className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
                       />
                     </div>
@@ -770,18 +888,25 @@ export default function MembershipDashboard() {
                       <label className="block uppercase text-zinc-300 mb-1">Contact Phone</label>
                       <input
                         type="tel"
+                        required
                         value={emergencyPhone}
-                        onChange={e => setEmergencyPhone(e.target.value)}
-                        placeholder="+44 7000 000000"
-                        className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
+                        onChange={e => {
+                          setEmergencyPhone(e.target.value);
+                          setFormError('');
+                        }}
+                        placeholder="e.g. +44 7987 654321"
+                        className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59] font-mono"
                       />
                     </div>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block uppercase text-zinc-300 mb-1">
-                    Dietary &amp; Medical Notes
+                  <label className="block uppercase text-zinc-300 mb-1 flex items-center justify-between">
+                    <span>Dietary &amp; Medical Notes</span>
+                    <span className="text-[10px] text-zinc-400 font-sans">
+                      (Optional // UK GDPR Art. 9)
+                    </span>
                   </label>
                   <textarea
                     rows={2}
@@ -790,6 +915,23 @@ export default function MembershipDashboard() {
                     placeholder="e.g. Vegetarian, carrying EpiPen, asthma inhaler..."
                     className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl p-3 text-white focus:outline-none focus:border-[#FFBD59]"
                   />
+                  <span className="text-[10px] text-zinc-400 font-sans mt-1 block">
+                    Voluntary disclosure for residential bunkhouses and outdoor mountain meets.
+                  </span>
+                </div>
+
+                <div className="p-3 bg-[#041F1E] border border-[#084746] rounded-xl">
+                  <label className="flex items-start gap-2.5 cursor-pointer text-zinc-300 hover:text-white transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={safetyConsent}
+                      onChange={e => setSafetyConsent(e.target.checked)}
+                      className="mt-0.5 rounded border-[#FFBD59]/40 bg-[#052322] text-[#FFBD59] focus:ring-0 cursor-pointer"
+                    />
+                    <span className="text-[11px] leading-relaxed font-sans">
+                      <strong className="text-white">Club Safety Notices:</strong> I acknowledge that the KCLMC committee may contact me or my emergency contact regarding club climbing sessions, trips, and emergency incidents.
+                    </span>
+                  </label>
                 </div>
 
                 <button
@@ -798,10 +940,12 @@ export default function MembershipDashboard() {
                   className="w-full py-3 bg-[#FFBD59] text-[#052322] font-black rounded-xl hover:bg-[#FFE0A3] transition-colors font-mono uppercase tracking-wider disabled:opacity-50 text-xs shadow-lg cursor-pointer"
                 >
                   {saving 
-                    ? 'Saving Changes...' 
+                    ? 'Saving Details...' 
                     : !profile 
                       ? 'Loading Profile...' 
-                      : 'Save Profile & Safety Details'}
+                      : profileSafetyCheck.isComplete
+                        ? 'Update Profile & Safety Details'
+                        : 'Save Details & Activate Climbing Pass →'}
                 </button>
               </form>
             </div>
