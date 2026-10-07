@@ -8,6 +8,7 @@ import { findMemberByCardNumber, KclsuMemberRecord } from '@/lib/roster';
 import { UNIVERSITIES, DEFAULT_UNIVERSITY, sanitizeUniversity } from '@/lib/auth';
 import confetti from 'canvas-confetti';
 import { checkSafetyProfileCompleteness } from '@/lib/safety';
+import { generateBmcPrefilledUrl } from '@/lib/bmc_insurance';
 import type { Profile, Membership } from '@/types/database';
 
 function MembershipTierGuide() {
@@ -603,7 +604,8 @@ export default function MembershipDashboard() {
             <div className="lg:col-span-6 space-y-6">
               {suRecord && boundStudentId ? (
                 profileSafetyCheck.isComplete ? (
-                  <MembershipCard
+                  <>
+                    <MembershipCard
                     profile={{
                       full_name: suRecord.name,
                       student_id: suRecord.cardNumber,
@@ -619,6 +621,53 @@ export default function MembershipDashboard() {
                       payment_reference: suRecord.transactionId,
                     }}
                   />
+
+                  {/* BMC Insurance Status Badge (Recreational Tier Only) */}
+                  {suRecord.tier.toLowerCase().includes('recreational') && (
+                    <div
+                      className={`mt-6 rounded-2xl p-4 border transition-colors ${
+                        (profile as any)?.bmc_insured
+                          ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                          : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xl">
+                            {(profile as any)?.bmc_insured ? '🛡️' : '⚠️'}
+                          </span>
+                          <div>
+                            <p className="text-xs font-mono font-bold">
+                              {(profile as any)?.bmc_insured
+                                ? 'BMC Insurance Verified (2026/27)'
+                                : 'BMC Insurance Registration Pending'}
+                            </p>
+                            <p className="text-[11px] text-zinc-400 mt-0.5">
+                              {(profile as any)?.bmc_insured
+                                ? 'Official BMC combined liability and personal accident coverage active.'
+                                : 'Recreational members must submit the BMC insurance form before outdoor trips.'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {!(profile as any)?.bmc_insured && (
+                          <a
+                            href={generateBmcPrefilledUrl({
+                              firstName: suRecord.name.split(' ')[0] || '',
+                              lastName: suRecord.name.split(' ').slice(1).join(' ') || '',
+                              membershipType: 'Student',
+                            })}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 bg-[#FFBD59] hover:bg-white text-[#041F1E] font-heading font-black text-xs uppercase tracking-wider rounded-xl transition-colors shadow-sm text-center shrink-0"
+                          >
+                            Complete Form ↗
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
                 ) : (
                   <div className="bg-[#084746]/80 border-2 border-amber-500/50 rounded-3xl p-8 shadow-2xl space-y-5">
                     <div className="flex items-start justify-between gap-4">
