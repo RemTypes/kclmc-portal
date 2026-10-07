@@ -222,6 +222,23 @@ export default function AdminDashboard() {
                     Scan digital QR passes or search KCL student IDs to verify recreational membership and mark merch collection.
                   </p>
                 </Link>
+
+                <Link
+                  href="/admin/bmc"
+                  className="block p-4 rounded-xl bg-[#084746]/40 hover:bg-[#084746] border border-[#0D5F5E] transition-all group shadow-sm"
+                >
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-bold text-base text-white group-hover:text-[#FFBD59] transition-colors font-heading tracking-wide">
+                      → BMC Insurance Form Release
+                    </span>
+                    <span className="text-[10px] bg-amber-950 text-amber-300 px-2 py-0.5 rounded font-mono border border-amber-800">
+                      Safety &amp; Compliance
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-300 leading-relaxed">
+                    Filter recreational climbing members from KCLSU sales reports, auto-generate KCL student emails, and broadcast or mail-merge BMC registration links.
+                  </p>
+                </Link>
               </div>
             </div>
 

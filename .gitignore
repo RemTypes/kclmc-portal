@@ -41,3 +41,4 @@ venv/
 # Data Redundancy Backups (UK GDPR Confidentiality)
 backups/
 *.dump
+scripts/bmc_sent_log.json
