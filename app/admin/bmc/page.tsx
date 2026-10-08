@@ -366,7 +366,8 @@ export default function BmcInsuranceAdminPage() {
     setBroadcastStatus(null);
     abortBroadcastRef.current = false;
 
-    const BATCH_SIZE = 3;
+    // Process 1 recipient per Cloudflare Worker request to strictly stay under the 10ms CPU time limit
+    const BATCH_SIZE = 1;
     const targets = [...targetRecipients];
     const totalBatches = Math.ceil(targets.length / BATCH_SIZE);
 

@@ -97,6 +97,26 @@ export async function POST(request: Request) {
 
     recordSuccessfulAttempt(ip, cleanEmail);
 
+    // Ensure profiles table row immediately receives student_id and university
+    if (authData.user?.id) {
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (serviceRoleKey) {
+        try {
+          const { createClient: createAdminClient } = await import('@supabase/supabase-js');
+          const adminSupabase = createAdminClient(supabaseUrl, serviceRoleKey);
+          await adminSupabase.from('profiles').upsert({
+            id: authData.user.id,
+            full_name: cleanFullName,
+            student_id: cleanStudentId || null,
+            university: cleanUniversity || "King's College London",
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
+        } catch (profileSyncErr) {
+          console.warn('Direct profile sync on signup warning:', profileSyncErr);
+        }
+      }
+    }
+
     // Track user signup conversion event
     trackServerEvent('user_signup', {
       userId: authData.user?.id,

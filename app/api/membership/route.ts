@@ -29,7 +29,21 @@ export async function GET() {
       .maybeSingle();
 
     if (profData) {
-      profile = profData;
+      profile = profData as Profile;
+      // Auto-heal missing student_id or university if present in user_metadata
+      const metaStudentId = user.user_metadata?.student_id;
+      const metaUni = user.user_metadata?.university;
+      if (profile && ((!profile.student_id && metaStudentId) || (!profile.university && metaUni))) {
+        try {
+          const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+          if (!profile.student_id && metaStudentId) updates.student_id = metaStudentId;
+          if (!profile.university && metaUni) updates.university = metaUni;
+          await supabase.from('profiles').update(updates).eq('id', user.id);
+          profile = { ...profile, ...updates } as Profile;
+        } catch {
+          // Non-fatal auto-heal
+        }
+      }
     } else {
       // Fallback: create basic profile row if missing
       try {
