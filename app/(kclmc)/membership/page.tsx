@@ -667,6 +667,51 @@ export default function MembershipDashboard() {
                       </div>
                     </div>
                   )}
+
+                  {/* Official Members WhatsApp Group Chat Card */}
+                  <div className="mt-6 bg-[#052322] border-2 border-[#25D366]/40 rounded-3xl p-6 shadow-2xl relative overflow-hidden topo-pattern">
+                    <div className="flex items-start justify-between gap-4 mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-[#25D366]/20 border border-[#25D366]/50 flex items-center justify-center text-xl shrink-0">
+                          💬
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-mono uppercase tracking-widest text-[#25D366] bg-[#041F1E] px-2.5 py-0.5 rounded border border-[#25D366]/30">
+                            Members Only Chat
+                          </span>
+                          <h3 className="text-lg font-bold font-heading uppercase tracking-wide text-white mt-1">
+                            KCLMC WhatsApp Members Chat
+                          </h3>
+                        </div>
+                      </div>
+                      <span className="text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/40 text-[10px] font-mono">
+                        ADMIN APPROVAL ONLY
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-zinc-300 leading-relaxed font-sans mb-3">
+                      Official group chat for verified KCLMC members within our community. To keep our climbing space safe and exclusive to paid members, invite links are kept private on our secure server, and this chat is set to Admin Approval Only.
+                    </p>
+
+                    <div className="bg-[#041F1E] border border-[#084746] rounded-xl p-3 mb-4 font-mono text-[11px] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                      <span className="text-zinc-400">Registered Mobile Phone:</span>
+                      <span className="text-emerald-300 font-bold">{profile?.phone || phone || 'Verified on Roster'}</span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-3">
+                      <a
+                        href="/api/whatsapp/join"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full sm:w-auto px-5 py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-[#052322] font-heading font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md inline-flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <span>Join WhatsApp Group Chat ↗</span>
+                      </a>
+                      <span className="text-[10px] font-mono text-zinc-400">
+                        🔒 Hidden Server Gateway • Non-Transferable
+                      </span>
+                    </div>
+                  </div>
                 </>
                 ) : (
                   <div className="bg-[#084746]/80 border-2 border-amber-500/50 rounded-3xl p-8 shadow-2xl space-y-5">
