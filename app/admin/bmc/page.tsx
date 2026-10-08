@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
   parseKclsuSalesForBmc,
@@ -44,7 +44,19 @@ export default function BmcInsuranceAdminPage() {
   const [smtpPass, setSmtpPass] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [showReconcileModal, setShowReconcileModal] = useState(false);
+  const [reconcileInputText, setReconcileInputText] = useState('');
   const [broadcasting, setBroadcasting] = useState(false);
+  const [broadcastProgress, setBroadcastProgress] = useState<{
+    inProgress: boolean;
+    currentBatch: number;
+    totalBatches: number;
+    sentCount: number;
+    failedCount: number;
+    totalTargets: number;
+    currentName: string;
+  } | null>(null);
+  const abortBroadcastRef = useRef(false);
   const [broadcastStatus, setBroadcastStatus] = useState<{
     success: boolean;
     message: string;
@@ -226,59 +238,246 @@ export default function BmcInsuranceAdminPage() {
     }
   };
 
+  const markFirst25AsSent = () => {
+    const first25 = recipients.slice(0, 25);
+    if (first25.length === 0) return;
+
+    const newEntries: BmcDispatchMap = {};
+    const nowIso = new Date().toISOString();
+    for (const m of first25) {
+      newEntries[m.cardNumber.toUpperCase().trim()] = {
+        sentAt: nowIso,
+        email: m.email,
+        fullName: m.formattedName,
+      };
+    }
+
+    setDispatches(prev => {
+      const merged = { ...prev, ...newEntries };
+      try {
+        localStorage.setItem('kclmc_bmc_dispatches_2026', JSON.stringify(merged));
+      } catch {}
+      return merged;
+    });
+
+    fetch('/api/admin/bmc-insurance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'record-dispatches', dispatches: newEntries }),
+    }).catch(() => {});
+
+    setBroadcastStatus({
+      success: true,
+      message: `✓ Reconciled: Successfully marked the first ${first25.length} members (Adam Dridi Bouzid through Gil Julian) as dispatched! The remaining ${recipients.length - first25.length} members are now pending.`,
+    });
+    setShowReconcileModal(false);
+  };
+
+  const toggleMemberDispatched = (m: BmcMemberRecipient) => {
+    const cardKey = m.cardNumber.toUpperCase().trim();
+    setDispatches(prev => {
+      const updated = { ...prev };
+      if (updated[cardKey]) {
+        delete updated[cardKey];
+      } else {
+        updated[cardKey] = {
+          sentAt: new Date().toISOString(),
+          email: m.email,
+          fullName: m.formattedName,
+        };
+      }
+      try {
+        localStorage.setItem('kclmc_bmc_dispatches_2026', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const markCustomIdsAsSent = (rawText: string) => {
+    const tokens = rawText
+      .split(/[\s,;\n\r]+/)
+      .map(t => t.trim().toUpperCase())
+      .filter(Boolean);
+
+    if (tokens.length === 0) return;
+
+    const newEntries: BmcDispatchMap = {};
+    const nowIso = new Date().toISOString();
+    let matchCount = 0;
+
+    for (const m of recipients) {
+      const cardKey = m.cardNumber.toUpperCase().trim();
+      const emailUpper = m.email.toUpperCase().trim();
+      if (tokens.includes(cardKey) || tokens.includes(emailUpper) || tokens.some(t => emailUpper.includes(t))) {
+        newEntries[cardKey] = {
+          sentAt: nowIso,
+          email: m.email,
+          fullName: m.formattedName,
+        };
+        matchCount++;
+      }
+    }
+
+    if (matchCount > 0) {
+      setDispatches(prev => {
+        const merged = { ...prev, ...newEntries };
+        try {
+          localStorage.setItem('kclmc_bmc_dispatches_2026', JSON.stringify(merged));
+        } catch {}
+        return merged;
+      });
+
+      fetch('/api/admin/bmc-insurance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'record-dispatches', dispatches: newEntries }),
+      }).catch(() => {});
+
+      setBroadcastStatus({
+        success: true,
+        message: `✓ Marked ${matchCount} matching member(s) as dispatched.`,
+      });
+      setShowReconcileModal(false);
+      setReconcileInputText('');
+    } else {
+      alert('No matching members found for the provided student IDs or emails.');
+    }
+  };
+
+  const clearAllDispatches = () => {
+    if (!window.confirm('Are you sure you want to reset all dispatch history? All members will be marked as unsent.')) return;
+    setDispatches({});
+    try {
+      localStorage.removeItem('kclmc_bmc_dispatches_2026');
+    } catch {}
+    setBroadcastStatus({
+      success: true,
+      message: 'Dispatch history cleared. All members marked as unsent.',
+    });
+  };
+
+  const stopBroadcast = () => {
+    abortBroadcastRef.current = true;
+  };
+
   const handleBroadcast = async () => {
     if (targetRecipients.length === 0) return;
     setBroadcasting(true);
     setBroadcastStatus(null);
-    try {
-      const res = await fetch('/api/admin/bmc-insurance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'send',
-          csvText,
-          formUrl,
-          skipAlreadySent,
-          smtpUser: smtpUser.trim() || undefined,
-          smtpPass: smtpPass.trim() || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setBroadcastStatus({
-          success: true,
-          message: `🎉 Broadcast Complete! Successfully dispatched to ${data.sentCount} member(s) (${data.skippedCount || 0} skipped as already sent, ${data.failedCount || 0} failed).`,
-          sentCount: data.sentCount,
-          failedCount: data.failedCount,
-          failedEmails: data.failedEmails,
-        });
+    abortBroadcastRef.current = false;
 
-        // Persist newly sent members to local dispatches state & localStorage
-        if (data.newDispatches) {
-          setDispatches(prev => {
-            const updated = { ...prev, ...data.newDispatches };
-            try {
-              localStorage.setItem('kclmc_bmc_dispatches_2026', JSON.stringify(updated));
-            } catch {}
-            return updated;
+    const BATCH_SIZE = 3;
+    const targets = [...targetRecipients];
+    const totalBatches = Math.ceil(targets.length / BATCH_SIZE);
+
+    let cumulativeSent = 0;
+    let cumulativeFailed = 0;
+    const allFailedEmails: string[] = [];
+
+    setBroadcastProgress({
+      inProgress: true,
+      currentBatch: 1,
+      totalBatches,
+      sentCount: 0,
+      failedCount: 0,
+      totalTargets: targets.length,
+      currentName: targets[0]?.formattedName || '',
+    });
+
+    try {
+      for (let b = 0; b < totalBatches; b++) {
+        if (abortBroadcastRef.current) {
+          setBroadcastStatus({
+            success: false,
+            message: `⏸️ Broadcast stopped by user. Successfully dispatched to ${cumulativeSent} member(s). You can resume the remaining members at any time.`,
+            sentCount: cumulativeSent,
+            failedCount: cumulativeFailed,
+            failedEmails: allFailedEmails,
           });
+          break;
         }
 
+        const chunk = targets.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE);
+        setBroadcastProgress(prev => prev ? {
+          ...prev,
+          currentBatch: b + 1,
+          currentName: chunk[0]?.formattedName || '',
+        } : null);
+
+        const res = await fetch('/api/admin/bmc-insurance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'send-batch',
+            batchRecipients: chunk,
+            formUrl,
+            smtpUser: smtpUser.trim() || undefined,
+            smtpPass: smtpPass.trim() || undefined,
+          }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (res.ok && data.success) {
+          cumulativeSent += data.sentCount || 0;
+          cumulativeFailed += data.failedCount || 0;
+          if (data.failedEmails?.length) {
+            allFailedEmails.push(...data.failedEmails);
+          }
+
+          // Persist intermediate progress immediately into state and localStorage
+          if (data.newDispatches && Object.keys(data.newDispatches).length > 0) {
+            setDispatches(prev => {
+              const updated = { ...prev, ...data.newDispatches };
+              try {
+                localStorage.setItem('kclmc_bmc_dispatches_2026', JSON.stringify(updated));
+              } catch {}
+              return updated;
+            });
+          }
+
+          setBroadcastProgress(prev => prev ? {
+            ...prev,
+            sentCount: cumulativeSent,
+            failedCount: cumulativeFailed,
+          } : null);
+        } else {
+          cumulativeFailed += chunk.length;
+          allFailedEmails.push(...chunk.map(c => c.email));
+          setBroadcastProgress(prev => prev ? {
+            ...prev,
+            failedCount: cumulativeFailed,
+          } : null);
+        }
+
+        // Cool-down delay between chunks to keep Gmail SMTP connection rates smooth
+        if (b < totalBatches - 1 && !abortBroadcastRef.current) {
+          await new Promise(r => setTimeout(r, 1200));
+        }
+      }
+
+      if (!abortBroadcastRef.current) {
+        setBroadcastStatus({
+          success: cumulativeFailed === 0,
+          message: `🎉 Broadcast Complete! Successfully dispatched to ${cumulativeSent} member(s) (${skippedCount} skipped as already sent, ${cumulativeFailed} failed).`,
+          sentCount: cumulativeSent,
+          failedCount: cumulativeFailed,
+          failedEmails: allFailedEmails,
+        });
         setShowBroadcastModal(false);
         setConfirmCheckbox(false);
-      } else {
-        setBroadcastStatus({
-          success: false,
-          message: data.error || data.message || 'Failed to execute broadcast. Check SMTP credentials or edge limits.',
-        });
       }
     } catch (err: any) {
       setBroadcastStatus({
         success: false,
-        message: err.message || 'Network error executing broadcast.',
+        message: err.message || 'Network error executing broadcast batch.',
+        sentCount: cumulativeSent,
+        failedCount: cumulativeFailed,
+        failedEmails: allFailedEmails,
       });
     } finally {
       setBroadcasting(false);
+      setBroadcastProgress(null);
     }
   };
 
@@ -550,6 +749,25 @@ export default function BmcInsuranceAdminPage() {
                     </span>
                   </label>
 
+                  {/* Quick Reconcile First 25 Button */}
+                  <button
+                    onClick={markFirst25AsSent}
+                    disabled={alreadySentCount >= 25}
+                    className="px-3.5 py-2 bg-[#041F1E] hover:bg-[#084746] disabled:opacity-40 text-[#FFBD59] font-mono text-xs font-bold rounded-xl border border-[#FFBD59]/60 hover:border-[#FFBD59] transition-colors flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                    title="Mark the first 25 alphabetical members (Adam Dridi Bouzid to Gil Julian) as dispatched from earlier run"
+                  >
+                    <span>⚡ Mark First 25 Sent</span>
+                  </button>
+
+                  {/* Reconcile Manager Button */}
+                  <button
+                    onClick={() => setShowReconcileModal(true)}
+                    className="px-3 py-2 bg-[#041F1E] hover:bg-[#084746] text-zinc-300 font-mono text-xs font-bold rounded-xl border border-[#084746] transition-colors flex items-center gap-1.5 cursor-pointer"
+                    title="Open Dispatch &amp; Anti-Duplicate Reconciler"
+                  >
+                    <span>🛠️ Reconcile</span>
+                  </button>
+
                   {/* Mass Broadcast Button */}
                   <button
                     onClick={() => {
@@ -562,7 +780,7 @@ export default function BmcInsuranceAdminPage() {
                     {targetRecipients.length === 0 ? (
                       <span>✓ All {recipients.length} Rec Members Emailed</span>
                     ) : skipAlreadySent ? (
-                      <span>🚀 Broadcast to {targetRecipients.length} New Members</span>
+                      <span>🚀 Broadcast to {targetRecipients.length} Remaining Members</span>
                     ) : (
                       <span>🚀 Broadcast to All {recipients.length} Rec Members (Force Re-send)</span>
                     )}
@@ -728,6 +946,7 @@ export default function BmcInsuranceAdminPage() {
                         <th className="py-3 px-4">Tier</th>
                         <th className="py-3 px-4">Dispatch Status</th>
                         <th className="py-3 px-4">Prefilled Form Link</th>
+                        <th className="py-3 px-4 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#084746] text-zinc-300">
@@ -769,6 +988,19 @@ export default function BmcInsuranceAdminPage() {
                             >
                               Test Prefill ↗
                             </a>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              onClick={() => toggleMemberDispatched(m)}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-mono border transition-colors cursor-pointer ${
+                                m.isSent
+                                  ? 'bg-[#041F1E] text-zinc-400 border-zinc-700 hover:text-white hover:border-zinc-500'
+                                  : 'bg-emerald-950/80 text-emerald-300 border-emerald-800 hover:bg-emerald-900 hover:border-emerald-500 font-bold'
+                              }`}
+                              title={m.isSent ? 'Mark this member as unsent' : 'Mark this member as already dispatched'}
+                            >
+                              {m.isSent ? 'Mark Unsent' : '✓ Mark Sent'}
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1077,80 +1309,224 @@ export default function BmcInsuranceAdminPage() {
               </div>
             </div>
 
-            <div className="bg-[#041F1E] p-4 rounded-xl border border-[#084746] space-y-2.5 text-xs font-mono">
-              <div className="flex justify-between">
-                <span className="text-zinc-400">Total in Uploaded Roster:</span>
-                <span className="text-white font-bold">{recipients.length} Rec Members</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-400">Will Receive Email Now:</span>
-                <span className="text-emerald-400 font-bold">🟢 {targetRecipients.length} Member(s)</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-400">Skipped (Duplicate Protection):</span>
-                <span className="text-amber-400 font-bold">🛡️ {skippedCount} Member(s) Emailed Previously</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-400">Social Members (Excluded):</span>
-                <span className="text-zinc-400">{stats?.socialCount || 0} Members</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-400">Sender Account:</span>
-                <span className="text-[#FFBD59]">
-                  {smtpUser || serverSmtp?.senderEmail || 'kclmc.committee@gmail.com'}
-                  {serverSmtp?.isConfigured && !smtpUser ? ' (Server Env)' : ''}
-                </span>
-              </div>
-            </div>
+            {broadcasting && broadcastProgress ? (
+              <div className="space-y-4 py-2">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-emerald-400 font-bold">
+                    Batch {broadcastProgress.currentBatch} of {broadcastProgress.totalBatches}
+                  </span>
+                  <span className="text-zinc-400">
+                    {broadcastProgress.sentCount} / {broadcastProgress.totalTargets} Sent (
+                    {Math.round((broadcastProgress.sentCount / (broadcastProgress.totalTargets || 1)) * 100)}%)
+                  </span>
+                </div>
 
-            <p className="text-xs text-zinc-300 leading-relaxed font-sans">
-              Each recipient will receive an individual personalized email with their unique Google Form link.
-              {skippedCount > 0 && skipAlreadySent && (
-                <span className="block mt-1 text-emerald-400 font-mono text-[11px]">
-                  ✓ Duplicate protection active: {skippedCount} member(s) previously emailed will NOT receive duplicates.
-                </span>
-              )}
-            </p>
+                {/* Live Progress Bar */}
+                <div className="w-full bg-[#041F1E] h-3.5 rounded-full overflow-hidden border border-[#084746] p-0.5">
+                  <div
+                    className="bg-emerald-400 h-full rounded-full transition-all duration-300 shadow-sm"
+                    style={{
+                      width: `${Math.max(4, Math.round(((broadcastProgress.sentCount + broadcastProgress.failedCount) / (broadcastProgress.totalTargets || 1)) * 100))}%`,
+                    }}
+                  />
+                </div>
 
-            {/* Mandatory Confirmation Checkbox Gate */}
-            <div className="bg-[#041F1E] p-3.5 rounded-xl border border-[#FFBD59]/40">
-              <label className="flex items-start gap-3 cursor-pointer text-xs font-sans text-white select-none">
-                <input
-                  type="checkbox"
-                  checked={confirmCheckbox}
-                  onChange={(e) => setConfirmCheckbox(e.target.checked)}
-                  className="mt-0.5 accent-[#FFBD59] w-4 h-4 rounded cursor-pointer"
-                />
-                <span className="leading-snug">
-                  I confirm that I want to dispatch official BMC Insurance emails to these <strong>{targetRecipients.length} member(s)</strong>.
-                </span>
-              </label>
-            </div>
+                <div className="bg-[#041F1E] p-3.5 rounded-xl border border-[#084746] text-xs font-mono text-zinc-300 space-y-1">
+                  <p className="text-zinc-400 text-[10px] uppercase font-bold">Current Target:</p>
+                  <p className="text-[#FFBD59] font-medium truncate">
+                    {broadcastProgress.currentName || 'Dispatching batch...'}
+                  </p>
+                  <p className="text-[11px] text-zinc-500 pt-1">
+                    🛡️ Sending in safe chunks of 3 via Gmail SMTP. Intermediate progress is auto-saved after each batch.
+                  </p>
+                </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    Running batch dispatch...
+                  </span>
+                  <button
+                    onClick={stopBroadcast}
+                    className="px-4 py-2 bg-red-950/80 hover:bg-red-900 text-red-200 border border-red-800 text-xs font-mono font-bold rounded-xl transition-colors cursor-pointer"
+                  >
+                    ⏹️ Pause / Stop
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="bg-[#041F1E] p-4 rounded-xl border border-[#084746] space-y-2.5 text-xs font-mono">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Total in Uploaded Roster:</span>
+                    <span className="text-white font-bold">{recipients.length} Rec Members</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Will Receive Email Now:</span>
+                    <span className="text-emerald-400 font-bold">🟢 {targetRecipients.length} Member(s)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Skipped (Duplicate Protection):</span>
+                    <span className="text-amber-400 font-bold">🛡️ {skippedCount} Member(s) Emailed Previously</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Social Members (Excluded):</span>
+                    <span className="text-zinc-400">{stats?.socialCount || 0} Members</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Sender Account:</span>
+                    <span className="text-[#FFBD59]">
+                      {smtpUser || serverSmtp?.senderEmail || 'kclmc.committee@gmail.com'}
+                      {serverSmtp?.isConfigured && !smtpUser ? ' (Server Env)' : ''}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-zinc-300 leading-relaxed font-sans">
+                  Each recipient will receive an individual personalized email with their unique Google Form link.
+                  {skippedCount > 0 && skipAlreadySent && (
+                    <span className="block mt-1 text-emerald-400 font-mono text-[11px]">
+                      ✓ Duplicate protection active: {skippedCount} member(s) previously emailed will NOT receive duplicates.
+                    </span>
+                  )}
+                </p>
+
+                {/* Mandatory Confirmation Checkbox Gate */}
+                <div className="bg-[#041F1E] p-3.5 rounded-xl border border-[#FFBD59]/40">
+                  <label className="flex items-start gap-3 cursor-pointer text-xs font-sans text-white select-none">
+                    <input
+                      type="checkbox"
+                      checked={confirmCheckbox}
+                      onChange={(e) => setConfirmCheckbox(e.target.checked)}
+                      className="mt-0.5 accent-[#FFBD59] w-4 h-4 rounded cursor-pointer"
+                    />
+                    <span className="leading-snug">
+                      I confirm that I want to dispatch official BMC Insurance emails to these <strong>{targetRecipients.length} member(s)</strong>.
+                    </span>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      setShowBroadcastModal(false);
+                      setConfirmCheckbox(false);
+                    }}
+                    disabled={broadcasting}
+                    className="px-4 py-2 bg-[#041F1E] hover:bg-[#084746] text-zinc-300 font-mono text-xs rounded-xl border border-[#084746] transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBroadcast}
+                    disabled={broadcasting || !confirmCheckbox || targetRecipients.length === 0}
+                    className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-[#041F1E] font-heading font-black text-xs uppercase tracking-wider rounded-xl transition-colors shadow-md disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
+                  >
+                    <span>🚀 Confirm &amp; Dispatch to {targetRecipients.length} Members</span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Reconcile & Dispatch Management Modal */}
+      {showReconcileModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#052322] border border-[#084746] rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🛠️</span>
+                <div>
+                  <h3 className="font-heading font-black text-lg text-white uppercase tracking-wide">
+                    Reconcile Dispatches &amp; Anti-Duplicate Log
+                  </h3>
+                  <p className="text-xs font-mono text-[#FFBD59]">Manage Sent / Unsent Member State</p>
+                </div>
+              </div>
               <button
-                onClick={() => {
-                  setShowBroadcastModal(false);
-                  setConfirmCheckbox(false);
-                }}
-                disabled={broadcasting}
+                onClick={() => setShowReconcileModal(false)}
+                className="text-zinc-400 hover:text-white font-mono text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Quick Action: Mark First 25 */}
+            <div className="bg-[#041F1E] p-4 rounded-xl border border-[#084746] space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-mono font-bold text-white uppercase">
+                    ⚡ Quick Reconcile: First 25 Members (A–G)
+                  </h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Marks the first 25 members (Adam Dridi Bouzid to Gil Julian) as dispatched from previous batch run.
+                  </p>
+                </div>
+                <button
+                  onClick={markFirst25AsSent}
+                  className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-[#041F1E] font-heading font-black text-xs uppercase tracking-wider rounded-xl transition-colors shrink-0 cursor-pointer"
+                >
+                  Mark 25 Sent
+                </button>
+              </div>
+
+              {recipients.length >= 25 && (
+                <div className="text-[11px] font-mono text-zinc-400 bg-[#052322] p-2.5 rounded-lg border border-[#084746]/60">
+                  <span className="text-emerald-400 font-bold">Covers:</span> {recipients[0]?.formattedName} ({recipients[0]?.cardNumber}) ... to ... {recipients[24]?.formattedName} ({recipients[24]?.cardNumber})
+                </div>
+              )}
+            </div>
+
+            {/* Paste Custom List */}
+            <div className="bg-[#041F1E] p-4 rounded-xl border border-[#084746] space-y-3">
+              <h4 className="text-xs font-mono font-bold text-white uppercase">
+                📋 Paste Custom Sent List (Student IDs or Emails)
+              </h4>
+              <p className="text-[11px] text-zinc-400">
+                Paste student IDs (e.g. K26135219) or email addresses separated by commas, spaces, or newlines:
+              </p>
+              <textarea
+                value={reconcileInputText}
+                onChange={(e) => setReconcileInputText(e.target.value)}
+                placeholder="K26135219, k23164943@kcl.ac.uk&#10;K25008223..."
+                rows={3}
+                className="w-full bg-[#052322] border border-[#084746] rounded-xl p-2.5 text-xs font-mono text-white focus:outline-none focus:border-[#FFBD59]"
+              />
+              <button
+                onClick={() => markCustomIdsAsSent(reconcileInputText)}
+                disabled={!reconcileInputText.trim()}
+                className="px-4 py-2 bg-[#FFBD59] hover:bg-white text-[#041F1E] font-heading font-black text-xs uppercase tracking-wider rounded-xl transition-colors disabled:opacity-40 cursor-pointer"
+              >
+                Mark Pasted Members as Sent
+              </button>
+            </div>
+
+            {/* Reset Dispatches */}
+            <div className="bg-red-950/20 border border-red-900/60 p-4 rounded-xl flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-mono font-bold text-red-300 uppercase">
+                  🗑️ Reset All Dispatches
+                </h4>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  Clear local dispatch cache ({alreadySentCount} currently tracked as sent).
+                </p>
+              </div>
+              <button
+                onClick={clearAllDispatches}
+                className="px-3.5 py-1.5 bg-red-900/40 hover:bg-red-800 text-red-200 border border-red-700 font-mono text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Clear History
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setShowReconcileModal(false)}
                 className="px-4 py-2 bg-[#041F1E] hover:bg-[#084746] text-zinc-300 font-mono text-xs rounded-xl border border-[#084746] transition-colors cursor-pointer"
               >
-                Cancel
-              </button>
-              <button
-                onClick={handleBroadcast}
-                disabled={broadcasting || !confirmCheckbox || targetRecipients.length === 0}
-                className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-[#041F1E] font-heading font-black text-xs uppercase tracking-wider rounded-xl transition-colors shadow-md disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
-              >
-                {broadcasting ? (
-                  <>
-                    <span className="w-3 h-3 rounded-full border-2 border-[#041F1E] border-t-transparent animate-spin"></span>
-                    <span>Broadcasting to {targetRecipients.length}...</span>
-                  </>
-                ) : (
-                  <span>🚀 Confirm &amp; Dispatch to {targetRecipients.length} Members</span>
-                )}
+                Close
               </button>
             </div>
           </div>

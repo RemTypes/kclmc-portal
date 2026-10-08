@@ -106,6 +106,30 @@ export async function POST(request: Request) {
       });
     }
 
+    // ACTION: Record / Sync dispatches to Supabase
+    if (action === 'record-dispatches') {
+      const dispatchRecords: Record<string, { sentAt: string; email: string; fullName: string }> = body.dispatches || {};
+      const entries = Object.entries(dispatchRecords);
+
+      if (entries.length > 0) {
+        try {
+          const payload = entries.map(([cardNumber, info]) => ({
+            card_number: cardNumber.toUpperCase().trim(),
+            email: info.email,
+            full_name: info.fullName || '',
+            sent_at: info.sentAt || new Date().toISOString(),
+            academic_year: '2026/27',
+          }));
+
+          await serverSupabase.from('bmc_dispatches').upsert(payload, { onConflict: 'card_number,academic_year' });
+        } catch (dbErr) {
+          console.warn('[BMC] Failed to record dispatches in Supabase:', dbErr);
+        }
+      }
+
+      return NextResponse.json({ success: true, count: entries.length });
+    }
+
     // ACTION: Import Google Form Responses
     if (action === 'import-responses') {
       if (!responseCsvText || !responseCsvText.trim()) {
@@ -173,12 +197,15 @@ export async function POST(request: Request) {
       });
     }
 
-    // For email operations, require csvText
-    if (!csvText || !csvText.trim()) {
+    // For email operations, require csvText (unless batchRecipients are directly provided for send-batch)
+    const hasDirectBatchRecipients = action === 'send-batch' && Array.isArray(body.batchRecipients) && body.batchRecipients.length > 0;
+    if (!hasDirectBatchRecipients && (!csvText || !csvText.trim())) {
       return NextResponse.json({ error: 'CSV report content is required' }, { status: 400 });
     }
 
-    const result = parseKclsuSalesForBmc(csvText, formUrl);
+    const result = csvText && csvText.trim()
+      ? parseKclsuSalesForBmc(csvText, formUrl)
+      : { stats: {} as any, recipients: [] as BmcMemberRecipient[], allMembers: [] };
     const { stats, recipients } = result;
 
     if (action === 'preview') {
@@ -240,6 +267,96 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: sendRes.success,
         message: sendRes.success ? `Test email (sample for ${sampleMember.formattedName}) successfully sent to ${target} via ${smtpHost}` : sendRes.error,
+      });
+    }
+
+    // ACTION: Send Small Batch of Emails (Edge-safe, Cloudflare timeout immune)
+    if (action === 'send-batch') {
+      if (!smtpUser || !smtpPass) {
+        return NextResponse.json({
+          error: 'SMTP credentials (SMTP_USER / GMAIL_USER) are not configured. Please configure environment variables or supply them in Settings.',
+        }, { status: 400 });
+      }
+
+      let targets: BmcMemberRecipient[] = [];
+      if (Array.isArray(body.batchRecipients) && body.batchRecipients.length > 0) {
+        targets = body.batchRecipients;
+      } else if (recipients.length > 0) {
+        const startIndex = typeof body.startIndex === 'number' ? body.startIndex : 0;
+        const batchSize = typeof body.batchSize === 'number' ? body.batchSize : 3;
+        targets = recipients.slice(startIndex, startIndex + batchSize);
+      }
+
+      if (targets.length === 0) {
+        return NextResponse.json({
+          success: true,
+          sentCount: 0,
+          failedCount: 0,
+          failedEmails: [],
+          newDispatches: {},
+          message: 'No recipients in batch',
+        });
+      }
+
+      // Cap at 8 recipients max per chunk to guarantee runtime is strictly under 30s
+      targets = targets.slice(0, 8);
+
+      let sentCount = 0;
+      let failedCount = 0;
+      const failedEmails: string[] = [];
+      const newDispatches: Record<string, { sentAt: string; email: string; fullName: string }> = {};
+
+      for (const member of targets) {
+        const emailContent = generateBmcEmailContent(member, formUrl);
+        const sendRes = await sendSmtpEmail({
+          host: smtpHost,
+          port: smtpPort,
+          user: smtpUser,
+          pass: smtpPass,
+          from: smtpFrom,
+          to: member.email,
+          subject: emailContent.subject,
+          text: emailContent.text,
+          html: emailContent.html,
+        });
+
+        if (sendRes.success) {
+          sentCount++;
+          const nowIso = new Date().toISOString();
+          const cardKey = (member.cardNumber || '').toUpperCase().trim();
+
+          newDispatches[cardKey] = {
+            sentAt: nowIso,
+            email: member.email,
+            fullName: member.formattedName,
+          };
+
+          // Record in Supabase if table exists
+          try {
+            await serverSupabase.from('bmc_dispatches').upsert({
+              card_number: cardKey,
+              email: member.email,
+              full_name: member.formattedName,
+              sent_at: nowIso,
+              academic_year: '2026/27',
+            }, { onConflict: 'card_number,academic_year' });
+          } catch (dbErr) {
+            console.warn('[BMC] Could not record dispatch in Supabase:', dbErr);
+          }
+        } else {
+          failedCount++;
+          failedEmails.push(member.email);
+        }
+
+        await new Promise(r => setTimeout(r, 250));
+      }
+
+      return NextResponse.json({
+        success: true,
+        sentCount,
+        failedCount,
+        failedEmails,
+        newDispatches,
       });
     }
 
