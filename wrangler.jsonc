@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "kclmc-platform",
+  "name": "kclmc-portal",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-06-12",
   "compatibility_flags": [
