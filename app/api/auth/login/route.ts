@@ -129,7 +129,9 @@ export async function POST(request: Request) {
           backupCodes: setup.backupCodes,
           expiresAt: setup.expiresAt,
           message: 'Two-factor authentication is required for committee accounts. Please scan the QR code into your authenticator app to complete activation.',
-          destination: requestedNext || (userRole >= 1 ? '/admin' : '/membership'),
+          destination: (requestedNext && requestedNext !== '/login' && !requestedNext.startsWith('/login?') && !requestedNext.startsWith('/auth'))
+            ? requestedNext
+            : (userRole >= 1 ? '/admin' : '/membership'),
         });
 
         response.cookies.set('kclmc_2fa_pending', setup.challengeToken, {
@@ -163,7 +165,9 @@ export async function POST(request: Request) {
         challengeToken: challenge.challengeToken,
         expiresAt: challenge.expiresAt,
         message: 'Please enter the 6-digit code from your authenticator app or an emergency backup code.',
-        destination: requestedNext || (userRole >= 1 ? '/admin' : '/membership'),
+        destination: (requestedNext && requestedNext !== '/login' && !requestedNext.startsWith('/login?') && !requestedNext.startsWith('/auth'))
+          ? requestedNext
+          : (userRole >= 1 ? '/admin' : '/membership'),
       });
 
       response.cookies.set('kclmc_2fa_pending', challenge.challengeToken, {
@@ -187,7 +191,9 @@ export async function POST(request: Request) {
         email: user.email,
         role: userRole,
       },
-      destination: requestedNext || (userRole >= 1 ? '/admin' : '/membership'),
+      destination: (requestedNext && requestedNext !== '/login' && !requestedNext.startsWith('/login?') && !requestedNext.startsWith('/auth'))
+        ? requestedNext
+        : (userRole >= 1 ? '/admin' : '/membership'),
     });
 
     if (cookiesToSet.length > 0) {

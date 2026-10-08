@@ -67,12 +67,15 @@ export function getSafeRedirectUrl(target: string | null | undefined, fallback: 
   const trimmed = target.trim();
   // Ensure target is a relative internal path starting with a single slash
   // Disallow protocol-relative URLs (//), backslash tricks (/\), schemes (http:, javascript:), and null bytes
+  // Disallow redirect loops back to login or auth endpoints
   if (
     trimmed.startsWith('/') &&
     !trimmed.startsWith('//') &&
     !trimmed.startsWith('/\\') &&
     !trimmed.includes(':') &&
-    !trimmed.includes('\0')
+    !trimmed.includes('\0') &&
+    !trimmed.startsWith('/login') &&
+    !trimmed.startsWith('/auth')
   ) {
     return trimmed;
   }

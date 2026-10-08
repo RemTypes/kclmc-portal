@@ -59,21 +59,28 @@ export async function POST(request: Request) {
 
     recordSuccessfulAttempt(ip, result.email);
 
-    // Persist 2FA enrollment to Supabase user metadata
+    // Persist 2FA enrollment to Supabase user metadata with timeout protection
     if (result.enrolledSecret && result.userId) {
-      try {
-        const adminSupabase = createAdminClient();
-        if (adminSupabase?.auth?.admin?.updateUserById) {
-          await adminSupabase.auth.admin.updateUserById(result.userId, {
-            user_metadata: {
-              is_2fa_enrolled: true,
-              totp_secret: result.enrolledSecret,
-              backup_codes: result.hashedBackupCodes || [],
-            },
-          });
+      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        try {
+          const adminSupabase = createAdminClient();
+          if (adminSupabase?.auth?.admin?.updateUserById) {
+            await Promise.race([
+              adminSupabase.auth.admin.updateUserById(result.userId, {
+                user_metadata: {
+                  is_2fa_enrolled: true,
+                  totp_secret: result.enrolledSecret,
+                  backup_codes: result.hashedBackupCodes || [],
+                },
+              }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000)),
+            ]).catch(adminErr => {
+              console.warn('[2FA] Admin persistence timeout/warning:', adminErr);
+            });
+          }
+        } catch (adminErr) {
+          console.warn('[2FA] Admin persistence warning:', adminErr);
         }
-      } catch (adminErr) {
-        console.warn('[2FA] Admin persistence warning:', adminErr);
       }
 
       const accessToken = result.sessionData?.session?.access_token;
@@ -85,12 +92,17 @@ export async function POST(request: Request) {
             global: { headers: { Authorization: `Bearer ${accessToken}` } },
             cookies: { getAll() { return []; }, setAll() {} },
           });
-          await userSupabase.auth.updateUser({
-            data: {
-              is_2fa_enrolled: true,
-              totp_secret: result.enrolledSecret,
-              backup_codes: result.hashedBackupCodes || [],
-            },
+          await Promise.race([
+            userSupabase.auth.updateUser({
+              data: {
+                is_2fa_enrolled: true,
+                totp_secret: result.enrolledSecret,
+                backup_codes: result.hashedBackupCodes || [],
+              },
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000)),
+          ]).catch(userErr => {
+            console.warn('[2FA] User metadata update timeout/warning:', userErr);
           });
         } catch (userErr) {
           console.warn('[2FA] User metadata update warning:', userErr);
@@ -99,19 +111,31 @@ export async function POST(request: Request) {
     }
 
     // Update remaining backup codes if a backup code was burned
-    if (result.usedBackupCode && result.userId && result.remainingBackupCodes) {
+    if (result.usedBackupCode && result.userId && result.remainingBackupCodes && process.env.SUPABASE_SERVICE_ROLE_KEY) {
       try {
         const adminSupabase = createAdminClient();
         if (adminSupabase?.auth?.admin?.updateUserById) {
-          await adminSupabase.auth.admin.updateUserById(result.userId, {
-            user_metadata: {
-              backup_codes: result.remainingBackupCodes,
-            },
-          });
+          await Promise.race([
+            adminSupabase.auth.admin.updateUserById(result.userId, {
+              user_metadata: {
+                backup_codes: result.remainingBackupCodes,
+              },
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000)),
+          ]).catch(() => {});
         }
       } catch (e) {
         // non-fatal
       }
+    }
+
+    const resolvedRole = result.role ?? 0;
+    let safeDestination = (requestedNext && requestedNext !== '/login' && !requestedNext.startsWith('/login?') && !requestedNext.startsWith('/auth'))
+      ? requestedNext
+      : (resolvedRole >= 1 ? '/admin' : '/membership');
+
+    if (!safeDestination || safeDestination === '/login' || safeDestination.startsWith('/login?')) {
+      safeDestination = resolvedRole >= 1 ? '/admin' : '/membership';
     }
 
     const response = NextResponse.json({
@@ -122,9 +146,9 @@ export async function POST(request: Request) {
       user: {
         id: result.userId,
         email: result.email,
-        role: result.role,
+        role: resolvedRole,
       },
-      destination: requestedNext || ((result.role || 0) >= 1 ? '/admin' : '/membership'),
+      destination: safeDestination,
     });
 
     // Issue httpOnly, Secure, SameSite=Strict cookies
