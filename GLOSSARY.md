@@ -27,3 +27,11 @@ _Avoid_: Admin, staff, moderator
 **2FA Challenge**:
 A short-lived, cryptographically sealed state token containing pending session credentials awaiting TOTP or backup code verification before a full session is activated.
 _Avoid_: OTP token, pending auth, login code
+
+**KCLSU Roster**:
+The official student union registry of paid society members used to reconcile and activate digital climbing passes.
+_Avoid_: Purchase list, membership sheet, buyers list
+
+**Safety Gate**:
+The compulsory duty-of-care verification step requiring emergency contacts and mobile phone numbers before a climbing pass unlocks.
+_Avoid_: Safety form, onboarding gate, profile check
