@@ -68,6 +68,12 @@ export default function Footer() {
                 Committee Portal
               </Link>
             </li>
+            <li>
+              <Link href="/status" className="hover:text-[#FFBD59] transition-colors inline-flex items-center gap-1.5 text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span>System Status</span>
+              </Link>
+            </li>
           </ul>
         </div>
 

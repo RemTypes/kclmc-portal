@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react';
 import Link from 'next/link';
+import { captureException } from '@/lib/monitoring';
 
 export default function GlobalError({
   error,
@@ -11,8 +12,8 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Log sanitized error info for operational debugging without leaking user data
-    console.error('[KCLMC Runtime Error Boundary]:', error?.message || error);
+    // Automatically report to monitoring and telemetry
+    captureException(error, { digest: error?.digest });
   }, [error]);
 
   return (

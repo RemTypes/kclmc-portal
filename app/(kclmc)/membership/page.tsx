@@ -9,6 +9,7 @@ import { UNIVERSITIES, DEFAULT_UNIVERSITY, sanitizeUniversity } from '@/lib/auth
 import confetti from 'canvas-confetti';
 import { checkSafetyProfileCompleteness } from '@/lib/safety';
 import { generateBmcPrefilledUrl } from '@/lib/bmc_insurance';
+import { trackClientEvent } from '@/lib/telemetry';
 import type { Profile, Membership } from '@/types/database';
 
 function MembershipTierGuide() {
@@ -339,6 +340,19 @@ export default function MembershipDashboard() {
           student_id: matched.cardNumber,
         });
       }
+
+      // Track activation and celebrate
+      trackClientEvent('membership_activated', {
+        tier: matched.tier,
+        cardNumber: matched.cardNumber,
+      });
+
+      confetti({
+        particleCount: 50,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#FFBD59', '#084746', '#FFFFFF'],
+      });
     } catch (err: any) {
       console.error('Error linking student ID:', err);
       const rawMsg = String(err?.message || '');

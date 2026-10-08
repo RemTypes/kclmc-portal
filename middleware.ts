@@ -19,10 +19,15 @@ export async function middleware(request: NextRequest) {
     'sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg';
   const path = request.nextUrl.pathname;
 
-  // 1. Check disabled modules first (if module is disabled, block public access)
+  // 1. Check disabled public modules first (fast block for unauthenticated visitors)
   const moduleDef = getModuleByRoute(path);
-  if (moduleDef && !moduleDef.enabled) {
-    return NextResponse.redirect(new URL(`/403?from=${encodeURIComponent(path)}&req=disabled`, request.url));
+  if (moduleDef && !moduleDef.enabled && !path.startsWith('/admin')) {
+    const hasAuthCookie = request.cookies.getAll().some(
+      c => c.name.startsWith('sb-') || c.name === 'kclmc_session'
+    );
+    if (!hasAuthCookie) {
+      return NextResponse.redirect(new URL(`/403?from=${encodeURIComponent(path)}&req=disabled`, request.url));
+    }
   }
 
   // 2. Fallback check if Supabase is unconfigured
@@ -96,8 +101,20 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL(`/403?req=committee&from=${encodeURIComponent(path)}`, request.url));
     }
 
+    if (moduleDef && !moduleDef.enabled && role < 2) {
+      return NextResponse.redirect(new URL(`/403?from=${encodeURIComponent(path)}&req=disabled`, request.url));
+    }
+
     if (path.startsWith('/admin/ml') && role < 2) {
       return NextResponse.redirect(new URL(`/403?req=superadmin&from=${encodeURIComponent(path)}`, request.url));
+    }
+  }
+
+  // 5. Enforce disabled public module restrictions (superadmins with role >= 2 can preview/bypass)
+  if (moduleDef && !moduleDef.enabled && !path.startsWith('/admin')) {
+    const role = user ? await getAuthenticatedUserRole(supabase, user) : 0;
+    if (role < 2) {
+      return NextResponse.redirect(new URL(`/403?from=${encodeURIComponent(path)}&req=disabled`, request.url));
     }
   }
 

@@ -45,29 +45,53 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Update password via Supabase server client
+    // 3. Update password via Supabase server client (supports cookie session and Bearer token)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsvnyibipcwrcyzqilge.supabase.co';
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg';
 
     let cookiesToSet: any[] = [];
-    const serverSupabase = createServerClient(supabaseUrl, supabaseKey, {
-      cookies: {
-        getAll() {
-          const cookieHeader = request.headers.get('cookie') || '';
-          return cookieHeader.split(';').map(c => {
-            const [name, ...rest] = c.trim().split('=');
-            return { name, value: rest.join('=') };
-          });
-        },
-        setAll(toSet) {
-          cookiesToSet = toSet;
-        },
-      },
-    });
+    const authHeader = request.headers.get('authorization') || '';
+    const bearerToken = authHeader.startsWith('Bearer ')
+      ? authHeader.slice(7).trim()
+      : (typeof body.accessToken === 'string' && body.accessToken.trim() ? body.accessToken.trim() : null);
 
-    const { data, error } = await serverSupabase.auth.updateUser({
-      password,
-    });
+    let data: any = null;
+    let error: any = null;
+
+    if (bearerToken) {
+      const tokenClient = createServerClient(supabaseUrl, supabaseKey, {
+        cookies: {
+          getAll: () => [],
+          setAll: (toSet) => { cookiesToSet = toSet; },
+        },
+        global: {
+          headers: {
+            Authorization: `Bearer ${bearerToken}`,
+          },
+        },
+      });
+      const res = await tokenClient.auth.updateUser({ password });
+      data = res.data;
+      error = res.error;
+    } else {
+      const serverSupabase = createServerClient(supabaseUrl, supabaseKey, {
+        cookies: {
+          getAll() {
+            const cookieHeader = request.headers.get('cookie') || '';
+            return cookieHeader.split(';').map(c => {
+              const [name, ...rest] = c.trim().split('=');
+              return { name, value: rest.join('=') };
+            });
+          },
+          setAll(toSet) {
+            cookiesToSet = toSet;
+          },
+        },
+      });
+      const res = await serverSupabase.auth.updateUser({ password });
+      data = res.data;
+      error = res.error;
+    }
 
     if (error) {
       recordFailedAttempt(ip, undefined, error.message);

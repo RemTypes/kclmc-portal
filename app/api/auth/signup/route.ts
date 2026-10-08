@@ -4,6 +4,7 @@ import { checkRateLimit, recordFailedAttempt, recordSuccessfulAttempt } from '@/
 import { validatePasswordStrength } from '@/lib/security/password-validator';
 import { setSessionCookies } from '@/lib/security/cookies';
 import { sanitizeEmail, sanitizeStudentId, sanitizeUniversity } from '@/lib/auth';
+import { trackServerEvent } from '@/lib/telemetry-server';
 
 function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -95,6 +96,13 @@ export async function POST(request: Request) {
     }
 
     recordSuccessfulAttempt(ip, cleanEmail);
+
+    // Track user signup conversion event
+    trackServerEvent('user_signup', {
+      userId: authData.user?.id,
+      emailDomain: cleanEmail.split('@')[1],
+      university: cleanUniversity || "King's College London",
+    }).catch(() => {});
 
     const response = NextResponse.json({
       success: true,
