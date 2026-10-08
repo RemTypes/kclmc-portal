@@ -27,6 +27,7 @@ export default function MembershipCard({ profile, membership }: MembershipCardPr
 
   const [isBigFormat, setIsBigFormat] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [mobilePreviewUrl, setMobilePreviewUrl] = useState<string | null>(null);
 
   const cardImageSrc = cardType === 'social'
     ? '/images/membership/social-card.jpg'
@@ -40,12 +41,12 @@ export default function MembershipCard({ profile, membership }: MembershipCardPr
     ? `${window.location.origin}/api/verify/${studentId}`
     : `/api/verify/${studentId}`;
 
-  // Download high-resolution card with canvas overlay
+  // Download high-resolution card with canvas overlay (Web Share API for iOS/Android, Blob for Desktop)
   const handleDownload = async () => {
     setDownloading(true);
     try {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
+      // Use standard same-origin image loading (avoid unnecessary crossOrigin on local assets)
       img.src = cardImageSrc;
 
       await new Promise((resolve, reject) => {
@@ -83,15 +84,63 @@ export default function MembershipCard({ profile, membership }: MembershipCardPr
       }
       ctx.fillText(studentId, 178, 352);
 
-      // Generate download
-      const dataUrl = canvas.toDataURL('image/png');
+      // Convert canvas to binary PNG Blob
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, 'image/png')
+      );
+      if (!blob) throw new Error('Could not create card image blob');
+
+      const fileName = `KCLMC-${cardType.toUpperCase()}-CARD-${studentId}.png`;
+      const file = new File([blob], fileName, { type: 'image/png' });
+
+      // 1. Mobile Native Web Share API (Primary for iOS 15+ & Android)
+      // On iPhone, this displays the native iOS Share Sheet with "Save Image" (saves straight to Apple Photos)
+      if (
+        typeof navigator !== 'undefined' &&
+        typeof navigator.canShare === 'function' &&
+        navigator.canShare({ files: [file] }) &&
+        typeof navigator.share === 'function'
+      ) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'KCLMC Digital Climbing Pass',
+            text: `Official KCLMC Climbing Pass for ${userName} (${studentId})`,
+          });
+          return;
+        } catch (shareErr: any) {
+          // If the user cancelled or dismissed the iOS/Android share sheet, gracefully exit
+          if (shareErr?.name === 'AbortError') {
+            return;
+          }
+          console.warn('Web Share failed, attempting browser fallback:', shareErr);
+        }
+      }
+
+      // 2. Browser Object URL fallback
+      const blobUrl = URL.createObjectURL(blob);
+
+      // Detect iOS / iPhone where <a download> is blocked by WebKit
+      const isIOS = typeof navigator !== 'undefined' && (
+        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+      );
+
+      if (isIOS) {
+        // Display high-res preview modal with "Press & hold to save to Photos" instruction
+        setMobilePreviewUrl(blobUrl);
+        return;
+      }
+
+      // 3. Desktop / Android standard direct file download
       const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = `KCLMC-${cardType.toUpperCase()}-CARD-${studentId}.png`;
+      a.href = blobUrl;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    } catch (err) {
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (err: any) {
       console.error('Error generating card download:', err);
       alert('Could not generate download image. Please try again.');
     } finally {
@@ -274,6 +323,67 @@ export default function MembershipCard({ profile, membership }: MembershipCardPr
                   Close
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Save to Photos Fallback Modal (for iOS when Web Share is unavailable) */}
+      {mobilePreviewUrl && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#052322] border-2 border-[#FFBD59]/50 rounded-3xl max-w-lg w-full p-6 text-center space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-2 border-b border-[#FFBD59]/20">
+              <h3 className="font-heading font-black text-lg text-white uppercase tracking-wider flex items-center gap-2">
+                <span>📱</span>
+                <span>Save to Photos</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  if (mobilePreviewUrl) URL.revokeObjectURL(mobilePreviewUrl);
+                  setMobilePreviewUrl(null);
+                }}
+                className="text-zinc-400 hover:text-white p-1 text-sm font-mono cursor-pointer"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            <div className="p-3 bg-[#084746]/40 rounded-2xl border border-[#FFBD59]/30 text-xs text-[#FFBD59] font-sans">
+              <p className="font-bold mb-1">Press &amp; hold the card image below:</p>
+              <p className="text-zinc-300 text-[11px]">
+                Tap <strong>&quot;Save to Photos&quot;</strong> (or &quot;Add to Photos&quot;) in the pop-up menu.
+              </p>
+            </div>
+
+            <div className="rounded-2xl overflow-hidden border border-[#FFBD59]/40 shadow-xl bg-black">
+              <img
+                src={mobilePreviewUrl}
+                alt="KCLMC Membership Card"
+                className="w-full h-auto select-auto"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <a
+                href={mobilePreviewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 py-3 bg-[#084746] hover:bg-[#0a5a58] border border-[#FFBD59]/40 text-[#FFBD59] font-mono text-xs uppercase font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
+              >
+                <span>Open Full Image</span>
+                <span>↗</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  if (mobilePreviewUrl) URL.revokeObjectURL(mobilePreviewUrl);
+                  setMobilePreviewUrl(null);
+                }}
+                className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-mono text-xs uppercase font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>
