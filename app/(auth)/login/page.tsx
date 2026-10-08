@@ -66,6 +66,31 @@ function LoginForm() {
     return validatePasswordStrength(password);
   }, [password]);
 
+  // Active session detection: auto-forward already-authenticated users to their destination
+  useEffect(() => {
+    let isMounted = true;
+    async function checkActiveSession() {
+      try {
+        const res = await fetch('/api/auth/me', { cache: 'no-store' });
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          if (data.authenticated && data.user) {
+            const dest = searchParams.get('next')
+              ? next
+              : ((data.user.role ?? 0) >= 1 ? '/admin' : '/membership');
+            window.location.href = dest;
+          }
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+    checkActiveSession();
+    return () => {
+      isMounted = false;
+    };
+  }, [next, searchParams]);
+
   // Lockout countdown timer
   useEffect(() => {
     if (lockoutSecondsLeft <= 0) {
@@ -185,8 +210,7 @@ function LoginForm() {
           return;
         }
 
-        router.push(next);
-        router.refresh();
+        window.location.href = next;
       } else {
         // Sign In submission through server-side rate-limited route with httpOnly cookies
         const res = await fetch('/api/auth/login', {
@@ -246,8 +270,7 @@ function LoginForm() {
 
         // Standard Login Succeeded (httpOnly cookies issued by server)
         const targetUrl = searchParams.get('next') ? next : (data.destination || next);
-        router.push(targetUrl);
-        router.refresh();
+        window.location.href = targetUrl;
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Network error during authentication. Please try again.');
@@ -288,8 +311,7 @@ function LoginForm() {
 
       // 2FA Verified & setup complete! httpOnly session cookies attached to response
       const targetUrl = searchParams.get('next') ? next : (data.destination || next);
-      router.push(targetUrl);
-      router.refresh();
+      window.location.href = targetUrl;
     } catch (err: any) {
       setErrorMsg(err.message || 'Error verifying setup code. Please try again.');
     } finally {
@@ -328,8 +350,7 @@ function LoginForm() {
 
       // 2FA Verified! httpOnly session cookies attached to response
       const targetUrl = searchParams.get('next') ? next : (data.destination || next);
-      router.push(targetUrl);
-      router.refresh();
+      window.location.href = targetUrl;
     } catch (err: any) {
       setErrorMsg(err.message || 'Error verifying two-factor challenge.');
     } finally {
