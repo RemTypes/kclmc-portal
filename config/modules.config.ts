@@ -162,6 +162,16 @@ export const modulesConfig: Record<string, ModuleDefinition> = {
     allowOnlySuperAdmin: true,
     category: 'tools',
   },
+  systemStatus: {
+    id: 'systemStatus',
+    name: 'System Status',
+    description: 'Real-time operational status, service health, and uptime monitoring',
+    route: '/status',
+    brand: 'shared',
+    enabled: true,
+    requiredRole: 1, // Committee access required (role >= 1)
+    category: 'tools',
+  },
 };
 
 export function getModuleByRoute(pathname: string): ModuleDefinition | undefined {

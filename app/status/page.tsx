@@ -146,13 +146,13 @@ export default function StatusPage() {
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#084746] border border-[#FFBD59]/40 text-[#FFBD59] text-xs font-heading font-bold uppercase tracking-wider mb-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              Live Monitoring
+              Live Monitoring • Committee Clearance Verified
             </div>
             <h1 className="text-3xl sm:text-5xl font-black font-heading uppercase tracking-tight text-white">
               System Status
             </h1>
             <p className="text-xs sm:text-sm text-zinc-300 font-sans mt-1">
-              Real-time operational status for KCLMC digital platform services.
+              Real-time operational status and diagnostics for KCLMC platform services. Restricted to authorized committee members.
             </p>
           </div>
 
@@ -160,16 +160,16 @@ export default function StatusPage() {
             <button
               onClick={checkHealth}
               disabled={checking}
-              className="px-3.5 py-2 bg-[#084746] hover:bg-[#0b5c5b] text-[#FFBD59] border border-[#FFBD59]/40 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-2"
+              className="px-3.5 py-2 bg-[#084746] hover:bg-[#0b5c5b] text-[#FFBD59] border border-[#FFBD59]/40 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-2 cursor-pointer"
             >
               <span className={checking ? 'animate-spin' : ''}>↺</span>
               <span>{checking ? 'Checking...' : 'Check Now'}</span>
             </button>
             <Link
-              href="/"
+              href="/admin"
               className="px-3.5 py-2 bg-black/40 hover:bg-black/60 text-zinc-300 border border-zinc-700 rounded-xl text-xs font-mono transition-colors"
             >
-              ← Back to Hub
+              ← Admin Portal
             </Link>
           </div>
         </div>
