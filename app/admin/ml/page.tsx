@@ -203,7 +203,7 @@ export default function MLPage() {
         </div>
 
         {/* Python Sandbox Execution Reference */}
-        <div className="border border-green-900/60 p-6 bg-zinc-950 rounded-lg">
+        <div className="border border-green-900/60 p-6 bg-zinc-950 rounded-lg mb-8">
           <div className="flex justify-between items-center mb-3">
             <h3 className="text-sm font-bold text-white">Local Python Execution Environment</h3>
             <span className="text-xs font-mono text-green-600">ml/*.py</span>
@@ -215,6 +215,39 @@ export default function MLPage() {
             <div>$ python3 ml/export_dataset.py &nbsp;&nbsp;&nbsp;&nbsp;# Pull live order telemetry into CSV</div>
             <div>$ python3 ml/01_demand_elasticity.py # Fit log-log price elasticity regression</div>
             <div>$ python3 ml/02_sizing_optimization.py # Solve Newsvendor stochastic quantile</div>
+          </div>
+        </div>
+
+        {/* AI Spending Cap & Cost Guard Panel */}
+        <div className="border border-emerald-900/60 p-6 bg-emerald-950/20 rounded-lg">
+          <div className="flex justify-between items-center mb-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">AI Spending Cap &amp; Budget Guard</h3>
+            </div>
+            <span className="text-xs font-mono text-emerald-400 border border-emerald-800 bg-emerald-950 px-2 py-0.5 rounded">
+              ENFORCED
+            </span>
+          </div>
+          <p className="text-xs text-zinc-300 mb-4">
+            Financial safeguards protect KCLMC society accounts against runaway API usage or automated loop billing:
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-mono">
+            <div className="bg-black/60 border border-emerald-900 p-3 rounded">
+              <span className="text-zinc-500 block text-[10px] uppercase">Monthly Hard Cap</span>
+              <span className="text-emerald-400 font-bold text-base">$10.00 / mo</span>
+              <span className="text-[10px] text-zinc-500 block mt-0.5">Society budget cap</span>
+            </div>
+            <div className="bg-black/60 border border-emerald-900 p-3 rounded">
+              <span className="text-zinc-500 block text-[10px] uppercase">Daily Rate Limit</span>
+              <span className="text-emerald-400 font-bold text-base">$1.00 / day</span>
+              <span className="text-[10px] text-zinc-500 block mt-0.5">Resets 00:00 UTC</span>
+            </div>
+            <div className="bg-black/60 border border-emerald-900 p-3 rounded">
+              <span className="text-zinc-500 block text-[10px] uppercase">Emergency Killswitch</span>
+              <span className="text-emerald-400 font-bold text-base">Armed &amp; Ready</span>
+              <span className="text-[10px] text-zinc-500 block mt-0.5">Env: AI_EMERGENCY_KILLSWITCH</span>
+            </div>
           </div>
         </div>
       </div>

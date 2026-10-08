@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { findMemberByCardNumber, KclsuMemberRecord } from '@/lib/roster';
+import { trackServerEvent } from '@/lib/telemetry-server';
 
 export async function POST(request: Request) {
   try {
@@ -167,6 +168,14 @@ export async function POST(request: Request) {
         })
         .eq('id', user.id);
     }
+
+    // Track membership pass activation conversion
+    trackServerEvent('membership_activated', {
+      userId: user.id,
+      cardNumber: cleanId,
+      tier: memberRecord.tier,
+      academicYear: '2026/27',
+    }).catch(() => {});
 
     return NextResponse.json(
       {

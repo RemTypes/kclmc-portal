@@ -26,6 +26,21 @@ function UpdatePasswordForm() {
     let mounted = true;
 
     async function checkAuth() {
+      // First, check server-side session via /api/auth/me (handles httpOnly cookies set by auth callback)
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const data = await res.json();
+          if (mounted && data?.authenticated && data?.user) {
+            setHasSession(true);
+            setCheckingSession(false);
+            return;
+          }
+        }
+      } catch {
+        // Fall back to client-side check below
+      }
+
       if (!isSupabaseConfigured()) {
         if (mounted) {
           setErrorMsg('Supabase credentials are not connected yet.');
@@ -34,7 +49,7 @@ function UpdatePasswordForm() {
         return;
       }
 
-      // Check current session
+      // Check client-side session as fallback
       const { data: { session } } = await supabase.auth.getSession();
       if (mounted) {
         if (session) {
@@ -84,16 +99,35 @@ function UpdatePasswordForm() {
     setLoading(true);
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
       // Submit to server-side rate-limited password reset endpoint
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: newPassword }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({ password: newPassword, accessToken }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
+        // Fallback to client-side session update if server session cookies weren't detected
+        if (sessionData?.session) {
+          const { error: clientErr } = await supabase.auth.updateUser({ password: newPassword });
+          if (!clientErr) {
+            setSuccess(true);
+            setTimeout(() => {
+              router.push('/membership');
+              router.refresh();
+            }, 2500);
+            return;
+          }
+        }
+
         if (data.details && Array.isArray(data.details)) {
           setErrorMsg(data.details.join('. '));
         } else {
