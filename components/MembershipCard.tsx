@@ -267,13 +267,25 @@ export default function MembershipCard({ profile, membership }: MembershipCardPr
       {/* Official Membership Card Display */}
       <div 
         onClick={() => setIsBigFormat(true)}
-        className="cursor-pointer relative w-full aspect-[1024/585] rounded-2xl overflow-hidden shadow-2xl border-2 border-[#FFBD59]/50 group transition-all hover:scale-[1.01] hover:border-[#FFBD59]"
+        onContextMenu={(e) => e.preventDefault()}
+        style={{
+          WebkitTouchCallout: 'none',
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
+        }}
+        className="cursor-pointer relative w-full aspect-[1024/585] rounded-2xl overflow-hidden shadow-2xl border-2 border-[#FFBD59]/50 group transition-all hover:scale-[1.01] hover:border-[#FFBD59] select-none"
       >
-        {/* Base Official Template Image */}
-        <img
-          src={cardImageSrc}
-          alt={`KCLMC ${cardType} Membership Card`}
-          className="w-full h-full object-cover select-none pointer-events-none"
+        {/* Base Official Template (CSS Background prevents iOS Safari long-press blank image extraction) */}
+        <div
+          role="img"
+          aria-label={`KCLMC ${cardType} Membership Card`}
+          className="w-full h-full bg-cover bg-center select-none pointer-events-none"
+          style={{
+            backgroundImage: `url(${cardImageSrc})`,
+            WebkitTouchCallout: 'none',
+            WebkitUserSelect: 'none',
+            userSelect: 'none',
+          }}
         />
 
         {/* Top Box: Climber Name */}
@@ -335,7 +347,13 @@ export default function MembershipCard({ profile, membership }: MembershipCardPr
         >
           <div 
             onClick={e => e.stopPropagation()}
-            className="relative max-w-4xl w-full bg-[#052322] border-2 border-[#FFBD59] rounded-3xl p-6 md:p-8 shadow-2xl overflow-hidden"
+            onContextMenu={(e) => e.preventDefault()}
+            style={{
+              WebkitTouchCallout: 'none',
+              WebkitUserSelect: 'none',
+              userSelect: 'none',
+            }}
+            className="relative max-w-4xl w-full bg-[#052322] border-2 border-[#FFBD59] rounded-3xl p-6 md:p-8 shadow-2xl overflow-hidden select-none"
           >
             {/* Close Button */}
             <button
@@ -358,11 +376,26 @@ export default function MembershipCard({ profile, membership }: MembershipCardPr
             </div>
 
             {/* Large Card Representation */}
-            <div className="relative w-full aspect-[1024/585] rounded-2xl overflow-hidden shadow-2xl border border-[#FFBD59]/40 mb-6">
-              <img
-                src={cardImageSrc}
-                alt={`KCLMC ${cardType} Membership Card Large`}
-                className="w-full h-full object-cover select-none"
+            <div 
+              onContextMenu={(e) => e.preventDefault()}
+              style={{
+                WebkitTouchCallout: 'none',
+                WebkitUserSelect: 'none',
+                userSelect: 'none',
+              }}
+              className="relative w-full aspect-[1024/585] rounded-2xl overflow-hidden shadow-2xl border border-[#FFBD59]/40 mb-6 select-none"
+            >
+              {/* Large Background Template (CSS Background prevents iOS long-press blank image extraction) */}
+              <div
+                role="img"
+                aria-label={`KCLMC ${cardType} Membership Card Large`}
+                className="w-full h-full bg-cover bg-center select-none pointer-events-none"
+                style={{
+                  backgroundImage: `url(${cardImageSrc})`,
+                  WebkitTouchCallout: 'none',
+                  WebkitUserSelect: 'none',
+                  userSelect: 'none',
+                }}
               />
 
               {/* Large Top Box: Climber Name */}
