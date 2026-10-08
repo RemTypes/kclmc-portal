@@ -15,6 +15,7 @@ export default function AdminNav({ userRole }: { userRole: number }) {
     { label: '🛡️ BMC Form Release', href: '/admin/bmc' },
     { label: '📦 Operations Export', href: '/admin/export' },
     { label: '📷 Pass Scanner', href: '/admin/scan' },
+    { label: '⚡ System Status', href: '/status' },
     { label: '🛡️ Modules & RBAC', href: '/admin/modules' },
     ...(userRole >= 2 ? [{ label: '🔒 ML Telemetry', href: '/admin/ml' }] : []),
   ];

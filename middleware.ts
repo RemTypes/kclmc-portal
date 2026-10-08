@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
 
   // 2. Fallback check if Supabase is unconfigured
   if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder-project')) {
-    if (path.startsWith('/admin')) {
+    if (path.startsWith('/admin') || path === '/status' || path.startsWith('/status/')) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
       url.searchParams.set('next', path);
@@ -87,8 +87,8 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // 4. Server-side middleware protection for /admin pages
-  if (path.startsWith('/admin')) {
+  // 4. Server-side middleware protection for /admin and /status pages (Committee clearance required)
+  if (path.startsWith('/admin') || path === '/status' || path.startsWith('/status/')) {
     if (!user) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';

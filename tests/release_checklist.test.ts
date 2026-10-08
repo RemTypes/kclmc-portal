@@ -61,6 +61,15 @@ describe('Public Release Checklist Suite', () => {
       expect(canAccessRoute('/comps', 2)).toBe(true);
       expect(canAccessRoute('/admin/ml', 2)).toBe(true);
     });
+
+    it('locks /status behind committee privileges (role >= 1)', async () => {
+      const { canAccessRoute } = await import('../config/modules.config');
+      // Public visitors (role 0) are blocked
+      expect(canAccessRoute('/status', 0)).toBe(false);
+      // Committee members (role 1) and SuperAdmins (role 2) are granted access
+      expect(canAccessRoute('/status', 1)).toBe(true);
+      expect(canAccessRoute('/status', 2)).toBe(true);
+    });
   });
 
   describe('Checklist Item 3: Spending Cap for AI', () => {
