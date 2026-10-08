@@ -66,6 +66,36 @@ function LoginForm() {
     return validatePasswordStrength(password);
   }, [password]);
 
+  // Robust redirect helper: prevents loops to /login, ensures cookie flush, and executes immediate replace navigation
+  const navigateToDestination = async (suggestedDestination?: string, userRole?: number) => {
+    setLoading(true);
+    let dest = suggestedDestination || searchParams.get('next') || '';
+    if (!dest || dest === '/login' || dest.startsWith('/login?') || dest.startsWith('/auth')) {
+      dest = (userRole ?? 0) >= 1 ? '/admin' : next;
+    }
+    if (!dest || dest === '/login' || dest.startsWith('/login?') || dest.startsWith('/auth')) {
+      dest = (userRole ?? 0) >= 1 ? '/admin' : '/membership';
+    }
+
+    // Convert to fully qualified URL if relative
+    const fullUrl = dest.startsWith('http') ? dest : new URL(dest, window.location.origin).href;
+
+    // Small micro-delay (100ms) to ensure browser network thread has committed Set-Cookie headers to storage
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Execute immediate replace navigation
+    try {
+      window.location.replace(fullUrl);
+    } catch {
+      window.location.href = fullUrl;
+    }
+
+    // Safety fallback: if document is still active after 400ms, force navigation
+    setTimeout(() => {
+      window.location.assign(fullUrl);
+    }, 400);
+  };
+
   // Active session detection: auto-forward already-authenticated users to their destination
   useEffect(() => {
     let isMounted = true;
@@ -75,10 +105,9 @@ function LoginForm() {
         if (res.ok && isMounted) {
           const data = await res.json();
           if (data.authenticated && data.user) {
-            const dest = searchParams.get('next')
-              ? next
-              : ((data.user.role ?? 0) >= 1 ? '/admin' : '/membership');
-            window.location.href = dest;
+            const defaultDest = (data.user.role ?? 0) >= 1 ? '/admin' : '/membership';
+            const dest = searchParams.get('next') ? next : defaultDest;
+            navigateToDestination(dest, data.user.role);
           }
         }
       } catch {
@@ -269,12 +298,11 @@ function LoginForm() {
         }
 
         // Standard Login Succeeded (httpOnly cookies issued by server)
-        const targetUrl = searchParams.get('next') ? next : (data.destination || next);
-        window.location.href = targetUrl;
+        await navigateToDestination(data.destination, data.user?.role);
+        return;
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Network error during authentication. Please try again.');
-    } finally {
       setLoading(false);
     }
   };
@@ -306,15 +334,15 @@ function LoginForm() {
 
       if (!res.ok) {
         setErrorMsg(data.error || 'Invalid 6-digit code. Please verify the code displayed on your device and try again.');
+        setLoading(false);
         return;
       }
 
       // 2FA Verified & setup complete! httpOnly session cookies attached to response
-      const targetUrl = searchParams.get('next') ? next : (data.destination || next);
-      window.location.href = targetUrl;
+      setTwoFactorMessage('✓ 2FA Activated! Redirecting to committee portal...');
+      await navigateToDestination(data.destination, data.user?.role ?? 1);
     } catch (err: any) {
       setErrorMsg(err.message || 'Error verifying setup code. Please try again.');
-    } finally {
       setLoading(false);
     }
   };
@@ -345,15 +373,15 @@ function LoginForm() {
 
       if (!res.ok) {
         setErrorMsg(data.error || 'Verification code failed. Please check the code and try again.');
+        setLoading(false);
         return;
       }
 
       // 2FA Verified! httpOnly session cookies attached to response
-      const targetUrl = searchParams.get('next') ? next : (data.destination || next);
-      window.location.href = targetUrl;
+      setTwoFactorMessage('✓ Authentication verified! Redirecting to dashboard...');
+      await navigateToDestination(data.destination, data.user?.role ?? 1);
     } catch (err: any) {
       setErrorMsg(err.message || 'Error verifying two-factor challenge.');
-    } finally {
       setLoading(false);
     }
   };

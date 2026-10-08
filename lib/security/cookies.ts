@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 export const SESSION_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
+  sameSite: 'strict' as const,
   path: '/',
   maxAge: 7 * 24 * 60 * 60, // 7 days
 };
@@ -23,7 +23,7 @@ export function getAuthCookiePrefix(): string {
 }
 
 /**
- * Apply Supabase session cookies ensuring strict httpOnly, Secure, and SameSite=Lax flags.
+ * Apply Supabase session cookies ensuring strict httpOnly, Secure, and SameSite=Strict flags.
  */
 export function applySessionCookies(
   response: NextResponse,
@@ -34,7 +34,7 @@ export function applySessionCookies(
       ...options,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'strict',
       path: options?.path || '/',
     });
   });
