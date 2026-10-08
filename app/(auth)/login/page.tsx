@@ -151,6 +151,12 @@ function LoginForm() {
     return () => clearInterval(interval);
   }, [view, twoFactorExpiresAt]);
 
+  // Reset loading and transient error state whenever the authentication view transitions
+  useEffect(() => {
+    setLoading(false);
+    setErrorMsg('');
+  }, [view]);
+
   const copyToClipboard = async (text: string, type: 'secret' | 'codes') => {
     try {
       await navigator.clipboard.writeText(text);
@@ -236,6 +242,7 @@ function LoginForm() {
           } else {
             setErrorMsg(data.error || 'Failed to create account.');
           }
+          setLoading(false);
           return;
         }
 
@@ -261,6 +268,7 @@ function LoginForm() {
           setLockoutSecondsLeft(retrySec);
           setErrorMsg(data.error || `Account temporarily locked. Please try again in ${Math.ceil(retrySec / 60)} minutes.`);
           if (data.requiresCaptcha) setRequiresCaptcha(true);
+          setLoading(false);
           return;
         }
 
@@ -273,6 +281,7 @@ function LoginForm() {
             setWarningMsg(`Warning: ${data.remainingAttempts} login attempt${data.remainingAttempts === 1 ? '' : 's'} remaining before account lockout.`);
           }
           setErrorMsg(data.error || 'Invalid email or password.');
+          setLoading(false);
           return;
         }
 
@@ -284,6 +293,7 @@ function LoginForm() {
           setSetupBackupCodes(data.backupCodes || []);
           setTwoFactorMessage(data.message || 'Two-factor authentication is required for committee accounts. Please scan the QR code into your authenticator app to complete activation.');
           setTwoFactorExpiresAt(data.expiresAt || Date.now() + 10 * 60 * 1000);
+          setLoading(false);
           setView('two_factor_setup');
           return;
         }
@@ -293,6 +303,7 @@ function LoginForm() {
           setChallengeToken(data.challengeToken);
           setTwoFactorMessage(data.message || 'Two-Factor Authentication is required for your account.');
           setTwoFactorExpiresAt(data.expiresAt || Date.now() + 5 * 60 * 1000);
+          setLoading(false);
           setView('two_factor');
           return;
         }
