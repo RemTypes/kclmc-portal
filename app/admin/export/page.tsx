@@ -2,6 +2,19 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { generateMembersVCard } from '@/lib/safety';
+
+interface RosterMember {
+  cardNumber: string;
+  name: string;
+  tier: 'social' | 'recreational';
+  purchaseDate?: string;
+  phone?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  university?: string;
+  safetyComplete?: boolean;
+}
 
 interface RosterMember {
   cardNumber: string;
@@ -145,6 +158,20 @@ export default function ExportPage() {
     document.body.removeChild(link);
   };
 
+  const downloadVCard = () => {
+    if (members.length === 0) return;
+    const vCardText = generateMembersVCard(members);
+    if (!vCardText) return;
+    const blob = new Blob([vCardText], { type: 'text/vcard;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `kclmc_whatsapp_contacts_${new Date().toISOString().split('T')[0]}.vcf`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
   const completedSafetyCount = members.filter((m) => m.safetyComplete).length;
   const pendingSafetyCount = members.length - completedSafetyCount;
 
@@ -169,15 +196,25 @@ export default function ExportPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {activeTab === 'safety' ? (
-              <button
-                onClick={downloadSafetyCSV}
-                disabled={members.length === 0}
-                className="px-5 py-2.5 bg-[#FFBD59] hover:bg-[#FFE0A3] disabled:opacity-50 text-[#052322] font-heading font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
-              >
-                <span>📥 Export Member Directory CSV</span>
-              </button>
+              <>
+                <button
+                  onClick={downloadVCard}
+                  disabled={members.length === 0}
+                  className="px-4 py-2.5 bg-[#25D366] hover:bg-[#20bd5a] disabled:opacity-50 text-[#052322] font-heading font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                  title="Import contacts into phone to bulk add to WhatsApp Community"
+                >
+                  <span>📥 Download WhatsApp Contacts (.vcf)</span>
+                </button>
+                <button
+                  onClick={downloadSafetyCSV}
+                  disabled={members.length === 0}
+                  className="px-4 py-2.5 bg-[#FFBD59] hover:bg-[#FFE0A3] disabled:opacity-50 text-[#052322] font-heading font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                >
+                  <span>📄 Export Directory CSV</span>
+                </button>
+              </>
             ) : (
               <button
                 onClick={downloadSizingCSV}
@@ -241,6 +278,43 @@ export default function ExportPage() {
               </span>
             </div>
 
+            {/* WhatsApp Community Onboarding Tutorial */}
+            <div className="p-5 bg-[#052322] border border-[#25D366]/40 rounded-2xl text-xs space-y-3 shadow-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-[#25D366] font-heading font-bold text-sm uppercase tracking-wide">
+                  <span>💬 Leak-Proof WhatsApp Community Onboarding</span>
+                </div>
+                <span className="bg-[#084746] text-[#25D366] border border-[#25D366]/30 text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold">
+                  ZERO PUBLIC LINK • NO BOT NEEDED
+                </span>
+              </div>
+              <p className="text-zinc-300 font-sans text-xs leading-relaxed">
+                To prevent non-paying students from entering the WhatsApp Community via forwarded links, public invite links are disabled. Follow these 3 steps to bulk-onboard verified members in 30 seconds:
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 font-mono text-[11px]">
+                <div className="p-3.5 bg-[#041F1E] rounded-xl border border-[#084746] space-y-1">
+                  <strong className="text-[#FFBD59] block">Step 1: Download .vcf</strong>
+                  <span className="text-zinc-400 font-sans block">
+                    Tap <strong className="text-white">&quot;Download WhatsApp Contacts (.vcf)&quot;</strong> above on your phone or computer.
+                  </span>
+                </div>
+                <div className="p-3.5 bg-[#041F1E] rounded-xl border border-[#084746] space-y-1">
+                  <strong className="text-[#FFBD59] block">Step 2: Import Contacts</strong>
+                  <span className="text-zinc-400 font-sans block">
+                    Open the file to save members to your contacts (automatically tagged as <code className="text-[#25D366]">KCLMC 26/27 - [Name]</code>).
+                  </span>
+                </div>
+                <div className="p-3.5 bg-[#041F1E] rounded-xl border border-[#084746] space-y-1">
+                  <strong className="text-[#FFBD59] block">Step 3: Bulk Add</strong>
+                  <span className="text-zinc-400 font-sans block">
+                    In WhatsApp Community $\rightarrow$ tap <strong className="text-white">Add Members</strong> $\rightarrow$ search <code className="text-[#25D366]">KCLMC 26/27</code> $\rightarrow$ select all $\rightarrow$ Done!
+                  </span>
+                </div>
+              </div>
+              <p className="text-[11px] text-emerald-400 font-mono pt-1">
+                ✔ 100% leak-proof • Zero unauthorized non-members • Automated vCard generation.
+              </p>
+            </div>
             {/* Quick Metrics */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="p-4 bg-[#052322] border border-[#084746] rounded-2xl">
