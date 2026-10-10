@@ -10,6 +10,12 @@
     "binding": "ASSETS",
     "directory": ".open-next/assets"
   },
+  "observability": {
+    "logs": {
+      "enabled": false,
+      "invocation_logs": true
+    }
+  },
   "vars": {
     "NEXT_PUBLIC_SUPABASE_URL": "https://bsvnyibipcwrcyzqilge.supabase.co",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg",
