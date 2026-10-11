@@ -19,7 +19,7 @@ const mockDb = {
   lube_rounds: [] as LubeRound[],
   shop_items: [] as ShopItem[],
   scorecards: [] as ScorecardSubmission[],
-  access_codes: [{ id: '1', code: 'LUBE2026' }] // default code
+  access_codes: [] as { id: string; code: string }[], // legacy event access codes retired
 };
 
 // Simulate network delay

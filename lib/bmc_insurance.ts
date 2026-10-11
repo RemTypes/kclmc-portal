@@ -13,7 +13,9 @@
  */
 
 export const DEFAULT_BMC_GOOGLE_FORM_ID = '1FAIpQLSekfG2gtiKdh2WQiAkBQpbkgrm3gFBQzkD37bDRJTsVMsDK-Q';
-export const DEFAULT_BMC_FORM_URL = `https://docs.google.com/forms/d/e/${DEFAULT_BMC_GOOGLE_FORM_ID}/viewform`;
+export const DEFAULT_BMC_FORM_URL =
+  process.env.BMC_FORM_URL ||
+  `https://docs.google.com/forms/d/e/${DEFAULT_BMC_GOOGLE_FORM_ID}/viewform`;
 export const BMC_FORM_FIELD_FORENAME = 'entry.2046598546';
 export const BMC_FORM_FIELD_SURNAME = 'entry.1697412362';
 export const BMC_FORM_FIELD_MEMBERSHIP_TYPE = 'entry.812283993';

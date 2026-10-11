@@ -19,8 +19,8 @@ describe('MemberRoster Deep Module', () => {
 
     it('resolves valid climbing pass for seeded member (K26122068)', async () => {
       const user = {
-        id: 'user-david-1',
-        email: 'david@kcl.ac.uk',
+        id: 'user-alex-1',
+        email: 'alex@kcl.ac.uk',
         user_metadata: { student_id: 'K26122068', full_name: 'Alex Honnold' },
       };
 
@@ -39,10 +39,10 @@ describe('MemberRoster Deep Module', () => {
     });
 
     it('passes safety gate once phone and emergency contacts are provided', async () => {
-      const userId = 'user-david-2';
+      const userId = 'user-alex-2';
       await rosterService.resolveMemberPass({
         id: userId,
-        email: 'david@kcl.ac.uk',
+        email: 'alex@kcl.ac.uk',
         user_metadata: { student_id: 'K26122068' },
       });
 
@@ -74,7 +74,7 @@ describe('MemberRoster Deep Module', () => {
     });
 
     it('successfully links valid member (Catherine Destivelle K23158797)', async () => {
-      const outcome = await rosterService.linkStudentId('user-alice', 'K23158797');
+      const outcome = await rosterService.linkStudentId('user-catherine', 'K23158797');
       expect(outcome.success).toBe(true);
       expect(outcome.statusCode).toBe(200);
       expect(outcome.member?.name).toBe('Catherine Destivelle');

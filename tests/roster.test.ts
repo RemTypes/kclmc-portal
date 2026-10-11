@@ -11,11 +11,11 @@ describe('Roster Core Logic (lib/roster.ts)', () => {
     it('formats "LAST, First" into "First Last" with proper casing', () => {
       expect(formatPurchaserName('HONNOLD, Alex')).toBe('Alex Honnold');
       expect(formatPurchaserName('DOE, John')).toBe('John Doe');
-      expect(formatPurchaserName('HILL, Lynn')).toBe('Lynn Hayes-rochester');
+      expect(formatPurchaserName('HAYES-ROCHESTER, Lynn')).toBe('Lynn Hayes-rochester');
     });
 
     it('handles titles or complex surnames', () => {
-      expect(formatPurchaserName('STECK, Ueli')).toBe('Eric Von Berg');
+      expect(formatPurchaserName('VON BERG, Eric')).toBe('Eric Von Berg');
     });
 
     it('returns raw string cleanly when no comma is present', () => {
@@ -90,23 +90,23 @@ describe('Roster Core Logic (lib/roster.ts)', () => {
     it('correctly parses valid CSV rows into KclsuMemberRecord objects', () => {
       const csv = [
         SAMPLE_HEADER,
-        '[10002480] Climbing/Mountaineering Recreational Membership,31591709,"COXSEY, Shauna",Member,K25004642,2003-01-01,arthur@kcl.ac.uk,Tue 15 Sep 2026 18:06',
-        '[10166870] Climbing/Mountaineering Social Membership,31631002,"HONNOLD, Alex",Member,K26122068,2004-05-12,david@kcl.ac.uk,Wed 23 Sep 2026 17:55',
+        '[10002480] Climbing/Mountaineering Recreational Membership,31591709,"COXSEY, Shauna",Member,K25004642,2003-01-01,shauna@kcl.ac.uk,Tue 15 Sep 2026 18:06',
+        '[10166870] Climbing/Mountaineering Social Membership,31631002,"HONNOLD, Alex",Member,K26122068,2004-05-12,alex@kcl.ac.uk,Wed 23 Sep 2026 17:55',
       ].join('\n');
 
       const results = parseKclsuCsv(csv);
       expect(results).toHaveLength(2);
 
-      const dean = results.find(r => r.cardNumber === 'K25004642');
-      expect(dean).toBeDefined();
-      expect(dean?.name).toBe('Shauna Coxsey');
-      expect(dean?.tier).toBe('recreational');
-      expect(dean?.transactionId).toBe('31591709');
+      const shauna = results.find(r => r.cardNumber === 'K25004642');
+      expect(shauna).toBeDefined();
+      expect(shauna?.name).toBe('Shauna Coxsey');
+      expect(shauna?.tier).toBe('recreational');
+      expect(shauna?.transactionId).toBe('31591709');
 
-      const david = results.find(r => r.cardNumber === 'K26122068');
-      expect(david).toBeDefined();
-      expect(david?.name).toBe('Alex Honnold');
-      expect(david?.tier).toBe('social');
+      const alex = results.find(r => r.cardNumber === 'K26122068');
+      expect(alex).toBeDefined();
+      expect(alex?.name).toBe('Alex Honnold');
+      expect(alex?.tier).toBe('social');
     });
 
     it('ignores rows where card_number does not start with K', () => {

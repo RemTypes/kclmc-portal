@@ -223,7 +223,7 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K26107823',
-    name: 'Xue',
+    name: 'Alex Puccio',
     rawPurchaser: 'PUCCIO, Alex',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',

@@ -272,7 +272,7 @@ describe('Security Testing Suite', () => {
                     id: 'ord-1',
                     order_code: 'KCL-1001',
                     customer_name: 'Shauna Coxsey',
-                    customer_email: 'arthur@kcl.ac.uk',
+                    customer_email: 'shauna@kcl.ac.uk',
                     items: [{ name: 'Hoodie', size: 'M' }],
                     status: 'paid',
                     total_pence: 3500,
@@ -1381,7 +1381,7 @@ describe('Security Testing Suite', () => {
 
     it('POST /api/membership updates safety notes on the server', async () => {
       vi.mocked(isSupabaseConfigured).mockReturnValue(true);
-      const mockUser = { id: 'u-123', email: 'alice@kcl.ac.uk' };
+      const mockUser = { id: 'u-123', email: 'catherine@kcl.ac.uk' };
       vi.mocked(createClient).mockResolvedValue({
         auth: {
           getUser: vi.fn().mockResolvedValue({ data: { user: mockUser }, error: null }),
