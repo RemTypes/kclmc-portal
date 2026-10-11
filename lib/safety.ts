@@ -167,10 +167,11 @@ export function generateMembersVCard(
     const rawCardNum = (m.cardNumber || '').trim().toUpperCase();
     const cardNum = rawCardNum || 'VERIFIED';
     const uidKey = (rawCardNum || `climber-${idx + 1}`).replace(/[^a-zA-Z0-9_-]/g, '');
-    const memberName = (m.name || 'Climber').trim();
+    const memberName = (m.name || 'Climber').trim().replace(/^KCLMC\s*26\/27\s*-\s*/i, '');
     const nameParts = memberName.split(/\s+/);
     const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
     const firstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : nameParts[0];
+    const taggedFirstName = `KCLMC 26/27 - ${firstName}`;
     const tierLabel = (m.tier || 'member').toUpperCase();
 
     const hasPhone = Boolean(m.phone && validatePhoneNumber(m.phone));
@@ -183,7 +184,10 @@ export function generateMembersVCard(
       `REV:${nowIso}`,
       `UID:kclmc-26-27-${uidKey}`,
       `FN:KCLMC 26/27 - ${memberName}`,
-      `N:${lastName};${firstName};;;`,
+      `N:${lastName};${taggedFirstName};;;`,
+      'ORG:KCLMC 26/27',
+      'TITLE:KCLMC 26/27 Member',
+      'NICKNAME:KCLMC 26/27',
     ];
 
     if (cleanPhone) {

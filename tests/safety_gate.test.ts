@@ -166,6 +166,9 @@ describe('Safety Gate Validation (BMC & UK GDPR Compliance)', () => {
       expect(vcard).toContain('REV:');
       expect(vcard).toContain('UID:kclmc-26-27-K23158797');
       expect(vcard).toContain('FN:KCLMC 26/27 - Catherine Destivelle');
+      expect(vcard).toContain('N:Destivelle;KCLMC 26/27 - Catherine;;;');
+      expect(vcard).toContain('ORG:KCLMC 26/27');
+      expect(vcard).toContain('NICKNAME:KCLMC 26/27');
       expect(vcard).toContain('TEL;TYPE=CELL,VOICE:+447123456789');
       expect(vcard).toContain('EMAIL;TYPE=INTERNET,HOME:k23158797@kcl.ac.uk');
       expect(vcard).toContain('CATEGORIES:KCLMC 26/27');
