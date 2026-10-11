@@ -144,7 +144,7 @@ describe('Safety Gate Validation (BMC & UK GDPR Compliance)', () => {
       expect(formatPhoneNumberForWhatsApp('+1 (555) 234 5678')).toBe('+15552345678');
     });
 
-    it('generates valid vCard 3.0 records for verified members', () => {
+    it('generates valid vCard 3.0 records for verified members with RFC 2426 compliance', () => {
       const vcard = generateMembersVCard([
         {
           name: 'Catherine Destivelle',
@@ -154,7 +154,7 @@ describe('Safety Gate Validation (BMC & UK GDPR Compliance)', () => {
         },
         {
           name: 'Bob Unverified',
-          phone: null, // should be filtered out
+          phone: null, // should be filtered out in default mode
           cardNumber: 'K99999999',
           tier: 'social',
         },
@@ -162,12 +162,80 @@ describe('Safety Gate Validation (BMC & UK GDPR Compliance)', () => {
 
       expect(vcard).toContain('BEGIN:VCARD');
       expect(vcard).toContain('VERSION:3.0');
+      expect(vcard).toContain('PRODID:-//KCLMC//Climbing Pass Roster//EN');
+      expect(vcard).toContain('REV:');
+      expect(vcard).toContain('UID:kclmc-26-27-K23158797');
       expect(vcard).toContain('FN:KCLMC 26/27 - Catherine Destivelle');
       expect(vcard).toContain('TEL;TYPE=CELL,VOICE:+447123456789');
+      expect(vcard).toContain('EMAIL;TYPE=INTERNET,HOME:k23158797@kcl.ac.uk');
       expect(vcard).toContain('CATEGORIES:KCLMC 26/27');
       expect(vcard).toContain('NOTE:KCLSU ID: K23158797 | Tier: RECREATIONAL | Verified Pass');
       expect(vcard).toContain('END:VCARD');
+      expect(vcard.endsWith('\r\n')).toBe(true);
       expect(vcard).not.toContain('Bob Unverified');
+    });
+
+    it('exports all contacts in a multi-member list without dropping or merging cards', () => {
+      const vcard = generateMembersVCard([
+        {
+          name: 'Catherine Destivelle',
+          phone: '07123 456789',
+          cardNumber: 'K23158797',
+          tier: 'recreational',
+        },
+        {
+          name: 'Alex Honnold',
+          phone: '+44 7987 654321',
+          cardNumber: 'K26122068',
+          tier: 'social',
+        },
+      ]);
+
+      const beginMatches = vcard.match(/BEGIN:VCARD/g) || [];
+      const endMatches = vcard.match(/END:VCARD/g) || [];
+
+      expect(beginMatches).toHaveLength(2);
+      expect(endMatches).toHaveLength(2);
+      expect(vcard).toContain('UID:kclmc-26-27-K23158797');
+      expect(vcard).toContain('UID:kclmc-26-27-K26122068');
+      expect(vcard).toContain('FN:KCLMC 26/27 - Catherine Destivelle');
+      expect(vcard).toContain('FN:KCLMC 26/27 - Alex Honnold');
+      expect(vcard).toContain('TEL;TYPE=CELL,VOICE:+447123456789');
+      expect(vcard).toContain('TEL;TYPE=CELL,VOICE:+447987654321');
+    });
+
+    it('exports all roster members including pending profiles when includePending is true', () => {
+      const vcard = generateMembersVCard(
+        [
+          {
+            name: 'Catherine Destivelle',
+            phone: '07123 456789',
+            cardNumber: 'K23158797',
+            tier: 'recreational',
+          },
+          {
+            name: 'Bob Pending',
+            phone: null,
+            cardNumber: 'K99999999',
+            tier: 'social',
+            emergencyContactName: 'Alice Parent',
+            emergencyContactPhone: '07111 222333',
+          },
+        ],
+        { includePending: true }
+      );
+
+      const beginMatches = vcard.match(/BEGIN:VCARD/g) || [];
+      expect(beginMatches).toHaveLength(2);
+      expect(vcard).toContain('FN:KCLMC 26/27 - Catherine Destivelle');
+      expect(vcard).toContain('FN:KCLMC 26/27 - Bob Pending');
+      expect(vcard).toContain('TEL;TYPE=WORK,VOICE:+447111222333');
+      expect(vcard).toContain('NOTE:KCLSU ID: K99999999 | Tier: SOCIAL | Mobile Pending Verification | Emergency: Alice Parent');
+    });
+
+    it('returns empty string when no eligible members exist', () => {
+      expect(generateMembersVCard([])).toBe('');
+      expect(generateMembersVCard([{ name: 'No Phone', phone: null }])).toBe('');
     });
 
     it('generates valid direct WhatsApp request deep links (wa.me) with verified credentials', () => {

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { generateMembersVCard } from '@/lib/safety';
+import { generateMembersVCard, validatePhoneNumber } from '@/lib/safety';
 
 interface RosterMember {
   cardNumber: string;
@@ -14,18 +14,7 @@ interface RosterMember {
   emergencyContactPhone?: string | null;
   university?: string;
   safetyComplete?: boolean;
-}
-
-interface RosterMember {
-  cardNumber: string;
-  name: string;
-  tier: 'social' | 'recreational';
-  purchaseDate?: string;
-  phone?: string | null;
-  emergencyContactName?: string | null;
-  emergencyContactPhone?: string | null;
-  university?: string;
-  safetyComplete?: boolean;
+  email?: string | null;
 }
 
 export default function ExportPage() {
@@ -38,8 +27,20 @@ export default function ExportPage() {
   // Safety directory states
   const [members, setMembers] = useState<RosterMember[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(true);
+  const [canShareFiles, setCanShareFiles] = useState(false);
+  const [exportFeedback, setExportFeedback] = useState<string | null>(null);
 
   useEffect(() => {
+    // Detect Web Share API file support (iOS Safari & Android Chrome)
+    if (typeof navigator !== 'undefined' && typeof navigator.canShare === 'function') {
+      try {
+        const dummy = new File([''], 'test.vcf', { type: 'text/vcard' });
+        setCanShareFiles(navigator.canShare({ files: [dummy] }));
+      } catch {
+        setCanShareFiles(false);
+      }
+    }
+
     // 1. Fetch Orders for Sizing Matrix
     fetch('/api/orders')
       .then((res) => res.json())
@@ -158,22 +159,62 @@ export default function ExportPage() {
     document.body.removeChild(link);
   };
 
-  const downloadVCard = () => {
+  const verifiedPhoneCount = members.filter((m) => m.phone && validatePhoneNumber(m.phone)).length;
+  const completedSafetyCount = members.filter((m) => m.safetyComplete).length;
+  const pendingSafetyCount = members.length - completedSafetyCount;
+
+  const downloadVCard = async (includePending = false) => {
     if (members.length === 0) return;
-    const vCardText = generateMembersVCard(members);
-    if (!vCardText) return;
+    const vCardText = generateMembersVCard(members, { includePending });
+    if (!vCardText) {
+      alert(
+        includePending
+          ? 'No members found in directory.'
+          : 'No members have verified mobile numbers yet. Members must submit their phone number at /membership to appear in the WhatsApp contacts export.'
+      );
+      return;
+    }
+
+    const count = includePending ? members.length : verifiedPhoneCount;
+    const dateStamp = new Date().toISOString().split('T')[0];
+    const fileName = includePending
+      ? `kclmc_all_roster_${dateStamp}.vcf`
+      : `kclmc_whatsapp_contacts_${dateStamp}.vcf`;
+
     const blob = new Blob([vCardText], { type: 'text/vcard;charset=utf-8;' });
+
+    // Use Web Share API if supported on mobile (bypasses iOS Safari 1-contact QuickLook bug)
+    if (canShareFiles && typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        const file = new File([blob], fileName, { type: 'text/vcard' });
+        await navigator.share({
+          files: [file],
+          title: `KCLMC 26/27 Contacts (${count} climbers)`,
+          text: `Import ${count} KCLMC climbing contacts to your phone.`,
+        });
+        setExportFeedback(`Shared ${count} contacts! On iPhone, select 'Contacts' → 'Add All Contacts'.`);
+        setTimeout(() => setExportFeedback(null), 6000);
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+        console.warn('Share API error, falling back to direct download:', err);
+      }
+    }
+
+    // Standard download fallback (desktop or unsupported browsers)
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `kclmc_whatsapp_contacts_${new Date().toISOString().split('T')[0]}.vcf`);
+    link.setAttribute('download', fileName);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setExportFeedback(`Downloaded ${count} contact cards (${fileName}).`);
+    setTimeout(() => setExportFeedback(null), 4000);
   };
-  const completedSafetyCount = members.filter((m) => m.safetyComplete).length;
-  const pendingSafetyCount = members.length - completedSafetyCount;
 
   return (
     <div className="min-h-screen bg-[#041F1E] text-slate-100 p-6 md:p-10 font-sans relative overflow-hidden topo-pattern">
@@ -200,12 +241,20 @@ export default function ExportPage() {
             {activeTab === 'safety' ? (
               <>
                 <button
-                  onClick={downloadVCard}
-                  disabled={members.length === 0}
+                  onClick={() => downloadVCard(false)}
+                  disabled={members.length === 0 || verifiedPhoneCount === 0}
                   className="px-4 py-2.5 bg-[#25D366] hover:bg-[#20bd5a] disabled:opacity-50 text-[#052322] font-heading font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
-                  title="Import contacts into phone to bulk add to WhatsApp Community"
+                  title="Import verified phone contacts into phone to bulk add to WhatsApp Community"
                 >
-                  <span>📥 Download WhatsApp Contacts (.vcf)</span>
+                  <span>📥 WhatsApp Contacts ({verifiedPhoneCount} Verified .vcf)</span>
+                </button>
+                <button
+                  onClick={() => downloadVCard(true)}
+                  disabled={members.length === 0}
+                  className="px-4 py-2.5 bg-[#084746] hover:bg-[#0c5c5b] border border-[#FFBD59]/40 text-[#FFBD59] font-heading font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                  title="Export all roster members into contacts (includes emergency contacts and student IDs)"
+                >
+                  <span>📇 All Roster ({members.length} .vcf)</span>
                 </button>
                 <button
                   onClick={downloadSafetyCSV}
@@ -226,6 +275,22 @@ export default function ExportPage() {
             )}
           </div>
         </div>
+
+        {/* Export Feedback Banner */}
+        {exportFeedback && (
+          <div className="mb-6 p-4 bg-emerald-950/80 border border-emerald-500/50 rounded-2xl flex items-center justify-between text-xs text-emerald-200">
+            <div className="flex items-center gap-2">
+              <span className="text-base">✔</span>
+              <span className="font-mono">{exportFeedback}</span>
+            </div>
+            <button
+              onClick={() => setExportFeedback(null)}
+              className="text-emerald-400 hover:text-white font-mono text-xs px-2"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Navigation Tabs */}
         <div className="flex space-x-2 border-b border-[#084746] mb-8 font-mono text-xs">
@@ -278,6 +343,29 @@ export default function ExportPage() {
               </span>
             </div>
 
+            {/* Phone Number Verification Coverage Banner */}
+            {verifiedPhoneCount < members.length && (
+              <div className="p-4 bg-amber-950/30 border border-amber-500/40 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">⚠️</span>
+                  <div>
+                    <strong className="text-amber-400 block font-heading uppercase tracking-wide">
+                      {verifiedPhoneCount} of {members.length} Members Have Verified Phone Numbers
+                    </strong>
+                    <span className="text-zinc-300 font-sans">
+                      KCLSU sales reports do not provide student phone numbers. The WhatsApp (.vcf) export only contains members who have logged into this portal and completed the Safety Gate ({verifiedPhoneCount} verified). The remaining {members.length - verifiedPhoneCount} members can be exported via <button onClick={() => downloadVCard(true)} className="text-[#FFBD59] underline font-bold hover:text-white">All Roster (.vcf)</button> or the full Directory CSV.
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => downloadVCard(true)}
+                  className="px-3.5 py-2 bg-[#084746] hover:bg-[#0d5958] text-[#FFBD59] border border-[#FFBD59]/40 rounded-xl text-xs font-mono font-bold shrink-0 transition-colors cursor-pointer"
+                >
+                  Export All {members.length} (.vcf)
+                </button>
+              </div>
+            )}
+
             {/* WhatsApp Community Onboarding Tutorial */}
             <div className="p-5 bg-[#052322] border border-[#25D366]/40 rounded-2xl text-xs space-y-3 shadow-xl">
               <div className="flex items-center justify-between">
@@ -295,24 +383,30 @@ export default function ExportPage() {
                 <div className="p-3.5 bg-[#041F1E] rounded-xl border border-[#084746] space-y-1">
                   <strong className="text-[#FFBD59] block">Step 1: Download .vcf</strong>
                   <span className="text-zinc-400 font-sans block">
-                    Tap <strong className="text-white">&quot;Download WhatsApp Contacts (.vcf)&quot;</strong> above on your phone or computer.
+                    Tap <strong className="text-white">&quot;WhatsApp Contacts ({verifiedPhoneCount} Verified .vcf)&quot;</strong> above (or &quot;All Roster&quot; to export all {members.length} climbers).
                   </span>
                 </div>
                 <div className="p-3.5 bg-[#041F1E] rounded-xl border border-[#084746] space-y-1">
                   <strong className="text-[#FFBD59] block">Step 2: Import Contacts</strong>
-                  <span className="text-zinc-400 font-sans block">
-                    Open the file to save members to your contacts (automatically tagged as <code className="text-[#25D366]">KCLMC 26/27 - [Name]</code>).
+                  <span className="text-zinc-400 font-sans block space-y-1">
+                    <span>Contacts are tagged as <code className="text-[#25D366]">KCLMC 26/27 - [Name]</code>.</span>
+                    <span className="block text-[10px] text-zinc-300">
+                      <strong>📱 iPhone:</strong> In share sheet, tap <strong>Contacts</strong> or save to <strong>Files</strong> → tap <strong>&quot;Add All Contacts&quot;</strong>. (QuickLook preview only shows 1st contact).
+                    </span>
+                    <span className="block text-[10px] text-zinc-300">
+                      <strong>💻 Desktop:</strong> Import into <a href="https://contacts.google.com" target="_blank" rel="noreferrer" className="text-[#FFBD59] underline">Google Contacts</a> or iCloud.
+                    </span>
                   </span>
                 </div>
                 <div className="p-3.5 bg-[#041F1E] rounded-xl border border-[#084746] space-y-1">
                   <strong className="text-[#FFBD59] block">Step 3: Bulk Add</strong>
                   <span className="text-zinc-400 font-sans block">
-                    In WhatsApp Community $\rightarrow$ tap <strong className="text-white">Add Members</strong> $\rightarrow$ search <code className="text-[#25D366]">KCLMC 26/27</code> $\rightarrow$ select all $\rightarrow$ Done!
+                    In WhatsApp Community → tap <strong className="text-white">Add Members</strong> → search <code className="text-[#25D366]">KCLMC 26/27</code> → select all → Done!
                   </span>
                 </div>
               </div>
               <p className="text-[11px] text-emerald-400 font-mono pt-1">
-                ✔ 100% leak-proof • Zero unauthorized non-members • Automated vCard generation.
+                ✔ 100% leak-proof • Zero unauthorized non-members • RFC 2426 compliant multi-vCard export.
               </p>
             </div>
             {/* Quick Metrics */}
