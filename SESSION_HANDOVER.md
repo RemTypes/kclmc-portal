@@ -10,7 +10,7 @@
 
 ## 1. Executive Summary & Project Purpose
 
-The **KCLMC Platform** is the official digital infrastructure for the **King's College London Mountaineering & Climbing Club (KCLMC)**, an accredited student society of King's College London Students' Union (KCLSU, Registered Charity No. 1136043).
+The **KCLMC Platform** is the official digital infrastructure for the **King's College London Mountaineering & Climbing Club (KCLMC)**, an accredited student society of King's College London Students' Union (KCLSU, Registered Charity No. 1136729).
 
 ### Core Features & Modules
 1. **Digital Climbing Membership Pass (`/membership`)**:
@@ -120,7 +120,7 @@ git checkout main
 ### D. Dynamic Browser Tab Titles & SEO Metadata
 - Base template in `app/layout.tsx`: `title: { default: "KCLMC | Mountaineering & Climbing", template: "%s | KCLMC" }`.
 - Route layouts export section titles (`Digital Membership Pass`, `Where We Climb`, `Trips & Meets Calendar`, `Club Merch`, `Sign In`, `Committee Admin Portal`, `Pass Scanner`, etc.).
-- `app/(kclmc)/membership/page.tsx` dynamically sets `document.title` to the member's name upon login: `Alice Richardson | Pass | KCLMC`.
+- `app/(kclmc)/membership/page.tsx` dynamically sets `document.title` to the member's name upon login: `Alex Honnold | Pass | KCLMC`.
 
 ### E. Mobile Navigation & Resilience
 - `components/Navigation.tsx` includes a mobile hamburger toggle and slide-down drawer.

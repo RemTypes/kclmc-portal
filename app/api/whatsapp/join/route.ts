@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 
     if (!isSupabaseConfigured()) {
       // Local development fallback without database
-      const fallbackUrl = process.env.WHATSAPP_COMMUNITY_INVITE_URL || 'https://chat.whatsapp.com/CPVH7dfM88QCGuFYyLcrDF?mode=gi_t';
+      const fallbackUrl = process.env.WHATSAPP_COMMUNITY_INVITE_URL || 'https://chat.whatsapp.com/YOUR_COMMUNITY_INVITE_SECRET';
       return NextResponse.redirect(fallbackUrl, {
         status: 307,
         headers: {
@@ -84,7 +84,7 @@ export async function GET(request: Request) {
     }
 
     // 4. Success: Redirect to secret WhatsApp Community URL (kept strictly on server)
-    const destinationUrl = process.env.WHATSAPP_COMMUNITY_INVITE_URL || 'https://chat.whatsapp.com/CPVH7dfM88QCGuFYyLcrDF?mode=gi_t';
+    const destinationUrl = process.env.WHATSAPP_COMMUNITY_INVITE_URL || 'https://chat.whatsapp.com/YOUR_COMMUNITY_INVITE_SECRET';
 
     return NextResponse.redirect(destinationUrl, {
       status: 307,

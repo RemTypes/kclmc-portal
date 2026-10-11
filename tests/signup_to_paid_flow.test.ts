@@ -23,10 +23,10 @@ describe('Signup to Paid Flow Integration (Checklist Item 14)', () => {
   });
 
   it('matches KCL student against official KCLSU paid purchases', () => {
-    // K26122068 is David Baltensperger (Social Tier)
+    // K26122068 is Alex Honnold (Social Tier)
     const socialMember = findMemberByCardNumber('K26122068');
     expect(socialMember).toBeDefined();
-    expect(socialMember?.name).toBe('David Baltensperger');
+    expect(socialMember?.name).toBe('Alex Honnold');
     expect(socialMember?.tier).toBe('social');
 
     // K25008223 is Remy Preston (Recreational Tier)
@@ -47,7 +47,7 @@ describe('Signup to Paid Flow Integration (Checklist Item 14)', () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.valid).toBe(true);
-    expect(data.member.name).toBe('David Baltensperger');
+    expect(data.member.name).toBe('Alex Honnold');
     expect(data.member.tier).toBe('social');
     expect(data.member.expires).toBe('2027-08-31');
   });

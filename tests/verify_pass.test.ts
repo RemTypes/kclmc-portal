@@ -59,7 +59,7 @@ describe('Pass Verification Route Handler (app/api/verify/[membershipId]/route.t
       const data = await response.json();
       expect(data.valid).toBe(true);
       expect(data.member).toBeDefined();
-      expect(data.member.name).toBe('David Baltensperger');
+      expect(data.member.name).toBe('Alex Honnold');
       expect(data.member.tier).toBe('social');
       expect(data.member.membership_number).toBe('K26122068');
       expect(data.member.student_id).toBe('K26122068');
@@ -87,7 +87,7 @@ describe('Pass Verification Route Handler (app/api/verify/[membershipId]/route.t
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.valid).toBe(true);
-      expect(data.member.name).toBe('Arthur Dean');
+      expect(data.member.name).toBe('Shauna Coxsey');
       expect(data.member.tier).toBe('recreational');
     });
   });

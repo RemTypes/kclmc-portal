@@ -1,7 +1,7 @@
 # KCLMC Platform: Committee Architecture & Operations Handover Manual
 
 **Organisation**: King's College London Mountaineering Club (KCLMC)  
-**Parent Body**: King's College London Students' Union (KCLSU, Registered Charity No. 1136043)  
+**Parent Body**: King's College London Students' Union (KCLSU, Registered Charity No. 1136729)  
 **Tenure Handover Date**: October 2026 / Academic Season 2026–2027  
 **Custodians**: Outgoing & Incoming Platform Leads, President, Treasurer, Safety & Welfare Officer  
 **Primary Domain**: [kclmc.org](https://kclmc.org) • **Platform Repositories**: `kclmc-platform` & `kclmc-portal`
@@ -223,7 +223,7 @@ export type Role = 0 | 1 | 2;
               ▼
 [parseKclsuCsv() processes data]:
   1. Validates KCL Student ID (starts with 'K')
-  2. Cleans purchaser name: "BALTENSPERGER, David" -> "David Baltensperger"
+  2. Cleans purchaser name: "HONNOLD, Alex" -> "Alex Honnold"
   3. Neutralizes CSV formula injection (=, +, -, @)
   4. Resolves Tiers:
      - [10166870] -> 'social' (£15)

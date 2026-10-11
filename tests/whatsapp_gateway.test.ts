@@ -88,7 +88,7 @@ describe('Protected WhatsApp Gateway (/api/whatsapp/join)', () => {
                 id: 'user-verified',
                 student_id: 'K23158797',
                 phone: '+44 7123 456789',
-                emergency_contact_name: 'Sarah Richardson',
+                emergency_contact_name: 'Sarah Destivelle',
                 emergency_contact_phone: '+44 7987 654321',
               },
             }),
@@ -102,7 +102,7 @@ describe('Protected WhatsApp Gateway (/api/whatsapp/join)', () => {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             maybeSingle: vi.fn().mockResolvedValue({
-              data: { card_number: 'K23158797', full_name: 'Alice Richardson' },
+              data: { card_number: 'K23158797', full_name: 'Catherine Destivelle' },
             }),
           }),
         }),
