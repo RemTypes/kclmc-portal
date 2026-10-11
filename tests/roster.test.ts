@@ -4,7 +4,10 @@ import {
   determineMemberTier,
   findMemberByCardNumber,
   parseKclsuCsv,
+  isPlaceholderToken,
+  isCompleteFullName,
 } from '@/lib/roster';
+import { InMemoryRosterAdapter, MemberRosterService } from '@/lib/roster/service';
 
 describe('Roster Core Logic (lib/roster.ts)', () => {
   describe('formatPurchaserName', () => {
@@ -25,6 +28,16 @@ describe('Roster Core Logic (lib/roster.ts)', () => {
 
     it('strips surrounding quotes if present', () => {
       expect(formatPurchaserName('"CALDWELL, Tommy"')).toBe('Tommy Caldwell');
+    });
+
+    it('sanitizes missing first names with placeholder tokens (e.g. "JANJIC, -" -> "Janjic")', () => {
+      expect(formatPurchaserName('JANJIC, -')).toBe('Janjic');
+      expect(formatPurchaserName('JANJIC, .')).toBe('Janjic');
+      expect(formatPurchaserName('JANJIC, N/A')).toBe('Janjic');
+      expect(formatPurchaserName('JANJIC, none')).toBe('Janjic');
+      expect(formatPurchaserName('JANJIC,')).toBe('Janjic');
+      expect(formatPurchaserName('JANJIC,   ')).toBe('Janjic');
+      expect(formatPurchaserName('-, JANJIC')).toBe('Janjic');
     });
   });
 
@@ -155,6 +168,113 @@ describe('Roster Core Logic (lib/roster.ts)', () => {
       expect(results[0].productName).toBe(
         '[10002480] Climbing/Mountaineering Recreational Membership'
       );
+    });
+  });
+
+  describe('Name Quality & Completeness Validation', () => {
+    it('accurately identifies complete full names (First & Last)', () => {
+      expect(isCompleteFullName('Marko Janjic')).toBe(true);
+      expect(isCompleteFullName('Alex Honnold')).toBe(true);
+      expect(isCompleteFullName('Eric Von Berg')).toBe(true);
+      expect(isCompleteFullName('Lynn Hayes-rochester')).toBe(true);
+    });
+
+    it('rejects single-word names and placeholder-tainted strings as incomplete', () => {
+      expect(isCompleteFullName('Janjic')).toBe(false);
+      expect(isCompleteFullName('- Janjic')).toBe(false);
+      expect(isCompleteFullName('N/A')).toBe(false);
+      expect(isCompleteFullName('')).toBe(false);
+      expect(isCompleteFullName(null)).toBe(false);
+      expect(isCompleteFullName(undefined)).toBe(false);
+    });
+  });
+
+  describe('Reconciliation Survivor Rules & Profile Authority (Layers 2, 3 & 4)', () => {
+    it('preserves manually curated full name when incoming CSV has missing first name', async () => {
+      const adapter = new InMemoryRosterAdapter();
+      const service = new MemberRosterService(adapter);
+
+      // Setup: Member exists and has been manually curated in DB
+      await adapter.upsertRosterRecords([
+        {
+          cardNumber: 'K26999999',
+          name: 'Marko Janjic',
+          rawPurchaser: 'JANJIC, -',
+          tier: 'recreational',
+          productName: '[10002480] Climbing/Mountaineering Recreational Membership',
+          transactionId: '99999991',
+          purchaseDate: 'Wed 23 Sep 2026 12:00',
+        },
+      ]);
+
+      // Reconcile new CSV where SU provides missing first name "JANJIC, -"
+      const incomingCsv = [
+        'product_name,transaction_id,purchaser,type,card_number,dob,email,purchase_date',
+        '[10002480] Climbing/Mountaineering Recreational Membership,99999992,"JANJIC, -",Member,K26999999,2002-01-01,marko@kcl.ac.uk,Thu 24 Sep 2026 14:00',
+      ].join('\n');
+
+      const outcome = await service.syncRoster(incomingCsv);
+      expect(outcome.success).toBe(true);
+
+      const member = await adapter.findRosterRecord('K26999999');
+      // Survivor Rule MUST keep "Marko Janjic" and NOT revert to "Janjic" or "- Janjic"
+      expect(member?.name).toBe('Marko Janjic');
+      expect(member?.transactionId).toBe('99999992');
+    });
+
+    it('allows updating member name via updateMemberName (Layer 4)', async () => {
+      const adapter = new InMemoryRosterAdapter();
+      const service = new MemberRosterService(adapter);
+
+      await adapter.upsertRosterRecords([
+        {
+          cardNumber: 'K26888888',
+          name: 'Janjic',
+          rawPurchaser: 'JANJIC, -',
+          tier: 'social',
+          productName: '[10166870] Climbing/Mountaineering Social Membership',
+          transactionId: '88888881',
+          purchaseDate: 'Wed 23 Sep 2026 12:00',
+        },
+      ]);
+
+      const updateResult = await service.updateMemberName('K26888888', 'Marko Janjic');
+      expect(updateResult.success).toBe(true);
+
+      const updated = await adapter.findRosterRecord('K26888888');
+      expect(updated?.name).toBe('Marko Janjic');
+    });
+
+    it('resolves member name from linked user profile if roster only has surname (Layer 3)', async () => {
+      const adapter = new InMemoryRosterAdapter();
+
+      // Seed unlinked member with only surname
+      await adapter.upsertRosterRecords([
+        {
+          cardNumber: 'K26777777',
+          name: 'Janjic',
+          rawPurchaser: 'JANJIC, -',
+          tier: 'social',
+          productName: '[10166870] Climbing/Mountaineering Social Membership',
+          transactionId: '77777771',
+          purchaseDate: 'Wed 23 Sep 2026 12:00',
+        },
+      ]);
+
+      // User creates profile with real name
+      await adapter.upsertProfile('user-janjic-123', {
+        id: 'user-janjic-123',
+        full_name: 'Marko Janjic',
+        student_id: 'K26777777',
+        phone: '07123456789',
+        emergency_contact_phone: '07987654321',
+      } as any);
+
+      const rosterWithProfiles = await adapter.listRosterWithProfiles();
+      const member = rosterWithProfiles.members.find(m => m.cardNumber === 'K26777777');
+
+      expect(member).toBeDefined();
+      expect(member?.name).toBe('Marko Janjic');
     });
   });
 });

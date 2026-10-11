@@ -66,3 +66,49 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: err.message || 'Failed to sync roster' }, { status: 500 });
   }
 }
+
+/**
+ * PATCH /api/roster
+ * Manually edits and locks a member's full name in the roster (Role >= 1).
+ */
+export async function PATCH(request: Request) {
+  try {
+    if (isSupabaseConfigured()) {
+      const userClient = await createClient();
+      const { data: { user } } = await userClient.auth.getUser();
+      const role = await getAuthenticatedUserRole(userClient, user);
+
+      if (role < 1) {
+        return NextResponse.json(
+          { error: 'Unauthorized: Committee access required to edit member roster' },
+          { status: 403 }
+        );
+      }
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const { cardNumber, fullName } = body;
+
+    if (!cardNumber || !fullName || typeof cardNumber !== 'string' || typeof fullName !== 'string') {
+      return NextResponse.json(
+        { error: 'Invalid payload: cardNumber and fullName are required' },
+        { status: 400 }
+      );
+    }
+
+    const outcome = await memberRoster.updateMemberName(cardNumber, fullName);
+    if (!outcome.success) {
+      return NextResponse.json({ error: outcome.error }, { status: 400 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Successfully updated member name for ${cardNumber.toUpperCase()} to ${fullName.trim()}.`,
+      cardNumber: cardNumber.toUpperCase(),
+      fullName: fullName.trim(),
+    });
+  } catch (err: any) {
+    console.error('Roster name update error:', err);
+    return NextResponse.json({ error: err.message || 'Failed to update member name' }, { status: 500 });
+  }
+}

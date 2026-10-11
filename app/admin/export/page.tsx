@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { generateMembersVCard, validatePhoneNumber } from '@/lib/safety';
+import { isCompleteFullName } from '@/lib/roster';
 
 interface RosterMember {
   cardNumber: string;
@@ -29,6 +30,11 @@ export default function ExportPage() {
   const [loadingRoster, setLoadingRoster] = useState(true);
   const [canShareFiles, setCanShareFiles] = useState(false);
   const [exportFeedback, setExportFeedback] = useState<string | null>(null);
+
+  // In-portal name curation states (Layer 4)
+  const [editingMember, setEditingMember] = useState<{ cardNumber: string; currentName: string } | null>(null);
+  const [editedNameInput, setEditedNameInput] = useState('');
+  const [savingName, setSavingName] = useState(false);
 
   useEffect(() => {
     // Detect Web Share API file support (iOS Safari & Android Chrome)
@@ -214,6 +220,39 @@ export default function ExportPage() {
 
     setExportFeedback(`Downloaded ${count} contact cards (${fileName}).`);
     setTimeout(() => setExportFeedback(null), 4000);
+  };
+
+  const handleSaveMemberName = async () => {
+    if (!editingMember || !editedNameInput.trim()) return;
+    setSavingName(true);
+    try {
+      const res = await fetch('/api/roster', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cardNumber: editingMember.cardNumber,
+          fullName: editedNameInput.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMembers((prev) =>
+          prev.map((m) =>
+            m.cardNumber === editingMember.cardNumber ? { ...m, name: editedNameInput.trim() } : m
+          )
+        );
+        setExportFeedback(
+          `✔ Updated name for ${editingMember.cardNumber} to "${editedNameInput.trim()}". Protected from CSV sync overwrite!`
+        );
+        setEditingMember(null);
+      } else {
+        alert(data.error || 'Failed to update member name.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error updating member name.');
+    } finally {
+      setSavingName(false);
+    }
   };
 
   return (
@@ -470,7 +509,26 @@ export default function ExportPage() {
                       members.map((m, i) => (
                         <tr key={i} className="hover:bg-[#084746]/30 transition-colors">
                           <td className="p-4 text-[#FFBD59] font-bold">{m.cardNumber}</td>
-                          <td className="p-4 font-bold text-white font-sans">{m.name}</td>
+                          <td className="p-4 font-bold text-white font-sans">
+                            <div className="flex items-center gap-2">
+                              <span>{m.name}</span>
+                              {!isCompleteFullName(m.name) && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-950 text-amber-300 border border-amber-600/40 font-mono">
+                                  ⚠️ Surname Only
+                                </span>
+                              )}
+                              <button
+                                onClick={() => {
+                                  setEditingMember({ cardNumber: m.cardNumber, currentName: m.name });
+                                  setEditedNameInput(m.name);
+                                }}
+                                className="text-zinc-500 hover:text-[#FFBD59] text-xs font-mono px-1 py-0.5 rounded hover:bg-[#084746] transition-colors cursor-pointer"
+                                title="Edit member full name (protected from CSV sync overwrite)"
+                              >
+                                ✏️
+                              </button>
+                            </div>
+                          </td>
                           <td className="p-4 uppercase text-[11px] text-zinc-300">
                             <span className={`px-2 py-0.5 rounded ${m.tier === 'recreational' ? 'bg-emerald-950 text-emerald-300' : 'bg-[#084746] text-[#FFBD59]'}`}>
                               {m.tier}
@@ -581,6 +639,66 @@ export default function ExportPage() {
             <div className="bg-[#052322] border border-[#084746] rounded-2xl p-5 text-xs text-zinc-300 font-mono flex items-center justify-between">
               <span>Format: Standard CSV compliant with AS Colour and UK bulk printers.</span>
               <span className="text-[#FFBD59]">Live database linked</span>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Inline Member Name Curation (Layer 4) */}
+        {editingMember && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <div className="bg-[#052322] border border-[#FFBD59]/40 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-lg font-black font-heading uppercase text-white">
+                    Curate Member Name
+                  </h3>
+                  <span className="text-xs font-mono text-[#FFBD59]">
+                    Student ID: {editingMember.cardNumber}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setEditingMember(null)}
+                  className="text-zinc-400 hover:text-white font-mono text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="text-xs text-zinc-300 font-sans leading-relaxed">
+                Edit this member&apos;s full name. Once saved, the <strong>ETL Survivor Rule</strong> will permanently protect this name from being overwritten by future KCLSU CSV uploads (e.g. preventing single-word or &quot;- Janjic&quot; downgrades).
+              </p>
+
+              <div>
+                <label className="block text-[11px] font-mono uppercase text-zinc-400 mb-1">
+                  Full Name (First &amp; Last)
+                </label>
+                <input
+                  type="text"
+                  value={editedNameInput}
+                  onChange={(e) => setEditedNameInput(e.target.value)}
+                  placeholder="e.g. Marko Janjic"
+                  className="w-full bg-[#041F1E] border border-[#084746] focus:border-[#FFBD59] rounded-xl px-4 py-2 text-sm text-white font-sans outline-none transition-colors"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingMember(null)}
+                  className="px-4 py-2 bg-[#041F1E] hover:bg-[#084746] text-zinc-300 rounded-xl text-xs font-mono font-bold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={savingName || !editedNameInput.trim()}
+                  onClick={handleSaveMemberName}
+                  className="px-4 py-2 bg-[#FFBD59] hover:bg-[#FFE0A3] disabled:opacity-50 text-[#052322] rounded-xl text-xs font-heading font-black uppercase tracking-wider transition-colors shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  {savingName ? 'Saving...' : '🔒 Save & Lock Name'}
+                </button>
+              </div>
             </div>
           </div>
         )}

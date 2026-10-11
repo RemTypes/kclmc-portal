@@ -15,6 +15,8 @@ import {
   findMemberByCardNumber,
   parseKclsuCsv,
   upsertRosterToSupabase,
+  isCompleteFullName,
+  formatPurchaserName,
 } from '@/lib/roster';
 import { checkSafetyProfileCompleteness, SafetyCompletenessResult } from '@/lib/safety';
 import { sanitizeUniversity } from '@/lib/auth';
@@ -98,6 +100,7 @@ export interface RosterStorageAdapter {
   }>;
   verifyPublicPass(identifier: string): Promise<PublicPassVerificationResult>;
   upsertRosterRecords(records: KclsuMemberRecord[]): Promise<{ count: number; error?: any }>;
+  updateMemberName(cardNumber: string, fullName: string): Promise<{ success: boolean; error?: string }>;
 }
 
 /**
@@ -358,9 +361,15 @@ export class PostgresRosterAdapter implements RosterStorageAdapter {
       const hasEmergency = Boolean(prof?.emergency_contact_phone && prof.emergency_contact_phone.trim().length >= 8);
       const safetyComplete = hasPhone && hasEmergency;
 
+      // Layer 3: Linked Profile Authority
+      // If roster name only has surname or placeholder, but user's linked profile has complete full name, use profile name
+      const rosterNameHasFull = isCompleteFullName(row.full_name);
+      const profileNameHasFull = isCompleteFullName(prof?.full_name);
+      const resolvedName = rosterNameHasFull ? row.full_name : (profileNameHasFull ? prof.full_name : row.full_name);
+
       return {
         cardNumber: row.card_number,
-        name: row.full_name,
+        name: resolvedName,
         rawPurchaser: row.raw_purchaser,
         tier: row.tier,
         productName: row.product_name,
@@ -483,6 +492,36 @@ export class PostgresRosterAdapter implements RosterStorageAdapter {
     const admin = createAdminClient();
     return upsertRosterToSupabase(records, admin);
   }
+
+  async updateMemberName(cardNumber: string, fullName: string): Promise<{ success: boolean; error?: string }> {
+    const cleanCard = cardNumber.trim().toUpperCase();
+    const cleanName = fullName.trim();
+    if (!cleanCard || !cleanName) {
+      return { success: false, error: 'Student ID and full name are required' };
+    }
+
+    if (this.isConfigured()) {
+      try {
+        const admin = createAdminClient();
+        const { error } = await admin
+          .from('kclsu_roster')
+          .update({
+            full_name: cleanName,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('card_number', cleanCard);
+
+        if (error) {
+          return { success: false, error: error.message };
+        }
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    return { success: true };
+  }
 }
 
 /**
@@ -559,8 +598,14 @@ export class InMemoryRosterAdapter implements RosterStorageAdapter {
       const hasPhone = Boolean(matchedProf?.phone && matchedProf.phone.trim().length >= 8);
       const hasEmergency = Boolean(matchedProf?.emergency_contact_phone && matchedProf.emergency_contact_phone.trim().length >= 8);
 
+      // Layer 3: Linked Profile Authority
+      const rosterNameHasFull = isCompleteFullName(r.name);
+      const profileNameHasFull = isCompleteFullName(matchedProf?.full_name);
+      const resolvedName = rosterNameHasFull ? r.name : (profileNameHasFull ? matchedProf!.full_name : r.name);
+
       return {
         ...r,
+        name: resolvedName,
         phone: matchedProf?.phone || null,
         emergencyContactName: matchedProf?.emergency_contact_name || null,
         emergencyContactPhone: matchedProf?.emergency_contact_phone || null,
@@ -604,8 +649,32 @@ export class InMemoryRosterAdapter implements RosterStorageAdapter {
   }
 
   async upsertRosterRecords(records: KclsuMemberRecord[]): Promise<{ count: number }> {
-    records.forEach(r => this.rosterMap.set(r.cardNumber.toUpperCase(), r));
+    records.forEach(r => {
+      const cleanCard = r.cardNumber.toUpperCase();
+      const existing = this.rosterMap.get(cleanCard);
+      let resolvedName = r.name;
+      if (existing && existing.name) {
+        const existingHasFull = isCompleteFullName(existing.name);
+        const incomingIsSingleOrMissing = !isCompleteFullName(r.name);
+        const wasManuallyEdited = existing.name !== formatPurchaserName(existing.rawPurchaser);
+        if ((existingHasFull && incomingIsSingleOrMissing) || wasManuallyEdited) {
+          resolvedName = existing.name;
+        }
+      }
+      this.rosterMap.set(cleanCard, { ...r, name: resolvedName });
+    });
     return { count: records.length };
+  }
+
+  async updateMemberName(cardNumber: string, fullName: string): Promise<{ success: boolean; error?: string }> {
+    const cleanCard = cardNumber.trim().toUpperCase();
+    const cleanName = fullName.trim();
+    const existing = this.rosterMap.get(cleanCard);
+    if (!existing) {
+      return { success: false, error: `Member ${cleanCard} not found in roster` };
+    }
+    this.rosterMap.set(cleanCard, { ...existing, name: cleanName });
+    return { success: true };
   }
 }
 
@@ -901,6 +970,14 @@ export class MemberRosterService {
       totalSynced: count,
       records,
     };
+  }
+
+  /**
+   * Manually edits and locks a member's full name in the roster,
+   * shielding it from future CSV reconciliation overwrites.
+   */
+  async updateMemberName(cardNumber: string, fullName: string): Promise<{ success: boolean; error?: string }> {
+    return this.storage.updateMemberName(cardNumber, fullName);
   }
 }
 
