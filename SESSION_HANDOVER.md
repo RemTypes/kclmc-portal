@@ -1,10 +1,12 @@
 # KCLMC Platform: Comprehensive Session Handover & Architecture Guide
 
-> **Current Timestamp**: October 2026  
+> **Last Updated**: October 2026 (Season 2026–2027)  
 > **Repository Directory**: `/Users/rem/Documents/Rem-Vault/KCLMC/kclmc-platform`  
-> **Current Git Commit**: `1382979` (Working tree clean across all branches & remotes)  
-> **Test Status**: **120 / 120 passing** (`npm test`) | **0 TypeScript errors** (`npx tsc --noEmit`)  
-> **Production Edge Bundle**: Built and verified (`npm run build:worker` -> `.open-next/worker.js`)  
+> **Current Git Commit**: `93a9f8e` (Working tree clean across all branches & remotes)  
+> **Test Status**: **182 / 182 passing** (`npm test`) | **86 / 86 security tests passing** (`npm run test:security`)  
+> **Edge Bundle**: Built and verified (`npm run build:worker` -> `.open-next/worker.js`)  
+> **Cloudflare Worker**: `kclmc-portal` (Deployed: Version `1ef59e73-9d08-42b0-8b72-d2535a4783e5`)  
+> **Live Deployments**: [kclmc.org](https://kclmc.org) • [kclmc-portal.remy-preston.workers.dev](https://kclmc-portal.remy-preston.workers.dev)
 
 ---
 
@@ -14,44 +16,61 @@ The **KCLMC Platform** is the official digital infrastructure for the **King's C
 
 ### Core Features & Modules
 1. **Digital Climbing Membership Pass (`/membership`)**:
-   - Allows verified students to link their KCL Student ID (e.g. `K23158797`) and display their official digital climbing pass.
+   - Real-time pass issuance for active student climbers with cryptographic QR code validation for partner climbing walls and trip leaders.
    - Matches against the official `kclsu_roster` database (Social vs. Recreational membership tiers).
-   - Manages climber safety profiles, emergency contact details, and dietary/medical notes.
-2. **Where We Climb (`/guides`)**:
-   - Comprehensive guide directory for London indoor climbing centres (Mile End, Castle, Parthian, VauxWall, Bermondsey Wall, HarroWall) with exclusive KCL student discount information and nearby outdoor crags.
-3. **Apparel Drops & Stash (`/drops/kclmc`)**:
+   - **Anti-Forgery & Blank Card Protection**: Card template rendered with CSS `background-image` and touch-callout suppression (`-webkit-touch-callout: none`, `pointer-events: none`) to prevent blank template extraction on mobile long-press.
+   - **Cross-Platform Save**: Native Web Share API (`navigator.share`) with Canvas Blob fallback for seamless saving to Apple Photos / Android Gallery.
+2. **Compulsory Safety Gate & Emergency Directory (`/safety`)**:
+   - Hard gating of digital passes behind compulsory BMC Climbing Risk Statement acknowledgment.
+   - Collects member phone number and emergency contact (name, phone, relationship) before pass activation.
+   - Dual-schema compatibility supporting both unified JSON objects and individual database fields (`emergency_contact_name`, `emergency_contact_phone`, `emergency_contact_relation`).
+   - UK GDPR-compliant emergency directory in the admin portal for trip leaders and safety officers.
+3. **British Mountaineering Council (BMC) Insurance System (`/admin/bmc`, `/api/admin/bmc-insurance`)**:
+   - Automated BMC recreational member civil liability insurance declaration workflow.
+   - Prevents duplicate declarations, issues verification badges on digital passes.
+   - Edge-safe chunked batch emailing with resilient timeout and dispatch reconciliation.
+4. **Leak-Proof WhatsApp Community Gateway (`/api/whatsapp/join`)**:
+   - Server-side gateway protecting society WhatsApp group links from public search indexing and web scrapers.
+   - Restricts community invite access strictly to verified, authenticated members with paid passes.
+   - Zero-link vCard contact generation for admin broadcasts and phonebook exports.
+5. **Where We Climb (`/guides`)**:
+   - Comprehensive guide directory for London indoor climbing centres (Mile End, Castle, Parthian, VauxWall, Bermondsey Wall, HarroWall) with exclusive student discount information and crag beta.
+6. **Apparel Drops & Stash (`/drops/kclmc`)**:
    - Group-buy merchandise pre-order system with live MOQ (Minimum Order Quantity) tracking.
-4. **Trips & Meets (`/trips`)**:
-   - Upcoming mountaineering, trad, and winter climbing trip calendar (Peak District, Harrison's Rocks, Portland, Font, Highlands).
-5. **Committee Administration Portal (`/admin`)**:
+7. **Trips & Meets (`/trips`)**:
+   - Mountaineering, trad, and bouldering trip calendar (Peak District, Harrison's Rocks, Portland, Font, Highlands).
+8. **Committee Administration Portal (`/admin`)**:
    - **Payment Reconciliation (`/admin/reconcile`)**: 3-tier CSV reconciliation engine matching KCLSU payment reports against membership and merchandise orders.
    - **Pass Scanner (`/admin/scan`)**: Mobile QR and barcode scanner for committee check-ins at climbing walls.
-   - **CMS Content Manager (`/admin/content`)**: Manage trips, guides, and merch.
+   - **Content Manager (`/admin/content`)**: Manage trips, guides, and merchandise.
    - **Manufacturer Export (`/admin/export`)**: Sizing matrix generator for garment printers.
    - **Modules & Permissions (`/admin/modules`)**: Dynamic route access and feature flags.
 
 ---
 
-## 2. Technology Stack & Deployment Architecture
+## 2. Technology Stack & Edge Architecture
 
 ```mermaid
 graph TD
-    Client[Browser / Mobile Client] --> Edge[Cloudflare Workers / OpenNext Edge]
+    Client[Browser / iOS / Android Client] --> Edge[Cloudflare Workers / OpenNext Edge]
     Edge --> SSR[Next.js 16.3.5 Server Runtime]
     SSR --> SupabaseAuth[Supabase Auth GoTrue]
     SSR --> SupabaseDB[(Supabase PostgreSQL Database)]
     SSR --> Cookies[httpOnly, Secure, SameSite=Strict Cookies]
     Client -.-> Scanner[Pass Scanner /api/verify/:membershipId]
+    Client -.-> WAGateway[WhatsApp Gateway /api/whatsapp/join]
+    Edge -.-> BMCEngine[BMC Insurance Dispatch Engine]
 ```
 
-- **Framework**: Next.js 16.3.5 (App Router, webpack build).
-- **Edge Deployment**: Cloudflare Workers using OpenNext (`@opennextjs/cloudflare` v1.20.6, `workerd` compatibility date `2026-06-12`).
+- **Framework**: Next.js 16.3.5 (App Router, webpack bundler).
+- **Edge Deployment**: Cloudflare Workers via OpenNext (`@opennextjs/cloudflare` v1.20.6, `workerd` compatibility date `2026-06-12`).
 - **Database & Auth**: Supabase PostgreSQL with `@supabase/ssr` v0.12.7 and `@supabase/supabase-js` v2.117.0.
-- **Styling**: Tailwind CSS 3.4.19, custom topo pattern textures, brand fonts (Barlow Condensed, Inter, Space Mono).
+- **Styling**: Tailwind CSS 3.4.19, custom topo pattern textures, brand typography (Barlow Condensed, Inter, Space Mono).
 - **Brand Palette**:
   - Alpine Forest Teal: `#052322` (primary background), `#041F1E` (surface dark), `#084746` (borders & cards).
   - Summit Gold: `#FFBD59` (primary accents, links, buttons, active states).
-- **Official Crest**: Circular dark green emblem with white "KCL MC" text and climber hanging from 'K' (`public/images/kclmc-logo.png`). Note: "Est. 1928" was removed across the codebase as it was an unverified template placeholder.
+  - Deep Pine: `#084746`.
+- **Official Crest**: Circular dark green emblem with white "KCL MC" text and climber hanging from 'K' (`public/images/kclmc-logo.png`). Note: "Est. 1928" was removed across the entire codebase as it was an unverified template placeholder.
 
 ---
 
@@ -64,8 +83,8 @@ origin: https://github.com/RemTypes/kclmc-platform.git
 portal: https://github.com/RemTypes/kclmc-portal.git
 ```
 
-### Active Branches (All synchronized at commit `1382979`):
-- `main`: Canonical production codebase.
+### Active Branches (All synchronized at commit `93a9f8e`):
+- `main`: Canonical production codebase (deployed to `kclmc.org`).
 - `cloudflare-preview`: Deployed Cloudflare preview environment.
 - `portal-clean`: Tracking branch for `portal/main`.
 
@@ -73,9 +92,8 @@ portal: https://github.com/RemTypes/kclmc-portal.git
 ```bash
 git checkout main
 git add -A && git commit -m "your message"
-git push origin main
-git checkout cloudflare-preview && git reset --hard main && git push origin cloudflare-preview --force && git push portal cloudflare-preview --force
-git checkout portal-clean && git reset --hard main && git push portal portal-clean:main --force
+git push origin main && git push portal main
+git checkout cloudflare-preview && git merge main && git push origin cloudflare-preview && git push portal cloudflare-preview
 git checkout main
 ```
 
@@ -83,33 +101,44 @@ git checkout main
 
 ## 4. Key Architectural Implementations & Security Hardening
 
-### A. 5 Security Vulnerabilities Patched
-1. **`httpOnly` Session Token Isolation**:
-   - Session tokens are strictly stored in `httpOnly: true, secure: true, sameSite: 'strict'` cookies to eliminate XSS risks (`lib/security/cookies.ts`).
-   - Browser client JS cannot inspect cookies. All authenticated client requests call `/api/auth/me` or `/api/membership`.
-2. **Server-Side Admin Role Enforcement**:
-   - `middleware.ts` enforces `role >= 1` for `/admin` pages and `/api/reconcile`, `/api/roster`, and `GET /api/telemetry`.
-   - `getAuthenticatedUserRole(supabase, user)` in `lib/auth.ts` validates the user against both committee email whitelists and the Supabase `profiles` table.
-3. **Two-Factor Authentication (2FA/OTP)**:
-   - Mandatory for committee accounts (`role >= 1`).
-   - RFC 6238 TOTP authenticator app support (QR code setup on first committee login).
-   - 8 single-use 8-character backup codes (`XXXX-XXXX`) with burn-on-use.
-   - Sealed stateless challenges (`lib/security/two-factor.ts`) using AES-256-GCM so login challenges survive across Cloudflare edge worker isolates.
+### A. Authentication & Session Hardening
+1. **`httpOnly` Session Token Isolation (`lib/security/cookies.ts`)**:
+   - Session tokens are strictly stored in `httpOnly: true, secure: true, sameSite: 'strict'` cookies to eliminate XSS risks.
+   - Client JS cannot access auth cookies. Authenticated client components communicate via `/api/auth/me` or `/api/membership`.
+2. **Two-Factor Authentication (2FA/OTP) (`lib/security/two-factor.ts`)**:
+   - **Mandatory for Committee / Admin Accounts (`role >= 1`)**.
+   - RFC 6238 TOTP authenticator app support with QR code setup on first login.
+   - 8 single-use 8-character backup codes (`XXXX-XXXX`) with automatic burn-on-use.
+   - Sealed stateless challenges using AES-256-GCM so login challenges survive across Cloudflare edge worker isolates.
    - Enrolled secrets and hashed backup codes stored in `auth.users.raw_user_meta_data`.
-4. **Rate Limiting, Lockout & CAPTCHA**:
-   - `lib/security/rate-limiter.ts`: Max 5 failed attempts per 15 minutes by IP or account.
+3. **Fixed 2FA Submission & View Transition Safety (`app/(auth)/login/page.tsx`)**:
+   - Resolved button freezing in `"VERIFYING 2FA..."` by guaranteeing `setLoading(false)` on view transitions and auth responses.
+   - Automatic `useEffect` watcher clears loading state and stale errors whenever the view switches.
+   - `navigateToDestination` includes a micro-delay ensuring browser network threads commit `Set-Cookie` headers before executing navigation.
+4. **Rate Limiting, Account Lockout & CAPTCHA (`lib/security/rate-limiter.ts`)**:
+   - Max 5 failed attempts per 15 minutes by IP or account.
    - Account lockout with exponential backoff on 5+ failures.
-   - CAPTCHA challenge triggered after 3 failures.
-   - Security audit logging for SIEM monitoring.
-5. **Strict Password Policy**:
-   - Enforced in `lib/security/password-policy.ts`: Min 12 characters, uppercase, lowercase, numbers, symbols, and rejection of the top 10k common passwords.
+   - Anti-bot CAPTCHA challenge triggered after 3 failures.
+5. **Strict Password Policy (`lib/security/password-policy.ts`)**:
+   - Min 12 characters, uppercase, lowercase, numbers, symbols, and rejection of the top 10,000 common passwords.
 
-### B. Database RLS Hardening (`supabase/migrations/006_harden_roster_rls.sql`)
+### B. Access Control & Authorization (RBAC)
+- `middleware.ts` enforces `role >= 1` for `/admin` pages, `/api/reconcile`, `/api/roster`, and `/api/telemetry`.
+- `getAuthenticatedUserRole(supabase, user)` in `lib/auth.ts` validates the user against committee email whitelists and the Supabase `profiles` table.
+- System status page (`/status` and `/api/health`) is restricted to committee accounts to prevent infrastructure enumeration.
+
+### C. Database RLS Hardening (`supabase/migrations/006_harden_roster_rls.sql`)
 - Revoked unrestricted public `select` on `kclsu_roster`.
-- Direct table SELECT is restricted to `user_id = auth.uid()` and `get_user_role() >= 1`.
-- Public wall scanners query the dedicated RPC function `verify_membership_card(card_num)` which returns strictly `{ is_valid, full_name, tier, academic_year }` without leaking transaction IDs or student data.
+- Direct table `SELECT` is restricted to `user_id = auth.uid()` and `get_user_role() >= 1`.
+- Public wall scanners query the dedicated RPC function `verify_membership_card(card_num)` which returns strictly `{ is_valid, full_name, tier, academic_year }` without leaking transaction IDs or student PII.
 
-### C. HTTP Security Headers (`next.config.mjs`)
+### D. Digital Membership Card Protection
+- Implemented in `components/MembershipCard.tsx`.
+- Card template uses CSS `background-image` with `pointer-events: none` and `-webkit-touch-callout: none`.
+- Prevents malicious users from saving a blank membership card template via mobile long-press to fabricate unauthorized passes.
+- Save button leverages `navigator.share({ files: [blob] })` on iOS/Android for 1-tap save to photos, falling back to Canvas Blob download on desktop.
+
+### E. HTTP Security Headers (`next.config.mjs`)
 - Configured:
   - `X-Frame-Options: DENY`
   - `X-Content-Type-Options: nosniff`
@@ -117,15 +146,10 @@ git checkout main
   - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
   - `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`
 
-### D. Dynamic Browser Tab Titles & SEO Metadata
+### F. Dynamic Browser Tab Titles & SEO Metadata
 - Base template in `app/layout.tsx`: `title: { default: "KCLMC | Mountaineering & Climbing", template: "%s | KCLMC" }`.
 - Route layouts export section titles (`Digital Membership Pass`, `Where We Climb`, `Trips & Meets Calendar`, `Club Merch`, `Sign In`, `Committee Admin Portal`, `Pass Scanner`, etc.).
 - `app/(kclmc)/membership/page.tsx` dynamically sets `document.title` to the member's name upon login: `Alice Richardson | Pass | KCLMC`.
-
-### E. Mobile Navigation & Resilience
-- `components/Navigation.tsx` includes a mobile hamburger toggle and slide-down drawer.
-- Branded error pages: `app/not-found.tsx` (404) and `app/error.tsx` (global error boundary).
-- Multi-resolution favicons and App Router icons (`app/icon.png`, `app/apple-icon.png`, `public/favicon.ico`).
 
 ---
 
@@ -133,7 +157,7 @@ git checkout main
 
 > [!CAUTION]
 > **1. macOS iCloud Drive Conflict Files**:
-> When editing files on macOS iCloud Drive, syncing can occasionally generate duplicate conflict files named `* 2.*` or `* 3.*` (e.g. `layout 2.tsx` or `cache-life.d 2.ts`). These cause TypeScript compiler duplicate identifier errors.
+> When editing files in iCloud-synced directories, conflict files named `* 2.*` or `* 3.*` (e.g. `cache-life.d 2.ts` or `routes.d 2.ts`) can be created by macOS sync. These cause TypeScript duplicate identifier errors.
 > **Fix**: Run:
 > ```bash
 > find . \( -name "* 2.*" -o -name "* 3.*" \) -delete
@@ -141,20 +165,19 @@ git checkout main
 
 > [!IMPORTANT]
 > **2. `httpOnly` Cookies vs Client-Side Supabase SDK**:
-> `@supabase/ssr` default configuration uses `httpOnly: false`. However, we have hardened all session cookies to `httpOnly: true`. Therefore:
+> `@supabase/ssr` default configuration uses `httpOnly: false`. However, all session cookies are hardened to `httpOnly: true`.
 > - Client components (`'use client'`) CANNOT read session tokens via `document.cookie` or `createBrowserClient().auth.getUser()`.
-> - Always route authenticated data reads/writes through Next.js server route handlers (`/api/auth/me`, `/api/membership`), which receive the cookie automatically in the request header.
+> - Always route authenticated client reads/writes through Next.js server route handlers (`/api/auth/me`, `/api/membership`), which automatically receive cookies in request headers.
 
 > [!WARNING]
-> **3. Client Components & Metadata**:
-> In Next.js App Router, files with `'use client'` cannot export `metadata`. To set tab titles and SEO for client pages:
-> - Create a companion `layout.tsx` in that route's folder (e.g. `app/(kclmc)/membership/layout.tsx`) that exports `metadata = { title: '...' }`.
-> - For runtime updates (e.g. member name), update `document.title` inside `useEffect` or data callbacks.
+> **3. Cloudflare Worker Name & Free Plan Limits**:
+> In `wrangler.jsonc`, the Worker name is configured as `"name": "kclmc-portal"` (matching Cloudflare CI expectations).
+> Do NOT add `"limits": { "cpu_ms": ... }` to `wrangler.jsonc` — CPU limits are not supported on Cloudflare Workers Free plan and will cause deployments to fail with error `[code: 100328]`.
 
 > [!NOTE]
-> **4. Cloudflare Worker Environment Variables**:
-> `wrangler.jsonc` defines build-time variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPERADMIN_EMAIL`, `COMMITTEE_EMAILS`).
-> `SUPABASE_SERVICE_ROLE_KEY` MUST be configured as an encrypted secret in Cloudflare Dashboard:
+> **4. Cloudflare Worker Secrets**:
+> `wrangler.jsonc` defines build-time public variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPERADMIN_EMAIL`, `COMMITTEE_EMAILS`).
+> `SUPABASE_SERVICE_ROLE_KEY` MUST be configured as an encrypted secret in the Cloudflare Dashboard:
 > ```bash
 > npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 > ```
@@ -163,26 +186,26 @@ git checkout main
 
 ## 6. Pre-Publish Dashboard Verification Checklist
 
-Before taking the site live publicly, verify these settings in the Supabase & Cloudflare dashboards:
+Before taking new features live publicly, verify these settings in the Supabase & Cloudflare dashboards:
 
-1. **Supabase SQL Editor**:
-   - Execute [`supabase/migrations/006_harden_roster_rls.sql`](file:///Users/rem/Documents/Rem-Vault/KCLMC/kclmc-platform/supabase/migrations/006_harden_roster_rls.sql) in the Supabase SQL editor to ensure live table RLS restricts public SELECT on `kclsu_roster`.
-2. **Supabase URL Configuration**:
-   - In **Authentication** $\rightarrow$ **URL Configuration**:
-     - Set **Site URL** to `https://kclmc.org` (or production domain).
-     - Add `https://<your-domain>/auth/callback**` to **Redirect URLs**.
-3. **Supabase SMTP Settings**:
-   - In **Authentication** $\rightarrow$ **SMTP Settings**, configure custom SMTP (Purelymail / Resend) to avoid the 3 emails/hour rate limit on Supabase free tier.
-4. **Cloudflare Worker Secrets**:
-   - Verify `SUPABASE_SERVICE_ROLE_KEY` exists in Cloudflare Worker secrets.
+| Item | Service | Action Required | Status |
+| :--- | :--- | :--- | :--- |
+| **RLS Migration 006** | Supabase | Execute `supabase/migrations/006_harden_roster_rls.sql` in SQL Editor to lock down `kclsu_roster`. | Verified |
+| **Site URL & Redirects** | Supabase | Set Site URL to `https://kclmc.org` and add `https://kclmc.org/auth/callback**` in Auth URL Configuration. | Verified |
+| **Custom SMTP** | Supabase | Configure custom SMTP (Gmail/Purelymail/Resend) to prevent Supabase Free tier 3 emails/hr limit. | Configured |
+| **Service Role Secret** | Cloudflare | Verify `SUPABASE_SERVICE_ROLE_KEY` exists in Cloudflare Worker secrets. | Verified |
+| **Worker Name** | Cloudflare | Configured as `kclmc-portal` in `wrangler.jsonc` without CPU limits block. | Verified |
 
 ---
 
 ## 7. Useful Commands Reference
 
 ```bash
-# Run unit & security test suite (120 tests)
+# Run complete test suite (182 unit, integration & checklist tests)
 npm test
+
+# Run dedicated security test suite (86 tests covering RLS, RBAC, 2FA, anti-forgery, injection)
+npm run test:security
 
 # Run TypeScript type check
 npx tsc --noEmit
@@ -190,10 +213,13 @@ npx tsc --noEmit
 # Run Next.js production build
 npm run build
 
-# Build OpenNext Cloudflare Edge Worker
+# Build OpenNext Cloudflare Edge Worker bundle
 npm run build:worker
 
-# Clean untracked iCloud conflict files
+# Deploy to Cloudflare Worker via Wrangler
+npx wrangler deploy
+
+# Clean untracked iCloud duplicate conflict files
 find . \( -name "* 2.*" -o -name "* 3.*" \) -delete
 
 # Run database GDPR backup script
@@ -202,4 +228,4 @@ npm run backup
 
 ---
 
-*This document serves as the authoritative handover. A new chat model can ingest this file to immediately continue development without missing any context.*
+*This document serves as the authoritative handover. A new chat model or engineer can ingest this file to immediately continue development without missing any context.*
