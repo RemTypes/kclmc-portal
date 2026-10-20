@@ -33,7 +33,7 @@ export default function Footer() {
             King&apos;s College London Mountaineering &amp; Climbing Club. Accredited society of the King&apos;s College London Students&apos; Union (KCLSU).
           </p>
           <div className="pt-2 text-[11px] text-zinc-400 font-mono">
-            KCLSU Registered Charity No. <strong className="text-zinc-300">1136043</strong>
+            KCLSU Registered Charity No. <strong className="text-zinc-300">1136729</strong>
           </div>
         </div>
 
@@ -172,7 +172,7 @@ export default function Footer() {
             &copy; {currentYear} King&apos;s College London Mountaineering Club. All rights reserved.
           </div>
           <div className="text-zinc-300">
-            King&apos;s College London Students&apos; Union, Macadam Building, Surrey Street, London WC2R 2NS.
+            King&apos;s College London Students&apos; Union, 30 Strand, London WC2R 2LS (Bush House Hub, 300 Strand).
           </div>
         </div>
         <div className="text-zinc-300 text-left md:text-right max-w-md">

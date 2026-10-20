@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { parseKclsuCsv, KclsuMemberRecord } from '@/lib/roster';
+import { parseKclsuCsv, KclsuMemberRecord, isCompleteFullName } from '@/lib/roster';
 
 export default function ReconcilePage() {
   const [activeTab, setActiveTab] = useState<'roster' | 'merch'>('roster');
@@ -397,6 +397,10 @@ export default function ReconcilePage() {
                   </button>
                 </div>
 
+                <div className="p-3 bg-[#084746]/50 border border-emerald-500/30 rounded-xl flex items-center justify-between text-xs text-emerald-300 font-mono mb-4">
+                  <span>🛡️ <strong>ETL Survivor Rule Active:</strong> Syncing will safely ingest new sales while preserving any manually curated full names in your database. Single-word names from KCLSU will not overwrite existing first names.</span>
+                </div>
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-left font-mono">
                     <thead className="bg-[#041F1E] text-zinc-400 text-xs uppercase tracking-wider border-b border-[#084746]">
@@ -412,7 +416,16 @@ export default function ReconcilePage() {
                       {parsedMembers.slice(0, 10).map((m, i) => (
                         <tr key={i} className="hover:bg-[#084746]/30 transition-colors">
                           <td className="p-4 text-[#FFBD59] font-bold">{m.cardNumber}</td>
-                          <td className="p-4 font-bold text-white font-sans">{m.name}</td>
+                          <td className="p-4 font-bold text-white font-sans">
+                            <div className="flex items-center gap-2">
+                              <span>{m.name}</span>
+                              {!isCompleteFullName(m.name) && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-950 text-amber-300 border border-amber-600/40 font-mono">
+                                  ⚠️ Missing First Name
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="p-4 uppercase text-[11px] text-zinc-300">
                             <span
                               className={`px-2 py-0.5 rounded ${

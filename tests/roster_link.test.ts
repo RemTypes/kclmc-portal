@@ -50,7 +50,7 @@ describe('Production Roster Linking Endpoint (/api/roster/link)', () => {
     expect(badJson.error).toContain('Please provide a valid KCL Student ID');
   });
 
-  it('successfully links Alice Richardson (K23158797) using authenticated client', async () => {
+  it('successfully links Catherine Destivelle (K23158797) using authenticated client', async () => {
     const testUserId = '2b856ff0-eab9-4bfe-8800-ac6242ba9157';
 
     vi.spyOn(supabaseServer, 'createClient').mockResolvedValue({
@@ -71,8 +71,8 @@ describe('Production Roster Linking Endpoint (/api/roster/link)', () => {
             return {
               data: {
                 card_number: 'K23158797',
-                full_name: 'Alice Richardson',
-                raw_purchaser: 'RICHARDSON, Alice',
+                full_name: 'Catherine Destivelle',
+                raw_purchaser: 'DESTIVELLE, Catherine',
                 tier: 'recreational',
                 product_name: '[10002480] Climbing/Mountaineering Recreational Membership',
                 transaction_id: '31599217',
@@ -101,7 +101,7 @@ describe('Production Roster Linking Endpoint (/api/roster/link)', () => {
 
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.member.name).toBe('Alice Richardson');
+    expect(json.member.name).toBe('Catherine Destivelle');
     expect(json.member.cardNumber).toBe('K23158797');
     expect(json.member.tier).toBe('recreational');
   });

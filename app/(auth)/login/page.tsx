@@ -14,7 +14,6 @@ function LoginForm() {
   const urlError = searchParams.get('error');
 
   const initialView = searchParams.get('view') === 'sign_up' || searchParams.get('mode') === 'register' ? 'sign_up' : 'sign_in';
-  const [mode, setMode] = useState<'password' | 'magic_link'>('password');
   const [view, setView] = useState<'sign_in' | 'two_factor' | 'two_factor_setup' | 'sign_up' | 'forgot_password'>(initialView);
   
   // Form fields
@@ -58,7 +57,6 @@ function LoginForm() {
   const [captchaVerified, setCaptchaVerified] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
 
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
 
   // Real-time password strength validation
@@ -448,33 +446,6 @@ function LoginForm() {
     }
   };
 
-  const handleMagicLinkSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setErrorMsg('');
-
-    const cleanEmail = sanitizeEmail(email);
-    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setErrorMsg('Please enter a valid email address.');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail }),
-      });
-      if (!res.ok) throw new Error('Failed to dispatch magic link');
-      setMagicLinkSent(true);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to send magic link. Please try password login.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   let badgeText = 'Member Access // 2026/27';
   let titleText = 'KCLMC Member Portal';
   let descText = 'Sign in to access your verified climbing pass, meet signups & society perks.';
@@ -487,10 +458,6 @@ function LoginForm() {
     badgeText = 'Two-Factor Verification';
     titleText = 'Security Check';
     descText = 'Enter the 6-digit code or an 8-character single-use backup code.';
-  } else if (mode === 'magic_link') {
-    badgeText = 'Instant Sign-In';
-    titleText = 'Magic Link Access';
-    descText = 'We will email you a secure one-click link to log into your account.';
   } else if (view === 'sign_up') {
     badgeText = 'New Member Registration';
     titleText = 'Join KCLMC';
@@ -572,43 +539,6 @@ function LoginForm() {
                 Shield v2
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Mode Selector (Password vs Magic Link) */}
-        {view !== 'forgot_password' && view !== 'two_factor' && view !== 'two_factor_setup' && (
-          <div className="flex rounded-xl bg-[#041F1E] p-1 mb-6 border border-[#FFBD59]/30">
-            <button
-              type="button"
-              onClick={() => {
-                setMode('password');
-                setMagicLinkSent(false);
-                setErrorMsg('');
-              }}
-              className={`flex-1 py-2.5 rounded-lg transition-all font-heading font-bold uppercase tracking-wider text-xs cursor-pointer ${
-                mode === 'password'
-                  ? 'bg-[#FFBD59] text-[#052322] shadow'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              Password
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode('magic_link');
-                setView('sign_in');
-                setMagicLinkSent(false);
-                setErrorMsg('');
-              }}
-              className={`flex-1 py-2.5 rounded-lg transition-all font-heading font-bold uppercase tracking-wider text-xs cursor-pointer ${
-                mode === 'magic_link'
-                  ? 'bg-[#FFBD59] text-[#052322] shadow'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              Magic Link
-            </button>
           </div>
         )}
 
@@ -791,51 +721,6 @@ function LoginForm() {
               </button>
             </div>
           </form>
-        ) : mode === 'magic_link' ? (
-          magicLinkSent ? (
-            <div className="bg-[#041F1E] border border-[#FFBD59]/30 rounded-2xl p-6 text-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-xl">
-                ✉️
-              </div>
-              <h3 className="text-lg font-heading font-bold uppercase tracking-wide text-white">
-                Check your email
-              </h3>
-              <p className="text-xs text-zinc-300 font-sans leading-relaxed">
-                We sent a secure login link to <strong className="text-[#FFBD59]">{email}</strong>. Click the link to log into your account instantly.
-              </p>
-              <button
-                type="button"
-                onClick={() => setMagicLinkSent(false)}
-                className="text-xs font-sans text-[#FFBD59] underline hover:text-[#FFE0A3] mt-2 block mx-auto cursor-pointer"
-              >
-                Use a different email
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handleMagicLinkSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="your.name@kcl.ac.uk"
-                  className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-sans transition-colors"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || isLocked}
-                className="w-full py-3.5 mt-2 bg-[#FFBD59] text-[#052322] font-heading font-black uppercase tracking-wider text-sm rounded-xl hover:bg-[#FFE0A3] transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
-              >
-                {loading ? 'Sending link...' : 'Send Magic Link →'}
-              </button>
-            </form>
-          )
         ) : view === 'forgot_password' ? (
           resetEmailSent ? (
             <div className="bg-[#041F1E] border border-[#FFBD59]/30 rounded-2xl p-6 text-center space-y-4">

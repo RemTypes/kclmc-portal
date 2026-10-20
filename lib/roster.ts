@@ -18,33 +18,87 @@ export function sanitizeCsvCell(val: string): string {
   return cleaned;
 }
 
+const PLACEHOLDER_TOKENS = new Set([
+  '-',
+  '--',
+  '---',
+  '.',
+  '..',
+  '?',
+  '*',
+  '#',
+  'n/a',
+  'na',
+  'none',
+  'unknown',
+  'null',
+  'undefined',
+  'not provided',
+]);
+
+/**
+ * Checks if a string is a placeholder or filler token used by SU systems when names are missing.
+ */
+export function isPlaceholderToken(str: string | null | undefined): boolean {
+  if (!str) return true;
+  const clean = str.trim().toLowerCase();
+  return (
+    clean.length === 0 ||
+    /^[-_.*#?/\\]+$/.test(clean) ||
+    PLACEHOLDER_TOKENS.has(clean)
+  );
+}
+
+/**
+ * Checks if a member name contains at least a valid first and last name.
+ */
+export function isCompleteFullName(name: string | null | undefined): boolean {
+  if (!name || typeof name !== 'string') return false;
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(w => !isPlaceholderToken(w));
+  return parts.length >= 2;
+}
+
 export function formatPurchaserName(raw: string): string {
   if (!raw) return '';
   const sanitized = sanitizeCsvCell(raw);
-  // Handle formats like "SMITH, Jane", "DOE, John"
+  // Handle formats like "SMITH, Jane", "DOE, John", "JANJIC, -"
   const clean = sanitized.replace(/^"|"$/g, '').trim();
+
+  const formatPart = (str: string) =>
+    str
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(w => !isPlaceholderToken(w))
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ')
+      .trim();
+
   if (clean.includes(',')) {
     const [last, first] = clean.split(',').map(s => s.trim());
-    if (first && last) {
-      // Capitalize first letters nicely if in ALL CAPS
-      const formatPart = (str: string) =>
-        str
-          .toLowerCase()
-          .split(' ')
-          .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-          .join(' ');
+    const validFirst = !isPlaceholderToken(first);
+    const validLast = !isPlaceholderToken(last);
 
-      return `${formatPart(first)} ${formatPart(last)}`;
+    if (validFirst && validLast) {
+      return `${formatPart(first)} ${formatPart(last)}`.trim();
+    }
+    if (validLast) {
+      return formatPart(last);
+    }
+    if (validFirst) {
+      return formatPart(first);
     }
   }
-  return clean;
+  return formatPart(clean);
 }
 
 export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   {
     cardNumber: 'K26122068',
-    name: 'David Baltensperger',
-    rawPurchaser: 'BALTENSPERGER, David',
+    name: 'Alex Honnold',
+    rawPurchaser: 'HONNOLD, Alex',
     tier: 'social',
     productName: '[10166870] Climbing/Mountaineering Social Membership',
     transactionId: '31631002',
@@ -52,8 +106,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K26019642',
-    name: 'Olivia Rochester-Hines',
-    rawPurchaser: 'Rochester-Hines, Olivia',
+    name: 'Lynn Hill',
+    rawPurchaser: 'HILL, Lynn',
     tier: 'social',
     productName: '[10166870] Climbing/Mountaineering Social Membership',
     transactionId: '31630684',
@@ -61,8 +115,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K26010174',
-    name: 'Alexander Lippi',
-    rawPurchaser: 'LIPPI, Alexander',
+    name: 'Tommy Caldwell',
+    rawPurchaser: 'CALDWELL, Tommy',
     tier: 'social',
     productName: '[10166870] Climbing/Mountaineering Social Membership',
     transactionId: '31628197',
@@ -70,8 +124,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K26140856',
-    name: 'Sujay Suresh',
-    rawPurchaser: 'Suresh, Sujay',
+    name: 'Jimmy Chin',
+    rawPurchaser: 'CHIN, Jimmy',
     tier: 'social',
     productName: '[10166870] Climbing/Mountaineering Social Membership',
     transactionId: '31624613',
@@ -79,8 +133,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K25058734',
-    name: 'John Lavadia',
-    rawPurchaser: 'LAVADIA, John',
+    name: 'Hazel Findlay',
+    rawPurchaser: 'FINDLAY, Hazel',
     tier: 'social',
     productName: '[10166870] Climbing/Mountaineering Social Membership',
     transactionId: '31620366',
@@ -88,8 +142,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K26140111',
-    name: 'Ian Salihu',
-    rawPurchaser: 'Salihu, Ian',
+    name: 'Adam Ondra',
+    rawPurchaser: 'ONDRA, Adam',
     tier: 'social',
     productName: '[10166870] Climbing/Mountaineering Social Membership',
     transactionId: '31620176',
@@ -97,8 +151,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K26083988',
-    name: 'Beth Vivian',
-    rawPurchaser: 'Vivian, Beth',
+    name: 'Beth Rodden',
+    rawPurchaser: 'RODDEN, Beth',
     tier: 'social',
     productName: '[10166870] Climbing/Mountaineering Social Membership',
     transactionId: '31609375',
@@ -106,8 +160,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K22047409',
-    name: 'Isaac Toh Si Boon',
-    rawPurchaser: 'Toh Si Boon, Isaac',
+    name: 'Nimsdai Purja',
+    rawPurchaser: 'PURJA, Nimsdai',
     tier: 'social',
     productName: '[10166870] Climbing/Mountaineering Social Membership',
     transactionId: '31608073',
@@ -115,8 +169,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K25101428',
-    name: 'Souw Neo',
-    rawPurchaser: 'NEO, Souw',
+    name: 'Janja Garnbret',
+    rawPurchaser: 'GARNBRET, Janja',
     tier: 'social',
     productName: '[10166870] Climbing/Mountaineering Social Membership',
     transactionId: '31597733',
@@ -124,8 +178,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K25005392',
-    name: 'Zekai Lin',
-    rawPurchaser: 'LIN, Zekai',
+    name: 'Chris Sharma',
+    rawPurchaser: 'SHARMA, Chris',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31631791',
@@ -133,8 +187,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K23021924',
-    name: 'Nuha Mohamed',
-    rawPurchaser: 'Mohamed, Nuha',
+    name: 'Junko Tabei',
+    rawPurchaser: 'TABEI, Junko',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31631767',
@@ -142,8 +196,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K26005807',
-    name: 'Lorenzo Mulhare',
-    rawPurchaser: 'MULHARE, Lorenzo',
+    name: 'Reinhold Messner',
+    rawPurchaser: 'MESSNER, Reinhold',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31629878',
@@ -151,8 +205,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K25054815',
-    name: 'Harry Allen',
-    rawPurchaser: 'ALLEN, Harry',
+    name: 'George Mallory',
+    rawPurchaser: 'MALLORY, George',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31628828',
@@ -160,8 +214,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K26016434',
-    name: 'Joon Choi',
-    rawPurchaser: 'Choi, Joon',
+    name: 'Conrad Anker',
+    rawPurchaser: 'ANKER, Conrad',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31625065',
@@ -169,8 +223,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K26066449',
-    name: 'Haofang Xu',
-    rawPurchaser: 'XU, HAOFANG',
+    name: 'Sasha DiGiulian',
+    rawPurchaser: 'DIGIULIAN, Sasha',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31624196',
@@ -187,8 +241,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K23158797',
-    name: 'Alice Richardson',
-    rawPurchaser: 'RICHARDSON, Alice',
+    name: 'Catherine Destivelle',
+    rawPurchaser: 'DESTIVELLE, Catherine',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31599217',
@@ -196,8 +250,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K23004731',
-    name: 'Megan Ho',
-    rawPurchaser: 'HO, Megan',
+    name: 'Margo Hayes',
+    rawPurchaser: 'HAYES, Margo',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31592767',
@@ -205,8 +259,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K25074252',
-    name: 'Eden Steen',
-    rawPurchaser: 'STEEN, Eden',
+    name: 'Ashima Shiraishi',
+    rawPurchaser: 'SHIRAISHI, Ashima',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31591811',
@@ -214,8 +268,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K25004642',
-    name: 'Arthur Dean',
-    rawPurchaser: 'Dean, Arthur',
+    name: 'Shauna Coxsey',
+    rawPurchaser: 'COXSEY, Shauna',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31591709',
@@ -223,8 +277,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K26107823',
-    name: 'Xue',
-    rawPurchaser: 'XUE, -',
+    name: 'Alex Puccio',
+    rawPurchaser: 'PUCCIO, Alex',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31591212',
@@ -232,8 +286,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K26033971',
-    name: 'Ethan Kellett',
-    rawPurchaser: 'KELLETT, Ethan',
+    name: 'Stefano Ghisolfi',
+    rawPurchaser: 'GHISOLFI, Stefano',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31591117',
@@ -241,8 +295,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K23166535',
-    name: 'Jennifer Johnston',
-    rawPurchaser: 'JOHNSTON, Jennifer',
+    name: 'Brooke Raboutou',
+    rawPurchaser: 'RABOUTOU, Brooke',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31590394',
@@ -250,8 +304,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K25005467',
-    name: 'Andrew Berresford',
-    rawPurchaser: 'BERRESFORD, Andrew',
+    name: 'Jakob Schubert',
+    rawPurchaser: 'SCHUBERT, Jakob',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31578818',
@@ -259,8 +313,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K25082359',
-    name: 'Funmi Osoteku',
-    rawPurchaser: 'OSOTEKU, Funmi',
+    name: 'Mina Leslie-Wujastyk',
+    rawPurchaser: 'LESLIE-WUJASTYK, Mina',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31574792',
@@ -268,8 +322,8 @@ export const INITIAL_KCLSU_ROSTER: KclsuMemberRecord[] = [
   },
   {
     cardNumber: 'K26142908',
-    name: 'Hasvinjit D/O Gulwant Singh',
-    rawPurchaser: 'D/O GULWANT SINGH, Hasvinjit',
+    name: 'Ueli Steck',
+    rawPurchaser: 'STECK, Ueli',
     tier: 'recreational',
     productName: '[10002480] Climbing/Mountaineering Recreational Membership',
     transactionId: '31561092',
@@ -451,17 +505,53 @@ export async function upsertRosterToSupabase(
 
     const uniqueRecords = Array.from(dedupeMap.values());
 
-    const inserts = uniqueRecords.map(r => ({
-      card_number: r.cardNumber,
-      full_name: r.name,
-      raw_purchaser: r.rawPurchaser,
-      tier: r.tier,
-      product_name: r.productName,
-      transaction_id: r.transactionId,
-      purchase_date: r.purchaseDate,
-      academic_year: '2026/27',
-      updated_at: new Date().toISOString(),
-    }));
+    // Layer 2: ETL Survivor Rule to protect manually curated or complete names from CSV overwrite
+    const cardList = uniqueRecords.map(r => r.cardNumber);
+    const { data: existingDbRows } = await supabaseClient
+      .from('kclsu_roster')
+      .select('card_number, full_name, raw_purchaser')
+      .in('card_number', cardList);
+
+    const existingMap = new Map<string, { full_name: string; raw_purchaser: string }>();
+    if (Array.isArray(existingDbRows)) {
+      existingDbRows.forEach((row: any) => {
+        if (row?.card_number) {
+          existingMap.set(row.card_number.toUpperCase(), row);
+        }
+      });
+    }
+
+    const inserts = uniqueRecords.map(r => {
+      const existing = existingMap.get(r.cardNumber);
+      let resolvedName = r.name;
+
+      if (existing && existing.full_name) {
+        const existingName = existing.full_name.trim();
+        const incomingName = (r.name || '').trim();
+
+        const existingHasFull = isCompleteFullName(existingName);
+        const incomingIsSingleOrMissing = !isCompleteFullName(incomingName);
+        const wasManuallyEdited = existingName !== formatPurchaserName(existing.raw_purchaser);
+
+        // Survivor Rule: Retain existing DB name if it has complete First+Last while incoming is single-word/incomplete,
+        // or if an admin previously manually edited the name in the database.
+        if ((existingHasFull && incomingIsSingleOrMissing) || wasManuallyEdited) {
+          resolvedName = existingName;
+        }
+      }
+
+      return {
+        card_number: r.cardNumber,
+        full_name: resolvedName,
+        raw_purchaser: r.rawPurchaser,
+        tier: r.tier,
+        product_name: r.productName,
+        transaction_id: r.transactionId,
+        purchase_date: r.purchaseDate,
+        academic_year: '2026/27',
+        updated_at: new Date().toISOString(),
+      };
+    });
 
     const { data, error } = await supabaseClient
       .from('kclsu_roster')

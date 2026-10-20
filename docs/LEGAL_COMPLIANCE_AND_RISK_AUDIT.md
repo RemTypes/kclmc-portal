@@ -1,7 +1,7 @@
 # KCLMC Legal Compliance, Lawsuit Mitigation & Risk Audit Manual
 
 **Organisation**: King's College London Mountaineering Club (KCLMC)  
-**Parent Charity**: King's College London Students' Union (KCLSU, Registered Charity No. 1136043)  
+**Parent Charity**: King's College London Students' Union (KCLSU, Registered Charity No. 1136729)  
 **Effective Date**: October 1, 2026  
 **Review Cycle**: Annual (every academic year upon new committee handover)  
 **Document Custodians**: President, Safety & Welfare Officer, Gear Secretary, Platform Lead
@@ -23,7 +23,7 @@ Failure to pay without a documented exemption can lead to an ICO administrative 
 | **2. Commercial Exploitation** | Personal data is **never** sold, rented, leased, or shared with third-party advertisers or commercial marketing brokers. | **PASS** |
 | **3. Paid Employees & HR Records** | KCLMC employs **zero (0)** paid staff. All committee members and officers are unpaid student volunteers. | **PASS** |
 | **4. CCTV Operations** | KCLMC operates **zero (0)** CCTV systems or surveillance monitoring equipment. | **PASS** |
-| **5. Charity Umbrella Entity** | KCLMC is an accredited constituent society of **KCLSU** (Charity No. 1136043). KCLSU is already registered as an overarching Data Controller with the ICO. | **PASS** |
+| **5. Charity Umbrella Entity** | KCLMC is an accredited constituent society of **KCLSU** (Charity No. 1136729). KCLSU is already registered as an overarching Data Controller with the ICO. | **PASS** |
 
 ### C. Legal Determination & Audit Conclusion
 **KCLMC is formally EXEMPT from the ICO data protection fee** under the *Not-for-Profit Exemption (Regulation 5)* of the Data Protection (Charges and Information) Regulations 2018.

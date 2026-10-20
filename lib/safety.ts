@@ -124,39 +124,98 @@ export function formatPhoneNumber(phone: string): string {
 }
 
 /**
- * Generates a standard vCard 3.0 export for verified KCLMC members.
- * Enables 1-click import into committee phone contacts (Google/iCloud),
- * allowing the committee to bulk-add members to the WhatsApp Community without distributing links.
+ * Contact card details for vCard 3.0 generation.
  */
-export function generateMembersVCard(members: Array<{
+export interface VCardMemberInput {
   name: string;
   phone?: string | null;
   cardNumber?: string;
   tier?: string;
-}>): string {
-  const cards = members
-    .filter(m => m.phone && validatePhoneNumber(m.phone))
-    .map(m => {
-      const cleanPhone = formatPhoneNumberForWhatsApp(m.phone);
-      const nameParts = (m.name || 'Climber').trim().split(/\s+/);
-      const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
-      const firstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : nameParts[0];
-      const tierLabel = (m.tier || 'member').toUpperCase();
-      const cardNum = m.cardNumber || 'VERIFIED';
+  email?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+}
 
-      return [
-        'BEGIN:VCARD',
-        'VERSION:3.0',
-        `FN:KCLMC 26/27 - ${m.name}`,
-        `N:${lastName};${firstName};;;`,
-        `TEL;TYPE=CELL,VOICE:${cleanPhone}`,
-        `NOTE:KCLSU ID: ${cardNum} | Tier: ${tierLabel} | Verified Pass`,
-        'CATEGORIES:KCLMC 26/27',
-        'END:VCARD',
-      ].join('\r\n');
-    });
+export interface VCardOptions {
+  includePending?: boolean;
+}
 
-  return cards.join('\r\n');
+/**
+ * Generates a standard RFC 2426 compliant vCard 3.0 export for verified KCLMC members.
+ * Enables 1-click import into committee phone contacts (Google/iCloud),
+ * allowing the committee to bulk-add members to the WhatsApp Community without distributing links.
+ * 
+ * Supports both:
+ * - Default mode: Only members with verified mobile phone numbers (ready for WhatsApp addition).
+ * - includePending mode: All roster members (including emergency contacts and KCL emails for pending members).
+ */
+export function generateMembersVCard(
+  members: VCardMemberInput[],
+  options?: VCardOptions
+): string {
+  const includePending = options?.includePending ?? false;
+  const eligible = members.filter(m => {
+    if (includePending) return Boolean(m.name && m.name.trim().length > 0);
+    return Boolean(m.phone && validatePhoneNumber(m.phone));
+  });
+
+  if (eligible.length === 0) return '';
+
+  const nowIso = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+  const cards = eligible.map((m, idx) => {
+    const rawCardNum = (m.cardNumber || '').trim().toUpperCase();
+    const cardNum = rawCardNum || 'VERIFIED';
+    const uidKey = (rawCardNum || `climber-${idx + 1}`).replace(/[^a-zA-Z0-9_-]/g, '');
+    const memberName = (m.name || 'Climber').trim().replace(/^KCLMC\s*26\/27\s*-\s*/i, '');
+    const nameParts = memberName.split(/\s+/);
+    const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+    const firstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : nameParts[0];
+    const taggedFirstName = `KCLMC 26/27 - ${firstName}`;
+    const tierLabel = (m.tier || 'member').toUpperCase();
+
+    const hasPhone = Boolean(m.phone && validatePhoneNumber(m.phone));
+    const cleanPhone = hasPhone ? formatPhoneNumberForWhatsApp(m.phone) : '';
+
+    const lines: string[] = [
+      'BEGIN:VCARD',
+      'VERSION:3.0',
+      'PRODID:-//KCLMC//Climbing Pass Roster//EN',
+      `REV:${nowIso}`,
+      `UID:kclmc-26-27-${uidKey}`,
+      `FN:KCLMC 26/27 - ${memberName}`,
+      `N:${lastName};${taggedFirstName};;;`,
+      'ORG:KCLMC 26/27',
+      'TITLE:KCLMC 26/27 Member',
+      'NICKNAME:KCLMC 26/27',
+    ];
+
+    if (cleanPhone) {
+      lines.push(`TEL;TYPE=CELL,VOICE:${cleanPhone}`);
+    } else if (m.emergencyContactPhone && validatePhoneNumber(m.emergencyContactPhone)) {
+      lines.push(`TEL;TYPE=WORK,VOICE:${formatPhoneNumberForWhatsApp(m.emergencyContactPhone)}`);
+    }
+
+    if (m.email) {
+      lines.push(`EMAIL;TYPE=INTERNET,HOME:${m.email.trim()}`);
+    } else if (/^K\d+$/i.test(cardNum)) {
+      lines.push(`EMAIL;TYPE=INTERNET,HOME:${cardNum.toLowerCase()}@kcl.ac.uk`);
+    }
+
+    if (hasPhone) {
+      lines.push(`NOTE:KCLSU ID: ${cardNum} | Tier: ${tierLabel} | Verified Pass`);
+    } else {
+      const emergencyInfo = m.emergencyContactName ? ` | Emergency: ${m.emergencyContactName}` : '';
+      lines.push(`NOTE:KCLSU ID: ${cardNum} | Tier: ${tierLabel} | Mobile Pending Verification${emergencyInfo}`);
+    }
+
+    lines.push('CATEGORIES:KCLMC 26/27');
+    lines.push('END:VCARD');
+
+    return lines.join('\r\n');
+  });
+
+  return cards.join('\r\n') + '\r\n';
 }
 
 /**

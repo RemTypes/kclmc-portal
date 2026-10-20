@@ -271,8 +271,8 @@ describe('Security Testing Suite', () => {
                   {
                     id: 'ord-1',
                     order_code: 'KCL-1001',
-                    customer_name: 'Arthur Dean',
-                    customer_email: 'arthur@kcl.ac.uk',
+                    customer_name: 'Shauna Coxsey',
+                    customer_email: 'shauna@kcl.ac.uk',
                     items: [{ name: 'Hoodie', size: 'M' }],
                     status: 'paid',
                     total_pence: 3500,
@@ -631,8 +631,8 @@ describe('Security Testing Suite', () => {
               data: [
                 {
                   card_number: 'K25008223',
-                  full_name: 'Arthur Dean',
-                  raw_purchaser: 'DEAN, Arthur',
+                  full_name: 'Shauna Coxsey',
+                  raw_purchaser: 'COXSEY, Shauna',
                   tier: 'recreational',
                   product_name: 'Climbing Recreational',
                   transaction_id: 'TX1001',
@@ -1329,7 +1329,7 @@ describe('Security Testing Suite', () => {
               select: vi.fn().mockReturnValue({
                 eq: vi.fn().mockReturnValue({
                   maybeSingle: vi.fn().mockResolvedValue({
-                    data: { id: 'u-123', full_name: 'Alice Richardson', student_id: 'K23158797', university: "King's College London" },
+                    data: { id: 'u-123', full_name: 'Catherine Destivelle', student_id: 'K23158797', university: "King's College London" },
                     error: null,
                   }),
                 }),
@@ -1343,7 +1343,7 @@ describe('Security Testing Suite', () => {
                   maybeSingle: vi.fn().mockResolvedValue({
                     data: {
                       card_number: 'K23158797',
-                      full_name: 'Alice Richardson',
+                      full_name: 'Catherine Destivelle',
                       tier: 'Social',
                       product_name: 'Social Membership',
                       transaction_id: 'TXN-9988',
@@ -1376,12 +1376,12 @@ describe('Security Testing Suite', () => {
       expect(data.boundStudentId).toBe('K23158797');
       expect(data.membership).toBeDefined();
       expect(data.membership.membership_number).toBe('K23158797');
-      expect(data.suRecord.name).toBe('Alice Richardson');
+      expect(data.suRecord.name).toBe('Catherine Destivelle');
     });
 
     it('POST /api/membership updates safety notes on the server', async () => {
       vi.mocked(isSupabaseConfigured).mockReturnValue(true);
-      const mockUser = { id: 'u-123', email: 'alice@kcl.ac.uk' };
+      const mockUser = { id: 'u-123', email: 'catherine@kcl.ac.uk' };
       vi.mocked(createClient).mockResolvedValue({
         auth: {
           getUser: vi.fn().mockResolvedValue({ data: { user: mockUser }, error: null }),

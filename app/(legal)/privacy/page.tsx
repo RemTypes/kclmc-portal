@@ -35,13 +35,13 @@ export default function PrivacyPolicyPage() {
             <span className="text-[#FFBD59]">1.</span> Data Controller &amp; Contact Information
           </h2>
           <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
-            KCLMC operates as an accredited student society under the governance of the <strong>King&apos;s College London Students&apos; Union (KCLSU)</strong>, a registered charity in England and Wales (Charity No. 1136043).
+            KCLMC operates as an accredited student society under the governance of the <strong>King&apos;s College London Students&apos; Union (KCLSU)</strong>, a registered charity in England and Wales (Charity No. 1136729).
           </p>
           <div className="bg-[#041F1E] border border-[#FFBD59]/20 rounded-2xl p-4 text-xs font-mono text-zinc-300 space-y-1.5">
             <div><strong className="text-white">Data Controller:</strong> KCL Mountaineering Club Committee</div>
             <div><strong className="text-white">Charity Umbrella:</strong> King&apos;s College London Students&apos; Union (KCLSU)</div>
-            <div><strong className="text-white">Registered Address:</strong> Student Centre, Macadam Building, Surrey Street, London WC2R 2NS, UK</div>
-            <div><strong className="text-white">ICO Fee Status:</strong> Exempt under Data Protection (Charges and Information) Regulations 2018 (Not-for-Profit Exemption; operates under KCLSU Charity No. 1136043 ICO registration)</div>
+            <div><strong className="text-white">Registered Address:</strong> 30 Strand, London, WC2R 2LS, UK (Bush House Hub, 300 Strand)</div>
+            <div><strong className="text-white">ICO Fee Status:</strong> Exempt under Data Protection (Charges and Information) Regulations 2018 (Not-for-Profit Exemption; operates under KCLSU Charity No. 1136729 ICO registration)</div>
             <div><strong className="text-white">Data Protection Contact:</strong> <a href="mailto:kclmc.committee@gmail.com" className="text-[#FFBD59] underline">kclmc.committee@gmail.com</a></div>
           </div>
         </section>

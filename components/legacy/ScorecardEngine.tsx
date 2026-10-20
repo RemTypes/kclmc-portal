@@ -224,7 +224,7 @@ export default function LubeScoringPage() {
             <div>
               <input
                 type="text"
-                placeholder="Enter Code (e.g. LUBE2026)"
+                placeholder="Enter Access Code"
                 value={codeInput}
                 onChange={e => setCodeInput(e.target.value)}
                 className="w-full bg-[#0A0A0A] border border-[#F5F5F0]/30 p-3 text-center text-xl font-black tracking-widest uppercase focus:outline-none focus:border-emerald-400"
