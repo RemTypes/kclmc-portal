@@ -1,11 +1,15 @@
 export interface KclsuMemberRecord {
-  cardNumber: string; // KCL ID e.g. K1234567
+  cardNumber: string; // KCL ID e.g. K1234567 or Associate ID e.g. ASSOC-2601
   name: string;       // Formatted name e.g. "Alex Honnold"
   rawPurchaser: string;
   tier: 'recreational' | 'social';
   productName: string;
   transactionId: string;
   purchaseDate: string;
+  isAssociate?: boolean;
+  email?: string | null;
+  university?: string | null;
+  suStatus?: 'verified' | 'awaiting_su' | 'revoked';
 }
 
 export function sanitizeCsvCell(val: string): string {
@@ -371,6 +375,34 @@ export function determineMemberTier(productName: string): 'recreational' | 'soci
   return 'recreational';
 }
 
+/**
+ * Generates the next sequential Associate ID (e.g. ASSOC-2601, ASSOC-2602).
+ */
+export function generateNextAssociateId(
+  existingCardNumbers: string[],
+  seasonPrefix: string = '26'
+): string {
+  const prefix = `ASSOC-${seasonPrefix}`;
+  let maxNum = 0;
+
+  for (const raw of existingCardNumbers) {
+    if (!raw) continue;
+    const clean = raw.trim().toUpperCase();
+    if (clean.startsWith(prefix)) {
+      const suffix = clean.slice(prefix.length).replace(/^[-_]/, '');
+      if (/^\d+$/.test(suffix)) {
+        const parsed = parseInt(suffix, 10);
+        if (!Number.isNaN(parsed) && parsed > maxNum && parsed < 10000) {
+          maxNum = parsed;
+        }
+      }
+    }
+  }
+
+  const nextNum = maxNum + 1;
+  return `${prefix}${String(nextNum).padStart(2, '0')}`;
+}
+
 export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
   const lines = csvText.split('\n');
   const recordsMap = new Map<string, KclsuMemberRecord>();
@@ -401,25 +433,74 @@ export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
       const productName = sanitizeCsvCell(cols[0]);
       const transactionId = sanitizeCsvCell(cols[1]);
       const rawPurchaser = sanitizeCsvCell(cols[2]);
+      const purchaserType = sanitizeCsvCell(cols[3] || '');
       const cardNumber = sanitizeCsvCell(cols[4]);
+      const rawEmail = sanitizeCsvCell(cols[6] || '');
       const purchaseDate = sanitizeCsvCell(cols[7]);
 
-      if (cardNumber && cardNumber.startsWith('K')) {
-        const cleanCard = cardNumber.trim().toUpperCase();
+      const rawCardTrimmed = (cardNumber || '').trim().toUpperCase();
+      const isKclCard = rawCardTrimmed.startsWith('K');
+      const isExplicitAssociateCard = rawCardTrimmed.startsWith('ASSOC') || rawCardTrimmed.startsWith('EXT-') || rawCardTrimmed.startsWith('GUEST-');
+      const isNumericGuestCard = /^\d{5,12}$/.test(rawCardTrimmed);
+      const isBlankCard = isPlaceholderToken(rawCardTrimmed);
+      const isAssociateProductOrType =
+        /associate|non-kcl|external|guest|alumni/i.test(productName) ||
+        /associate|non-kcl|external|guest|alumni/i.test(purchaserType);
+
+      let cleanCard = '';
+      let isAssociate = false;
+
+      if (isKclCard) {
+        cleanCard = rawCardTrimmed;
+        isAssociate = false;
+      } else if (isExplicitAssociateCard) {
+        cleanCard = rawCardTrimmed;
+        isAssociate = true;
+      } else if (isAssociateProductOrType || isNumericGuestCard || (isBlankCard && transactionId && rawPurchaser)) {
+        isAssociate = true;
+        if (!isBlankCard) {
+          cleanCard = rawCardTrimmed.startsWith('ASSOC') ? rawCardTrimmed : `ASSOC-${rawCardTrimmed}`;
+        } else {
+          const fallbackTx = (transactionId || '').replace(/[^A-Z0-9]/gi, '').slice(-8).toUpperCase();
+          cleanCard = fallbackTx ? `ASSOC-SU-${fallbackTx}` : `ASSOC-SU-${i}`;
+        }
+      }
+
+      if (cleanCard) {
         const tier = determineMemberTier(productName);
+        const formattedName = formatPurchaserName(rawPurchaser);
+        const cleanEmail = rawEmail && rawEmail.includes('@') ? rawEmail.trim().toLowerCase() : null;
+
+        // Check if an associate row without a permanent ID matches an earlier row in the same CSV by full name
+        let targetKey = cleanCard;
+        if (isAssociate && formattedName) {
+          for (const [existingKey, existingVal] of recordsMap.entries()) {
+            if (
+              existingVal.isAssociate &&
+              existingVal.name.toLowerCase() === formattedName.toLowerCase()
+            ) {
+              targetKey = existingKey;
+              break;
+            }
+          }
+        }
+
         const newRecord: KclsuMemberRecord = {
-          cardNumber: cleanCard,
-          name: formatPurchaserName(rawPurchaser),
+          cardNumber: targetKey,
+          name: formattedName,
           rawPurchaser,
           tier,
           productName,
           transactionId,
           purchaseDate,
+          isAssociate,
+          email: cleanEmail,
+          suStatus: 'verified',
         };
 
-        const existing = recordsMap.get(cleanCard);
+        const existing = recordsMap.get(targetKey);
         if (!existing) {
-          recordsMap.set(cleanCard, newRecord);
+          recordsMap.set(targetKey, newRecord);
         } else {
           // Social-Recreational upgrade strictly overrides Social to Recreational
           const isRecreational = existing.tier === 'recreational' || tier === 'recreational';
@@ -427,12 +508,15 @@ export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
             ? productName
             : (existing.tier === 'recreational' ? existing.productName : productName);
 
-          recordsMap.set(cleanCard, {
+          recordsMap.set(targetKey, {
             ...existing,
             tier: isRecreational ? 'recreational' : 'social',
             productName: preferredProduct,
             transactionId: newRecord.transactionId || existing.transactionId,
             purchaseDate: newRecord.purchaseDate || existing.purchaseDate,
+            email: newRecord.email || existing.email,
+            isAssociate: Boolean(existing.isAssociate || newRecord.isAssociate),
+            suStatus: 'verified',
           });
         }
       }
@@ -466,6 +550,10 @@ export async function fetchMemberFromSupabase(
       productName: data.product_name,
       transactionId: data.transaction_id,
       purchaseDate: data.purchase_date || '',
+      isAssociate: Boolean(data.is_associate ?? !data.card_number?.startsWith('K')),
+      email: data.member_email || null,
+      university: data.university || null,
+      suStatus: data.su_status || 'verified',
     };
   } catch (err) {
     console.error('Error fetching member from Supabase:', err);
@@ -486,7 +574,7 @@ export async function upsertRosterToSupabase(
       const cleanCard = r.cardNumber.trim().toUpperCase();
       const existing = dedupeMap.get(cleanCard);
       if (!existing) {
-        dedupeMap.set(cleanCard, r);
+        dedupeMap.set(cleanCard, { ...r, cardNumber: cleanCard });
       } else {
         const isRecreational = existing.tier === 'recreational' || r.tier === 'recreational';
         const preferredProduct = (r.tier === 'recreational' && existing.tier === 'social')
@@ -499,20 +587,23 @@ export async function upsertRosterToSupabase(
           productName: preferredProduct,
           transactionId: r.transactionId || existing.transactionId,
           purchaseDate: r.purchaseDate || existing.purchaseDate,
+          email: r.email || existing.email,
+          isAssociate: Boolean(existing.isAssociate || r.isAssociate),
+          suStatus: r.suStatus || existing.suStatus || 'verified',
         });
       }
     }
 
     const uniqueRecords = Array.from(dedupeMap.values());
 
-    // Layer 2: ETL Survivor Rule to protect manually curated or complete names from CSV overwrite
+    // Fetch existing DB rows for matching card numbers AND existing associate records for name-based reconciliation
     const cardList = uniqueRecords.map(r => r.cardNumber);
     const { data: existingDbRows } = await supabaseClient
       .from('kclsu_roster')
-      .select('card_number, full_name, raw_purchaser')
+      .select('*')
       .in('card_number', cardList);
 
-    const existingMap = new Map<string, { full_name: string; raw_purchaser: string }>();
+    const existingMap = new Map<string, any>();
     if (Array.isArray(existingDbRows)) {
       existingDbRows.forEach((row: any) => {
         if (row?.card_number) {
@@ -521,34 +612,81 @@ export async function upsertRosterToSupabase(
       });
     }
 
+    // Also check if any incoming synthetic associate records (e.g. ASSOC-SU-...) match a manually created ASSOC-26XX record by full name
+    const hasIncomingAssociates = uniqueRecords.some(r => r.isAssociate || !r.cardNumber.startsWith('K'));
+    const existingAssociateByName = new Map<string, any>();
+    if (hasIncomingAssociates) {
+      try {
+        const { data: allDbRows } = await supabaseClient
+          .from('kclsu_roster')
+          .select('*');
+        if (Array.isArray(allDbRows)) {
+          allDbRows.forEach((row: any) => {
+            const isAssocRow = Boolean(row?.is_associate || (row?.card_number && !String(row.card_number).toUpperCase().startsWith('K')));
+            if (isAssocRow && row?.full_name) {
+              existingAssociateByName.set(String(row.full_name).trim().toLowerCase(), row);
+              if (row?.card_number) {
+                existingMap.set(String(row.card_number).toUpperCase(), row);
+              }
+            }
+          });
+        }
+      } catch {
+        // Non-fatal if full scan is unavailable in mock
+      }
+    }
+
     const inserts = uniqueRecords.map(r => {
-      const existing = existingMap.get(r.cardNumber);
-      let resolvedName = r.name;
+      let targetCardNumber = r.cardNumber;
+      let existing = existingMap.get(targetCardNumber);
 
-      if (existing && existing.full_name) {
-        const existingName = existing.full_name.trim();
-        const incomingName = (r.name || '').trim();
-
-        const existingHasFull = isCompleteFullName(existingName);
-        const incomingIsSingleOrMissing = !isCompleteFullName(incomingName);
-        const wasManuallyEdited = existingName !== formatPurchaserName(existing.raw_purchaser);
-
-        // Survivor Rule: Retain existing DB name if it has complete First+Last while incoming is single-word/incomplete,
-        // or if an admin previously manually edited the name in the database.
-        if ((existingHasFull && incomingIsSingleOrMissing) || wasManuallyEdited) {
-          resolvedName = existingName;
+      // Reconcile incoming CSV associate row against manually issued ASSOC-26XX record by full name
+      if (!existing && (r.isAssociate || !targetCardNumber.startsWith('K')) && r.name) {
+        const matchedAssoc = existingAssociateByName.get(r.name.trim().toLowerCase());
+        if (matchedAssoc && matchedAssoc.card_number) {
+          targetCardNumber = String(matchedAssoc.card_number).toUpperCase();
+          existing = matchedAssoc;
         }
       }
 
+      let resolvedName = r.name;
+      let resolvedTier = r.tier;
+
+      if (existing) {
+        if (existing.tier === 'recreational' && resolvedTier === 'social') {
+          resolvedTier = 'recreational';
+        }
+        if (existing.full_name) {
+          const existingName = existing.full_name.trim();
+          const incomingName = (r.name || '').trim();
+
+          const existingHasFull = isCompleteFullName(existingName);
+          const incomingIsSingleOrMissing = !isCompleteFullName(incomingName);
+          const wasManuallyEdited = existingName !== formatPurchaserName(existing.raw_purchaser);
+
+          // Survivor Rule: Retain existing DB name if it has complete First+Last while incoming is single-word/incomplete,
+          // or if an admin previously manually edited the name in the database.
+          if ((existingHasFull && incomingIsSingleOrMissing) || wasManuallyEdited) {
+            resolvedName = existingName;
+          }
+        }
+      }
+
+      const isAssoc = Boolean(r.isAssociate ?? existing?.is_associate ?? !targetCardNumber.startsWith('K'));
+
       return {
-        card_number: r.cardNumber,
+        card_number: targetCardNumber,
         full_name: resolvedName,
         raw_purchaser: r.rawPurchaser,
-        tier: r.tier,
+        tier: resolvedTier,
         product_name: r.productName,
         transaction_id: r.transactionId,
         purchase_date: r.purchaseDate,
         academic_year: '2026/27',
+        is_associate: isAssoc,
+        member_email: r.email || existing?.member_email || null,
+        university: r.university || existing?.university || null,
+        su_status: r.suStatus || 'verified',
         updated_at: new Date().toISOString(),
       };
     });
@@ -559,6 +697,17 @@ export async function upsertRosterToSupabase(
       .select();
 
     if (error) {
+      // Fallback if migration 009 columns have not been applied to remote DB yet
+      if (String(error?.message || '').includes('column') || String(error?.code || '') === '42703') {
+        const legacyInserts = inserts.map(({ is_associate, member_email, university, su_status, ...rest }) => rest);
+        const retry = await supabaseClient
+          .from('kclsu_roster')
+          .upsert(legacyInserts, { onConflict: 'card_number' })
+          .select();
+        if (!retry.error) {
+          return { count: retry.data?.length || legacyInserts.length, error: null };
+        }
+      }
       console.error('Supabase roster upsert error:', error);
       return { count: 0, error };
     }
@@ -569,4 +718,5 @@ export async function upsertRosterToSupabase(
     return { count: 0, error: err.message };
   }
 }
+
 

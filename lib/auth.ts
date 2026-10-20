@@ -84,7 +84,24 @@ export function getSafeRedirectUrl(target: string | null | undefined, fallback: 
 
 export function sanitizeStudentId(id: string | null | undefined): string {
   if (!id) return '';
-  return id.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 32);
+  return id
+    .trim()
+    .toUpperCase()
+    .replace(/--+/g, '')
+    .replace(/[^A-Z0-9_-]/g, '')
+    .replace(/^[-_]+|[-_]+$/g, '')
+    .slice(0, 32);
+}
+
+export function isAssociateId(id: string | null | undefined): boolean {
+  if (!id) return false;
+  const clean = sanitizeStudentId(id);
+  if (!clean) return false;
+  if (clean.startsWith('ASSOC') || clean.startsWith('EXT-') || clean.startsWith('GUEST-')) {
+    return true;
+  }
+  // Standard KCL IDs are 'K' followed by digits (e.g. K25008223)
+  return !/^K\d{5,10}$/i.test(clean);
 }
 
 export function sanitizeEmail(email: string | null | undefined): string {
@@ -117,4 +134,5 @@ export function sanitizeUniversity(uni: string | null | undefined): string {
   const trimmed = uni.trim().slice(0, 150);
   return trimmed || DEFAULT_UNIVERSITY;
 }
+
 

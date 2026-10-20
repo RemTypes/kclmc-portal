@@ -17,10 +17,11 @@ import {
   upsertRosterToSupabase,
   isCompleteFullName,
   formatPurchaserName,
+  generateNextAssociateId,
 } from '@/lib/roster';
 import { checkSafetyProfileCompleteness, SafetyCompletenessResult } from '@/lib/safety';
-import { sanitizeUniversity } from '@/lib/auth';
-import type { Profile, Membership } from '@/types/database';
+import { sanitizeUniversity, isAssociateId, sanitizeEmail } from '@/lib/auth';
+import type { Profile, Membership, SuProcessingStatus } from '@/types/database';
 import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { trackServerEvent } from '@/lib/telemetry-server';
 
@@ -36,8 +37,30 @@ export interface RosterMemberDirectoryItem {
   phone?: string | null;
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
-  university?: string;
+  university?: string | null;
   safetyComplete: boolean;
+  isAssociate?: boolean;
+  email?: string | null;
+  suStatus?: SuProcessingStatus;
+}
+
+export interface CreateAssociateMemberInput {
+  fullName: string;
+  tier: 'social' | 'recreational';
+  cardNumber?: string | null;
+  customCardNumber?: string | null;
+  email?: string | null;
+  university?: string | null;
+  suStatus?: SuProcessingStatus;
+  transactionId?: string | null;
+}
+
+export interface UpdateRosterMemberInput {
+  fullName?: string;
+  tier?: 'social' | 'recreational';
+  email?: string | null;
+  university?: string | null;
+  suStatus?: SuProcessingStatus;
 }
 
 export interface PassResolutionResult {
@@ -76,6 +99,8 @@ export interface PublicPassVerificationResult {
     product_name?: string;
     source: string;
     userId?: string | null;
+    isAssociate?: boolean;
+    suStatus?: SuProcessingStatus;
   };
   error?: string;
   statusCode: number;
@@ -101,6 +126,28 @@ export interface RosterStorageAdapter {
   verifyPublicPass(identifier: string): Promise<PublicPassVerificationResult>;
   upsertRosterRecords(records: KclsuMemberRecord[]): Promise<{ count: number; error?: any }>;
   updateMemberName(cardNumber: string, fullName: string): Promise<{ success: boolean; error?: string }>;
+  createAssociateRecord(record: KclsuMemberRecord): Promise<{ success: boolean; member?: KclsuMemberRecord; error?: string }>;
+  updateRosterMember(cardNumber: string, updates: UpdateRosterMemberInput): Promise<{ success: boolean; member?: KclsuMemberRecord; error?: string }>;
+  deleteRosterMember(cardNumber: string): Promise<{ success: boolean; error?: string }>;
+}
+
+function mapDbRowToRecord(row: any): KclsuMemberRecord & { user_id?: string | null } {
+  const card = String(row.card_number || '').trim().toUpperCase();
+  const isAssoc = Boolean(row.is_associate ?? isAssociateId(card));
+  return {
+    cardNumber: card,
+    name: row.full_name,
+    rawPurchaser: row.raw_purchaser || '',
+    tier: row.tier,
+    productName: row.product_name,
+    transactionId: row.transaction_id,
+    purchaseDate: row.purchase_date || '',
+    isAssociate: isAssoc,
+    email: row.member_email || null,
+    university: row.university || null,
+    suStatus: (row.su_status as SuProcessingStatus) || 'verified',
+    user_id: row.user_id || null,
+  };
 }
 
 /**
@@ -188,15 +235,7 @@ export class PostgresRosterAdapter implements RosterStorageAdapter {
           .maybeSingle();
 
         if (rowFromUser) {
-          return {
-            cardNumber: rowFromUser.card_number,
-            name: rowFromUser.full_name,
-            rawPurchaser: rowFromUser.raw_purchaser || '',
-            tier: rowFromUser.tier,
-            productName: rowFromUser.product_name,
-            transactionId: rowFromUser.transaction_id,
-            purchaseDate: rowFromUser.purchase_date || '',
-          };
+          return mapDbRowToRecord(rowFromUser);
         }
 
         const admin = createAdminClient();
@@ -207,15 +246,7 @@ export class PostgresRosterAdapter implements RosterStorageAdapter {
           .maybeSingle();
 
         if (rowFromAdmin) {
-          return {
-            cardNumber: rowFromAdmin.card_number,
-            name: rowFromAdmin.full_name,
-            rawPurchaser: rowFromAdmin.raw_purchaser || '',
-            tier: rowFromAdmin.tier,
-            productName: rowFromAdmin.product_name,
-            transactionId: rowFromAdmin.transaction_id,
-            purchaseDate: rowFromAdmin.purchase_date || '',
-          };
+          return mapDbRowToRecord(rowFromAdmin);
         }
       } catch (err) {
         console.warn('[PostgresRosterAdapter] findRosterRecord query error:', err);
@@ -238,15 +269,7 @@ export class PostgresRosterAdapter implements RosterStorageAdapter {
         .maybeSingle();
 
       if (rowFromUser) {
-        return {
-          cardNumber: rowFromUser.card_number,
-          name: rowFromUser.full_name,
-          rawPurchaser: rowFromUser.raw_purchaser || '',
-          tier: rowFromUser.tier,
-          productName: rowFromUser.product_name,
-          transactionId: rowFromUser.transaction_id,
-          purchaseDate: rowFromUser.purchase_date || '',
-        };
+        return mapDbRowToRecord(rowFromUser);
       }
 
       const admin = createAdminClient();
@@ -257,15 +280,7 @@ export class PostgresRosterAdapter implements RosterStorageAdapter {
         .maybeSingle();
 
       if (rowFromAdmin) {
-        return {
-          cardNumber: rowFromAdmin.card_number,
-          name: rowFromAdmin.full_name,
-          rawPurchaser: rowFromAdmin.raw_purchaser || '',
-          tier: rowFromAdmin.tier,
-          productName: rowFromAdmin.product_name,
-          transactionId: rowFromAdmin.transaction_id,
-          purchaseDate: rowFromAdmin.purchase_date || '',
-        };
+        return mapDbRowToRecord(rowFromAdmin);
       }
       return null;
     } catch {
@@ -325,6 +340,9 @@ export class PostgresRosterAdapter implements RosterStorageAdapter {
         source: 'local_fallback',
         members: INITIAL_KCLSU_ROSTER.map(r => ({
           ...r,
+          university: r.university || "King's College London",
+          isAssociate: Boolean(r.isAssociate ?? isAssociateId(r.cardNumber)),
+          suStatus: r.suStatus || 'verified',
           safetyComplete: false,
         })),
         socialCount,
@@ -344,7 +362,7 @@ export class PostgresRosterAdapter implements RosterStorageAdapter {
 
     const { data: profilesData } = await supabase
       .from('profiles')
-      .select('id, student_id, phone, emergency_contact_name, emergency_contact_phone, university');
+      .select('id, full_name, student_id, phone, emergency_contact_name, emergency_contact_phone, university');
 
     const profileByUserId = new Map<string, any>();
     const profileByStudentId = new Map<string, any>();
@@ -366,6 +384,7 @@ export class PostgresRosterAdapter implements RosterStorageAdapter {
       const rosterNameHasFull = isCompleteFullName(row.full_name);
       const profileNameHasFull = isCompleteFullName(prof?.full_name);
       const resolvedName = rosterNameHasFull ? row.full_name : (profileNameHasFull ? prof.full_name : row.full_name);
+      const isAssoc = Boolean(row.is_associate ?? isAssociateId(row.card_number));
 
       return {
         cardNumber: row.card_number,
@@ -379,8 +398,11 @@ export class PostgresRosterAdapter implements RosterStorageAdapter {
         phone: prof?.phone || null,
         emergencyContactName: prof?.emergency_contact_name || null,
         emergencyContactPhone: prof?.emergency_contact_phone || null,
-        university: prof?.university || "King's College London",
+        university: prof?.university || row.university || (isAssoc ? 'Alumni / Associate / Guest' : "King's College London"),
         safetyComplete,
+        isAssociate: isAssoc,
+        email: row.member_email || null,
+        suStatus: (row.su_status as SuProcessingStatus) || 'verified',
       };
     });
 
@@ -410,6 +432,14 @@ export class PostgresRosterAdapter implements RosterStorageAdapter {
           .maybeSingle();
 
         if (rosterData) {
+          if (rosterData.su_status === 'revoked') {
+            return {
+              valid: false,
+              statusCode: 403,
+              error: `Membership pass ${cleanId} has been revoked or deactivated.`,
+            };
+          }
+          const isAssoc = Boolean(rosterData.is_associate ?? isAssociateId(rosterData.card_number));
           return {
             valid: true,
             statusCode: 200,
@@ -423,6 +453,8 @@ export class PostgresRosterAdapter implements RosterStorageAdapter {
               product_name: rosterData.product_name,
               source: 'Supabase KCLSU Database',
               userId: rosterData.user_id,
+              isAssociate: isAssoc,
+              suStatus: rosterData.su_status || 'verified',
             },
           };
         }
@@ -522,6 +554,137 @@ export class PostgresRosterAdapter implements RosterStorageAdapter {
 
     return { success: true };
   }
+
+  async createAssociateRecord(record: KclsuMemberRecord): Promise<{ success: boolean; member?: KclsuMemberRecord; error?: string }> {
+    if (!this.isConfigured()) {
+      return { success: true, member: record };
+    }
+
+    try {
+      const admin = createAdminClient();
+      const fullPayload: Record<string, any> = {
+        card_number: record.cardNumber,
+        full_name: record.name,
+        raw_purchaser: record.rawPurchaser,
+        tier: record.tier,
+        product_name: record.productName,
+        transaction_id: record.transactionId,
+        purchase_date: record.purchaseDate,
+        academic_year: '2026/27',
+        is_associate: true,
+        member_email: record.email || null,
+        university: record.university || 'Alumni / Associate / Guest',
+        su_status: record.suStatus || 'awaiting_su',
+        updated_at: new Date().toISOString(),
+      };
+
+      let { data, error } = await admin
+        .from('kclsu_roster')
+        .insert(fullPayload)
+        .select()
+        .maybeSingle();
+
+      // Fallback if migration 009 columns have not been applied yet
+      if (error && (String(error.message || '').includes('column') || String(error.code || '') === '42703')) {
+        const { is_associate, member_email, university, su_status, ...legacyPayload } = fullPayload;
+        const retry = await admin
+          .from('kclsu_roster')
+          .insert(legacyPayload)
+          .select()
+          .maybeSingle();
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      return {
+        success: true,
+        member: data ? mapDbRowToRecord(data) : record,
+      };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  async updateRosterMember(cardNumber: string, updates: UpdateRosterMemberInput): Promise<{ success: boolean; member?: KclsuMemberRecord; error?: string }> {
+    const cleanCard = cardNumber.trim().toUpperCase();
+    if (!this.isConfigured()) {
+      return { success: true };
+    }
+
+    try {
+      const admin = createAdminClient();
+      const updatePayload: Record<string, any> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (updates.fullName !== undefined) updatePayload.full_name = updates.fullName.trim();
+      if (updates.tier !== undefined) updatePayload.tier = updates.tier;
+      if (updates.email !== undefined) updatePayload.member_email = updates.email ? sanitizeEmail(updates.email) : null;
+      if (updates.university !== undefined) updatePayload.university = updates.university ? sanitizeUniversity(updates.university) : null;
+      if (updates.suStatus !== undefined) updatePayload.su_status = updates.suStatus;
+
+      let { data, error } = await admin
+        .from('kclsu_roster')
+        .update(updatePayload)
+        .eq('card_number', cleanCard)
+        .select()
+        .maybeSingle();
+
+      if (error && (String(error.message || '').includes('column') || String(error.code || '') === '42703')) {
+        const { member_email, university, su_status, ...legacyPayload } = updatePayload;
+        const retry = await admin
+          .from('kclsu_roster')
+          .update(legacyPayload)
+          .eq('card_number', cleanCard)
+          .select()
+          .maybeSingle();
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      return {
+        success: true,
+        member: data ? mapDbRowToRecord(data) : undefined,
+      };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  async deleteRosterMember(cardNumber: string): Promise<{ success: boolean; error?: string }> {
+    const cleanCard = cardNumber.trim().toUpperCase();
+    if (!this.isConfigured()) {
+      return { success: true };
+    }
+
+    try {
+      const admin = createAdminClient();
+      // Clear student_id on any bound profile first
+      await admin
+        .from('profiles')
+        .update({ student_id: null, updated_at: new Date().toISOString() })
+        .eq('student_id', cleanCard);
+
+      const { error } = await admin
+        .from('kclsu_roster')
+        .delete()
+        .eq('card_number', cleanCard);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
 }
 
 /**
@@ -609,8 +772,11 @@ export class InMemoryRosterAdapter implements RosterStorageAdapter {
         phone: matchedProf?.phone || null,
         emergencyContactName: matchedProf?.emergency_contact_name || null,
         emergencyContactPhone: matchedProf?.emergency_contact_phone || null,
-        university: matchedProf?.university || "King's College London",
+        university: matchedProf?.university || r.university || (r.isAssociate ? 'Associate / Guest' : "King's College London"),
         safetyComplete: hasPhone && hasEmergency,
+        isAssociate: Boolean(r.isAssociate),
+        email: r.email || null,
+        suStatus: r.suStatus || 'verified',
       };
     });
 
@@ -626,6 +792,13 @@ export class InMemoryRosterAdapter implements RosterStorageAdapter {
     const clean = identifier.trim().toUpperCase();
     const record = this.rosterMap.get(clean);
     if (record) {
+      if (record.suStatus === 'revoked') {
+        return {
+          valid: false,
+          statusCode: 403,
+          error: `Membership for ID ${clean} has been revoked`,
+        };
+      }
       return {
         valid: true,
         statusCode: 200,
@@ -649,8 +822,21 @@ export class InMemoryRosterAdapter implements RosterStorageAdapter {
   }
 
   async upsertRosterRecords(records: KclsuMemberRecord[]): Promise<{ count: number }> {
+    const normalizeName = (s: string) => s.toLowerCase().replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
     records.forEach(r => {
-      const cleanCard = r.cardNumber.toUpperCase();
+      let cleanCard = r.cardNumber.toUpperCase();
+
+      // Reconcile pending associate records by full name if incoming is an associate row with a generated ID
+      if (r.isAssociate) {
+        const incomingNorm = normalizeName(r.name);
+        for (const [existingCard, existingRec] of this.rosterMap.entries()) {
+          if (existingRec.isAssociate && normalizeName(existingRec.name) === incomingNorm) {
+            cleanCard = existingCard;
+            break;
+          }
+        }
+      }
+
       const existing = this.rosterMap.get(cleanCard);
       let resolvedName = r.name;
       if (existing && existing.name) {
@@ -661,7 +847,15 @@ export class InMemoryRosterAdapter implements RosterStorageAdapter {
           resolvedName = existing.name;
         }
       }
-      this.rosterMap.set(cleanCard, { ...r, name: resolvedName });
+      this.rosterMap.set(cleanCard, {
+        ...r,
+        cardNumber: cleanCard,
+        name: resolvedName,
+        isAssociate: r.isAssociate ?? existing?.isAssociate ?? false,
+        email: r.email || existing?.email || null,
+        university: r.university || existing?.university || null,
+        suStatus: r.suStatus || 'verified',
+      });
     });
     return { count: records.length };
   }
@@ -674,6 +868,59 @@ export class InMemoryRosterAdapter implements RosterStorageAdapter {
       return { success: false, error: `Member ${cleanCard} not found in roster` };
     }
     this.rosterMap.set(cleanCard, { ...existing, name: cleanName });
+    return { success: true };
+  }
+
+  async createAssociateRecord(record: KclsuMemberRecord): Promise<{
+    success: boolean;
+    member?: KclsuMemberRecord;
+    error?: string;
+  }> {
+    const cardNumber = record.cardNumber.trim().toUpperCase();
+    if (this.rosterMap.has(cardNumber)) {
+      return { success: false, error: `ID ${cardNumber} already exists in the roster` };
+    }
+    this.rosterMap.set(cardNumber, { ...record, cardNumber });
+    return { success: true, member: { ...record, cardNumber } };
+  }
+
+  async updateRosterMember(cardNumber: string, updates: UpdateRosterMemberInput): Promise<{
+    success: boolean;
+    member?: KclsuMemberRecord;
+    error?: string;
+  }> {
+    const cleanCard = cardNumber.trim().toUpperCase();
+    const existing = this.rosterMap.get(cleanCard);
+    if (!existing) {
+      return { success: false, error: `Member ${cleanCard} not found in roster` };
+    }
+
+    const updated: KclsuMemberRecord = { ...existing };
+    if (updates.fullName !== undefined) updated.name = updates.fullName.trim();
+    if (updates.tier !== undefined) {
+      updated.tier = updates.tier;
+      updated.productName = updated.isAssociate
+        ? (updates.tier === 'recreational'
+            ? 'KCL Mountaineering Associate Recreational Membership 2026/27'
+            : 'KCL Mountaineering Associate Social Membership 2026/27')
+        : (updates.tier === 'recreational'
+            ? 'KCL Mountaineering Club Recreational Membership 2026/27'
+            : 'KCL Mountaineering Club Social Membership 2026/27');
+    }
+    if (updates.email !== undefined) updated.email = updates.email?.trim() || null;
+    if (updates.university !== undefined) updated.university = updates.university?.trim() || null;
+    if (updates.suStatus !== undefined) updated.suStatus = updates.suStatus;
+
+    this.rosterMap.set(cleanCard, updated);
+    return { success: true, member: updated };
+  }
+
+  async deleteRosterMember(cardNumber: string): Promise<{ success: boolean; error?: string }> {
+    const cleanCard = cardNumber.trim().toUpperCase();
+    if (!this.rosterMap.has(cleanCard)) {
+      return { success: false, error: `Member ${cleanCard} not found in roster` };
+    }
+    this.rosterMap.delete(cleanCard);
     return { success: true };
   }
 }
@@ -743,11 +990,15 @@ export class MemberRosterService {
     let membership: Membership | null = null;
 
     if (activeStudentId) {
-      const cleanId = activeStudentId.trim().toUpperCase();
+      let cleanId = activeStudentId.trim().toUpperCase();
+      if (/^\d{6,9}$/.test(cleanId)) {
+        cleanId = `K${cleanId}`;
+      }
       boundStudentId = cleanId;
       suRecord = await this.storage.findRosterRecord(cleanId);
 
-      if (suRecord) {
+      if (suRecord && suRecord.suStatus !== 'revoked') {
+        this.storage.bindRosterRecord(cleanId, user.id, suRecord).catch(() => {});
         membership = {
           id: suRecord.cardNumber,
           user_id: user.id,
@@ -814,16 +1065,19 @@ export class MemberRosterService {
   }
 
   /**
-   * Links a KCL student ID to an authenticated Climber account.
+   * Links a KCL student ID or Committee-issued Associate ID to an authenticated Climber account.
    */
   async linkStudentId(userId: string, rawStudentId: string): Promise<LinkMemberResult> {
-    const cleanId = (rawStudentId || '').trim().toUpperCase();
+    let cleanId = (rawStudentId || '').trim().toUpperCase();
+    if (/^\d{6,9}$/.test(cleanId)) {
+      cleanId = `K${cleanId}`;
+    }
 
     if (!cleanId || cleanId.length > 32 || !/^[A-Z0-9_-]{3,32}$/.test(cleanId)) {
       return {
         success: false,
         statusCode: 400,
-        error: 'Please provide a valid KCL Student ID (e.g. K25008223).',
+        error: 'Please provide a valid KCL Student ID (e.g. K25008223) or Associate ID (e.g. ASSOC-2601).',
       };
     }
 
@@ -849,7 +1103,7 @@ export class MemberRosterService {
       };
     }
 
-    // 3. Verify membership exists in official KCLSU records
+    // 3. Verify membership exists in official KCLSU / Associate records
     let memberRecord = existingRoster;
     if (!memberRecord) {
       memberRecord = findMemberByCardNumber(cleanId) || null;
@@ -859,22 +1113,35 @@ export class MemberRosterService {
       return {
         success: false,
         statusCode: 404,
-        error: `Student ID "${cleanId}" was not found in the official KCLSU purchase list. Please ensure you have purchased a 2026/27 membership on the KCLSU shop.`,
+        error: `Student ID "${cleanId}" was not found in the official KCLSU purchase list. Please ensure you have purchased a 2026/27 membership on the KCLSU shop or received a valid Associate ID from the Committee.`,
+      };
+    }
+
+    if (memberRecord.suStatus === 'revoked') {
+      return {
+        success: false,
+        statusCode: 403,
+        error: `Membership ID "${safeDisplayId}" has been revoked. Please contact kclmc.committee@gmail.com.`,
       };
     }
 
     // 4. Bind roster record and update profile
     await this.storage.bindRosterRecord(cleanId, userId, memberRecord);
-    await this.storage.upsertProfile(userId, {
+    const profileUpdates: Partial<Profile> = {
       student_id: cleanId,
       full_name: memberRecord.name,
-    });
+    };
+    if (memberRecord.university) {
+      profileUpdates.university = memberRecord.university;
+    }
+    await this.storage.upsertProfile(userId, profileUpdates);
 
     // 5. Emit activation telemetry
     trackServerEvent('membership_activated', {
       userId,
       cardNumber: cleanId,
       tier: memberRecord.tier,
+      isAssociate: Boolean(memberRecord.isAssociate),
       academicYear: '2026/27',
     }).catch(() => {});
 
@@ -882,7 +1149,9 @@ export class MemberRosterService {
       success: true,
       statusCode: 200,
       member: memberRecord,
-      message: `Successfully linked KCL Student ID ${cleanId} to your account.`,
+      message: memberRecord.isAssociate
+        ? `Successfully linked Associate Member ID ${cleanId} to your account.`
+        : `Successfully linked KCL Student ID ${cleanId} to your account.`,
     };
   }
 
@@ -894,14 +1163,23 @@ export class MemberRosterService {
     total: number;
     socialCount: number;
     recreationalCount: number;
+    associateCount: number;
+    awaitingSuCount: number;
+    nextAssociateId: string;
     members: RosterMemberDirectoryItem[];
   }> {
     const result = await this.storage.listRosterWithProfiles();
+    const associateCount = result.members.filter(m => m.isAssociate || !m.cardNumber.toUpperCase().startsWith('K')).length;
+    const awaitingSuCount = result.members.filter(m => m.suStatus === 'awaiting_su').length;
+    const nextAssociateId = generateNextAssociateId(result.members.map(m => m.cardNumber), '26');
     return {
       source: result.source,
       total: result.members.length,
       socialCount: result.socialCount,
       recreationalCount: result.recreationalCount,
+      associateCount,
+      awaitingSuCount,
+      nextAssociateId,
       members: result.members,
     };
   }
@@ -979,6 +1257,85 @@ export class MemberRosterService {
   async updateMemberName(cardNumber: string, fullName: string): Promise<{ success: boolean; error?: string }> {
     return this.storage.updateMemberName(cardNumber, fullName);
   }
+
+  /**
+   * Creates a new Associate Member record (with auto-generated ASSOC-26XX or custom ID).
+   */
+  async createAssociateMember(input: CreateAssociateMemberInput): Promise<{
+    success: boolean;
+    member?: KclsuMemberRecord;
+    error?: string;
+  }> {
+    if (!input.fullName || input.fullName.trim().length < 2) {
+      return { success: false, error: 'Please provide the associate member\'s full name.' };
+    }
+
+    const currentRoster = await this.storage.listRosterWithProfiles();
+    const existingCards = currentRoster.members.map(m => m.cardNumber);
+    const requestedId = input.customCardNumber || input.cardNumber;
+    const cardNumber = requestedId && requestedId.trim()
+      ? requestedId.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32)
+      : generateNextAssociateId(existingCards, '26');
+
+    if (!cardNumber || cardNumber.length < 3) {
+      return { success: false, error: 'Invalid custom Associate ID format' };
+    }
+
+    const existing = await this.storage.findRosterRecord(cardNumber);
+    if (existing) {
+      return { success: false, error: `ID ${cardNumber} already exists in the roster` };
+    }
+
+    const cleanName = input.fullName.trim();
+    const tier: 'social' | 'recreational' = input.tier === 'recreational' ? 'recreational' : 'social';
+    const suStatus: SuProcessingStatus = input.suStatus || 'awaiting_su';
+    const productName = tier === 'recreational'
+      ? 'KCL Mountaineering Associate Recreational Membership 2026/27'
+      : 'KCL Mountaineering Associate Social Membership 2026/27';
+    const txId = input.transactionId?.trim() || `MANUAL-${cardNumber}`;
+    const purchaseDate = new Date().toLocaleDateString('en-GB');
+
+    const record: KclsuMemberRecord = {
+      name: cleanName,
+      rawPurchaser: cleanName,
+      cardNumber,
+      productName,
+      tier,
+      purchaseDate,
+      transactionId: txId,
+      isAssociate: true,
+      email: input.email ? sanitizeEmail(input.email) : null,
+      university: input.university ? sanitizeUniversity(input.university) : 'Alumni / Associate / Guest',
+      suStatus,
+    };
+
+    return this.storage.createAssociateRecord(record);
+  }
+
+  /**
+   * Updates an existing roster/associate member (tier upgrade, status, email, university, name).
+   */
+  async updateRosterMember(cardNumber: string, updates: UpdateRosterMemberInput): Promise<{
+    success: boolean;
+    member?: KclsuMemberRecord;
+    error?: string;
+  }> {
+    if (!cardNumber || !cardNumber.trim()) {
+      return { success: false, error: 'Card number / Member ID is required.' };
+    }
+    return this.storage.updateRosterMember(cardNumber, updates);
+  }
+
+  /**
+   * Deletes a roster/associate member record.
+   */
+  async deleteRosterMember(cardNumber: string): Promise<{ success: boolean; error?: string }> {
+    if (!cardNumber || !cardNumber.trim()) {
+      return { success: false, error: 'Card number / Member ID is required.' };
+    }
+    return this.storage.deleteRosterMember(cardNumber);
+  }
 }
 
 export const memberRoster = new MemberRosterService();
+
