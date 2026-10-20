@@ -990,11 +990,15 @@ export class MemberRosterService {
     let membership: Membership | null = null;
 
     if (activeStudentId) {
-      const cleanId = activeStudentId.trim().toUpperCase();
+      let cleanId = activeStudentId.trim().toUpperCase();
+      if (/^\d{6,9}$/.test(cleanId)) {
+        cleanId = `K${cleanId}`;
+      }
       boundStudentId = cleanId;
       suRecord = await this.storage.findRosterRecord(cleanId);
 
       if (suRecord && suRecord.suStatus !== 'revoked') {
+        this.storage.bindRosterRecord(cleanId, user.id, suRecord).catch(() => {});
         membership = {
           id: suRecord.cardNumber,
           user_id: user.id,
@@ -1064,7 +1068,10 @@ export class MemberRosterService {
    * Links a KCL student ID or Committee-issued Associate ID to an authenticated Climber account.
    */
   async linkStudentId(userId: string, rawStudentId: string): Promise<LinkMemberResult> {
-    const cleanId = (rawStudentId || '').trim().toUpperCase();
+    let cleanId = (rawStudentId || '').trim().toUpperCase();
+    if (/^\d{6,9}$/.test(cleanId)) {
+      cleanId = `K${cleanId}`;
+    }
 
     if (!cleanId || cleanId.length > 32 || !/^[A-Z0-9_-]{3,32}$/.test(cleanId)) {
       return {

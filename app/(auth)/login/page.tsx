@@ -187,11 +187,15 @@ function LoginForm() {
     setWarningMsg('');
 
     const cleanEmail = sanitizeEmail(email);
-    const cleanStudentId = sanitizeStudentId(studentId);
+    let cleanStudentId = sanitizeStudentId(studentId);
+    if (memberType === 'kcl' && /^\d{6,9}$/.test(cleanStudentId)) {
+      cleanStudentId = `K${cleanStudentId}`;
+    }
     const cleanFullName = (fullName || '').trim().slice(0, 100);
-    const cleanUniversity = sanitizeUniversity(
-      university === 'Other UK Institution' ? customUniversity : university
-    );
+    const cleanUniversity =
+      memberType === 'kcl'
+        ? DEFAULT_UNIVERSITY
+        : sanitizeUniversity(university === 'Other UK Institution' ? customUniversity : university);
 
     if (view === 'sign_up') {
       if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
@@ -199,7 +203,14 @@ function LoginForm() {
         setLoading(false);
         return;
       }
-      if (university === 'Other UK Institution' && !customUniversity.trim()) {
+      if (memberType === 'kcl') {
+        if (!cleanStudentId || !/^K\d{6,9}$/i.test(cleanStudentId)) {
+          setErrorMsg('Please enter your KCL Student ID Number (e.g. K23158797) so your membership pass can be automatically linked.');
+          setLoading(false);
+          return;
+        }
+      }
+      if (memberType === 'associate' && university === 'Other UK Institution' && !customUniversity.trim()) {
         setErrorMsg('Please enter the name of your university or institution.');
         setLoading(false);
         return;
@@ -867,51 +878,56 @@ function LoginForm() {
                 </div>
                 <div>
                   <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5 flex items-center justify-between">
-                    <span>{memberType === 'associate' ? 'Custom Associate ID' : 'Student ID Number'}</span>
+                    <span>{memberType === 'associate' ? 'Custom Associate ID' : 'KCL Student ID Number'}</span>
                     <span className="text-[10px] text-zinc-400 font-sans lowercase font-normal">
-                      {memberType === 'associate' ? '(issued by committee)' : '(optional for guests / non-KCL)'}
+                      {memberType === 'associate' ? '(issued by committee)' : '(required — auto-links pass)'}
                     </span>
                   </label>
                   <input
                     type="text"
+                    required={memberType === 'kcl'}
                     value={studentId}
                     onChange={e => setStudentId(e.target.value.toUpperCase())}
-                    placeholder={memberType === 'associate' ? 'e.g. ASSOC-2601' : 'e.g. K23158797 or external ID'}
+                    placeholder={memberType === 'associate' ? 'e.g. ASSOC-2601' : 'e.g. K23158797'}
                     className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-mono uppercase tracking-wider transition-colors"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
-                    University / Affiliation
-                  </label>
-                  <select
-                    value={university}
-                    onChange={e => setUniversity(e.target.value)}
-                    className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-sans transition-colors cursor-pointer"
-                  >
-                    {UNIVERSITIES.map(u => (
-                      <option key={u} value={u} className="bg-[#041F1E] text-white">
-                        {u}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {memberType === 'associate' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
+                        University / Affiliation
+                      </label>
+                      <select
+                        value={university}
+                        onChange={e => setUniversity(e.target.value)}
+                        className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-sans transition-colors cursor-pointer"
+                      >
+                        {UNIVERSITIES.filter(u => u !== DEFAULT_UNIVERSITY).map(u => (
+                          <option key={u} value={u} className="bg-[#041F1E] text-white">
+                            {u}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                {university === 'Other UK Institution' && (
-                  <div>
-                    <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
-                      Specify Institution Name
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={customUniversity}
-                      onChange={e => setCustomUniversity(e.target.value)}
-                      placeholder="e.g. University of Cambridge"
-                      className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-sans transition-colors"
-                    />
-                  </div>
+                    {university === 'Other UK Institution' && (
+                      <div>
+                        <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
+                          Specify Institution Name
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={customUniversity}
+                          onChange={e => setCustomUniversity(e.target.value)}
+                          placeholder="e.g. University of Cambridge"
+                          className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-sans transition-colors"
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}

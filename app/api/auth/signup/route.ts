@@ -25,7 +25,10 @@ export async function POST(request: Request) {
     const { email, password, fullName, studentId, university } = body;
 
     const cleanEmail = sanitizeEmail(email);
-    const cleanStudentId = sanitizeStudentId(studentId);
+    let cleanStudentId = sanitizeStudentId(studentId);
+    if (/^\d{6,9}$/.test(cleanStudentId)) {
+      cleanStudentId = `K${cleanStudentId}`;
+    }
     const cleanFullName = (fullName || '').trim().slice(0, 100);
     const cleanUniversity = sanitizeUniversity(university);
 

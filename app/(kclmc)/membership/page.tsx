@@ -205,11 +205,12 @@ export default function MembershipDashboard() {
   const [suRecord, setSuRecord] = useState<KclsuMemberRecord | null>(null);
   const [boundStudentId, setBoundStudentId] = useState<string | null>(null);
 
-  // Student ID / Associate ID linking state (for authenticated accounts not yet bound)
+  // Student ID / Associate ID linking state (for associate members, unlinked accounts, or error recovery)
   const [linkMode, setLinkMode] = useState<'kcl' | 'associate'>('kcl');
   const [inputStudentId, setInputStudentId] = useState('');
   const [linkLoading, setLinkLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [isEditingId, setIsEditingId] = useState(false);
 
   // Form states for profile & safety notes
   const [university, setUniversity] = useState<string>(DEFAULT_UNIVERSITY);
@@ -234,6 +235,17 @@ export default function MembershipDashboard() {
           setBoundStudentId(data.boundStudentId || null);
           setSuRecord(data.suRecord || null);
           setMembership(data.membership || null);
+
+          if (data.boundStudentId) {
+            setInputStudentId(data.boundStudentId);
+          }
+          const isAssocAccount =
+            data.suRecord?.isAssociate ||
+            isAssociateId(data.boundStudentId) ||
+            (data.profile?.university && data.profile.university !== DEFAULT_UNIVERSITY);
+          if (isAssocAccount) {
+            setLinkMode('associate');
+          }
 
           // Update browser tab description dynamically
           if (typeof document !== 'undefined') {
@@ -323,6 +335,7 @@ export default function MembershipDashboard() {
       const matched: KclsuMemberRecord = data.member;
       setSuRecord(matched);
       setBoundStudentId(matched.cardNumber);
+      setIsEditingId(false);
       setMembership({
         id: matched.cardNumber,
         user_id: currentUser?.id || 'member',
@@ -526,8 +539,8 @@ export default function MembershipDashboard() {
           </>
         )}
 
-        {/* 2. Authenticated: Already Bound to Account */}
-        {currentUser && boundStudentId && (
+        {/* 2. Authenticated: Verified & Bound to Account */}
+        {currentUser && boundStudentId && suRecord && (
           <div className="mb-8 p-6 bg-[#084746]/80 backdrop-blur-md border border-emerald-500/40 rounded-3xl shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-emerald-950/80 border border-emerald-500/50 flex items-center justify-center text-emerald-400 text-xl shrink-0">
@@ -558,29 +571,50 @@ export default function MembershipDashboard() {
                   {suRecord?.name ? ` • ${suRecord.name}` : ''}
                 </p>
                 <p className="text-xs text-zinc-300 mt-0.5">
-                  This climbing pass is permanently locked to your authenticated account ({currentUser.email}).
+                  Automatically linked to your authenticated account ({currentUser.email}).
                 </p>
               </div>
             </div>
-            <div className="text-xs font-mono text-zinc-400 text-left md:text-right shrink-0">
-              <span className="block text-zinc-400">Need to update or re-link?</span>
-              <a href="mailto:kclmc.committee@gmail.com" className="text-[#FFBD59] hover:underline">
-                Contact Committee →
+            <div className="text-xs font-mono text-zinc-400 text-left md:text-right shrink-0 flex flex-col items-start md:items-end gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditingId(!isEditingId);
+                  setInputStudentId(boundStudentId);
+                  setSearchError('');
+                }}
+                className="text-[#FFBD59] hover:underline cursor-pointer"
+              >
+                {isEditingId ? 'Cancel ID Edit' : 'Entered wrong ID / Associate ID? Fix here →'}
+              </button>
+              <a href="mailto:kclmc.committee@gmail.com" className="text-zinc-400 hover:text-white text-[11px]">
+                Contact Committee
               </a>
             </div>
           </div>
         )}
 
-        {/* 3. Authenticated: Not Yet Bound (One-time link) */}
-        {currentUser && !boundStudentId && (
+        {/* 3. Authenticated: Associate Member Linking OR Unmatched/Error Recovery ID Input */}
+        {currentUser && (!boundStudentId || !suRecord || isEditingId) && (
           <div className="mb-8 p-6 md:p-8 bg-[#084746]/80 backdrop-blur-md border border-[#FFBD59]/30 rounded-3xl shadow-xl">
             <div className="max-w-2xl">
               <span className="text-[10px] font-mono uppercase tracking-widest text-[#FFBD59] bg-[#041F1E] px-2.5 py-1 rounded border border-[#FFBD59]/30">
-                Account Verification
+                {boundStudentId && !suRecord ? 'ID Verification / Error Recovery' : 'Account Verification'}
               </span>
               <h2 className="text-2xl font-black font-heading uppercase text-white mt-2 mb-3">
-                {linkMode === 'associate' ? 'Link Your Associate Member ID' : 'Link Your KCL Student ID'}
+                {linkMode === 'associate'
+                  ? 'Link Your Associate Member ID'
+                  : boundStudentId && !suRecord
+                  ? 'Verify or Correct Your Student ID'
+                  : 'Link Your KCL Student ID'}
               </h2>
+
+              {boundStudentId && !suRecord && (
+                <div className="mb-4 p-3.5 bg-amber-950/70 border border-amber-500/50 rounded-xl text-amber-200 text-xs font-sans leading-relaxed">
+                  <strong>⚠️ ID Pending Roster Match:</strong> Your account currently has ID{' '}
+                  <span className="font-mono font-bold text-[#FFBD59]">{boundStudentId}</span> saved from registration, but no matching KCLSU purchase or Associate record was found yet. If you made a typo at sign-up or have been issued a Custom Associate ID (<span className="font-mono text-[#FFBD59]">ASSOC-26XX</span>), you can update it below.
+                </div>
+              )}
 
               {/* Toggle between KCL Student ID and Associate ID */}
               <div className="inline-grid grid-cols-2 gap-1.5 p-1 bg-[#041F1E] border border-[#FFBD59]/30 rounded-2xl mb-4">
@@ -623,7 +657,7 @@ export default function MembershipDashboard() {
                   </>
                 ) : (
                   <>
-                    Enter your 8-digit King's Student ID (e.g. <span className="font-mono text-[#FFBD59]">K25008223</span>) from your official KCLSU membership purchase. Once verified, your membership pass will be permanently bound to your account (<span className="text-white font-mono">{currentUser.email}</span>).
+                    KCL Student IDs entered at sign-up are automatically linked to your account. If you need to correct a typo in your K-number (e.g. <span className="font-mono text-[#FFBD59]">K25008223</span>) or re-verify after purchasing membership on KCLSU, enter it below.
                   </>
                 )}
               </p>
@@ -645,7 +679,7 @@ export default function MembershipDashboard() {
                   disabled={linkLoading}
                   className="px-6 py-3 bg-[#FFBD59] text-[#052322] font-mono font-bold text-xs uppercase rounded-xl hover:bg-[#FFE0A3] transition-colors shrink-0 shadow disabled:opacity-50"
                 >
-                  {linkLoading ? 'Verifying...' : 'Link to Account'}
+                  {linkLoading ? 'Verifying...' : boundStudentId ? 'Update & Verify ID' : 'Link to Account'}
                 </button>
               </form>
 
