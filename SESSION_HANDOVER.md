@@ -2,8 +2,8 @@
 
 > **Last Updated**: October 2026 (Season 2026–2027)  
 > **Repository Directory**: `/Users/rem/Documents/Rem-Vault/KCLMC/kclmc-platform`  
-> **Current Git Commit**: `93a9f8e` (Working tree clean across all branches & remotes)  
-> **Test Status**: **182 / 182 passing** (`npm test`) | **86 / 86 security tests passing** (`npm run test:security`)  
+> **Current Git Commit**: `c2f4880` (Working tree clean across all branches & remotes)  
+> **Test Status**: **211 / 211 passing** (`npm test`) | **86 / 86 security tests passing** (`npm run test:security`)  
 > **Edge Bundle**: Built and verified (`npm run build:worker` -> `.open-next/worker.js`)  
 > **Cloudflare Worker**: `kclmc-portal` (Deployed: Version `1ef59e73-9d08-42b0-8b72-d2535a4783e5`)  
 > **Live Deployments**: [kclmc.org](https://kclmc.org) • [kclmc-portal.remy-preston.workers.dev](https://kclmc-portal.remy-preston.workers.dev)
@@ -32,7 +32,7 @@ The **KCLMC Platform** is the official digital infrastructure for the **King's C
 4. **Leak-Proof WhatsApp Community Gateway (`/api/whatsapp/join`)**:
    - Server-side gateway protecting society WhatsApp group links from public search indexing and web scrapers.
    - Restricts community invite access strictly to verified, authenticated members with paid passes.
-   - Zero-link vCard contact generation for admin broadcasts and phonebook exports.
+   - Zero-link vCard contact generation for admin broadcasts and phonebook exports (`/admin/export`).
 5. **Where We Climb (`/guides`)**:
    - Comprehensive guide directory for London indoor climbing centres (Mile End, Castle, Parthian, VauxWall, Bermondsey Wall, HarroWall) with exclusive student discount information and crag beta.
 6. **Apparel Drops & Stash (`/drops/kclmc`)**:
@@ -43,7 +43,7 @@ The **KCLMC Platform** is the official digital infrastructure for the **King's C
    - **Payment Reconciliation (`/admin/reconcile`)**: 3-tier CSV reconciliation engine matching KCLSU payment reports against membership and merchandise orders.
    - **Pass Scanner (`/admin/scan`)**: Mobile QR and barcode scanner for committee check-ins at climbing walls.
    - **Content Manager (`/admin/content`)**: Manage trips, guides, and merchandise.
-   - **Manufacturer Export (`/admin/export`)**: Sizing matrix generator for garment printers.
+   - **Manufacturer Export (`/admin/export`)**: Sizing matrix generator for garment printers and structured vCard generation (`KCLMC 26/27`).
    - **Modules & Permissions (`/admin/modules`)**: Dynamic route access and feature flags.
 
 ---
@@ -54,6 +54,8 @@ The **KCLMC Platform** is the official digital infrastructure for the **King's C
 graph TD
     Client[Browser / iOS / Android Client] --> Edge[Cloudflare Workers / OpenNext Edge]
     Edge --> SSR[Next.js 16.3.5 Server Runtime]
+    SSR --> AuthSession[AuthSession Deep Module lib/auth/session.ts]
+    SSR --> RosterService[Roster Service Seam lib/roster/service.ts]
     SSR --> SupabaseAuth[Supabase Auth GoTrue]
     SSR --> SupabaseDB[(Supabase PostgreSQL Database)]
     SSR --> Cookies[httpOnly, Secure, SameSite=Strict Cookies]
@@ -83,7 +85,7 @@ origin: https://github.com/RemTypes/kclmc-platform.git
 portal: https://github.com/RemTypes/kclmc-portal.git
 ```
 
-### Active Branches (All synchronized at commit `93a9f8e`):
+### Active Branches (All synchronized at commit `c2f4880`):
 - `main`: Canonical production codebase (deployed to `kclmc.org`).
 - `cloudflare-preview`: Deployed Cloudflare preview environment.
 - `portal-clean`: Tracking branch for `portal/main`.
@@ -102,43 +104,53 @@ git checkout main
 ## 4. Key Architectural Implementations & Security Hardening
 
 ### A. Authentication & Session Hardening
-1. **`httpOnly` Session Token Isolation (`lib/security/cookies.ts`)**:
+1. **`AuthSession` Deep Module (`lib/auth/session.ts`)**:
+   - Encapsulates authentication, rate limiting, and 2FA challenge handling behind a clean, testable domain service seam.
+2. **`httpOnly` Session Token Isolation (`lib/security/cookies.ts`)**:
    - Session tokens are strictly stored in `httpOnly: true, secure: true, sameSite: 'strict'` cookies to eliminate XSS risks.
    - Client JS cannot access auth cookies. Authenticated client components communicate via `/api/auth/me` or `/api/membership`.
-2. **Two-Factor Authentication (2FA/OTP) (`lib/security/two-factor.ts`)**:
+3. **Two-Factor Authentication (2FA/OTP) (`lib/security/two-factor.ts`)**:
    - **Mandatory for Committee / Admin Accounts (`role >= 1`)**.
    - RFC 6238 TOTP authenticator app support with QR code setup on first login.
    - 8 single-use 8-character backup codes (`XXXX-XXXX`) with automatic burn-on-use.
-   - Sealed stateless challenges using AES-256-GCM so login challenges survive across Cloudflare edge worker isolates.
+   - Sealed stateless challenges using AES-256-GCM so login challenges survive across Cloudflare edge worker isolates ([ADR 0001](file:///Users/rem/Documents/Rem-Vault/KCLMC/kclmc-platform/docs/adr/0001-stateless-aes-gcm-2fa-challenges.md)).
    - Enrolled secrets and hashed backup codes stored in `auth.users.raw_user_meta_data`.
-3. **Fixed 2FA Submission & View Transition Safety (`app/(auth)/login/page.tsx`)**:
+4. **Fixed 2FA Submission & View Transition Safety (`app/(auth)/login/page.tsx`)**:
    - Resolved button freezing in `"VERIFYING 2FA..."` by guaranteeing `setLoading(false)` on view transitions and auth responses.
    - Automatic `useEffect` watcher clears loading state and stale errors whenever the view switches.
    - `navigateToDestination` includes a micro-delay ensuring browser network threads commit `Set-Cookie` headers before executing navigation.
-4. **Rate Limiting, Account Lockout & CAPTCHA (`lib/security/rate-limiter.ts`)**:
+5. **Rate Limiting, Account Lockout & CAPTCHA (`lib/security/rate-limiter.ts`)**:
    - Max 5 failed attempts per 15 minutes by IP or account.
    - Account lockout with exponential backoff on 5+ failures.
    - Anti-bot CAPTCHA challenge triggered after 3 failures.
-5. **Strict Password Policy (`lib/security/password-policy.ts`)**:
+6. **Strict Password Policy (`lib/security/password-policy.ts`)**:
    - Min 12 characters, uppercase, lowercase, numbers, symbols, and rejection of the top 10,000 common passwords.
 
-### B. Access Control & Authorization (RBAC)
+### B. Member Roster Service Seam & Curated Names (`lib/roster/service.ts`)
+- Reconciles membership passes and handles missing names using a 4-layer fallback strategy:
+  1. Live profile link (`user_id -> profiles`).
+  2. Curated name table (`kclsu_roster_curated_names`, migration `008_roster_curated_names.sql`).
+  3. KCLSU roster raw cardholder entry.
+  4. Student ID masked fallback.
+- Architecture Decision Record documented in [ADR 0002](file:///Users/rem/Documents/Rem-Vault/KCLMC/kclmc-platform/docs/adr/0002-storage-adapter-seam-for-roster.md).
+
+### C. Access Control & Authorization (RBAC)
 - `middleware.ts` enforces `role >= 1` for `/admin` pages, `/api/reconcile`, `/api/roster`, and `/api/telemetry`.
 - `getAuthenticatedUserRole(supabase, user)` in `lib/auth.ts` validates the user against committee email whitelists and the Supabase `profiles` table.
 - System status page (`/status` and `/api/health`) is restricted to committee accounts to prevent infrastructure enumeration.
 
-### C. Database RLS Hardening (`supabase/migrations/006_harden_roster_rls.sql`)
+### D. Database RLS Hardening (`supabase/migrations/006_harden_roster_rls.sql`)
 - Revoked unrestricted public `select` on `kclsu_roster`.
 - Direct table `SELECT` is restricted to `user_id = auth.uid()` and `get_user_role() >= 1`.
 - Public wall scanners query the dedicated RPC function `verify_membership_card(card_num)` which returns strictly `{ is_valid, full_name, tier, academic_year }` without leaking transaction IDs or student PII.
 
-### D. Digital Membership Card Protection
+### E. Digital Membership Card Protection
 - Implemented in `components/MembershipCard.tsx`.
 - Card template uses CSS `background-image` with `pointer-events: none` and `-webkit-touch-callout: none`.
 - Prevents malicious users from saving a blank membership card template via mobile long-press to fabricate unauthorized passes.
 - Save button leverages `navigator.share({ files: [blob] })` on iOS/Android for 1-tap save to photos, falling back to Canvas Blob download on desktop.
 
-### E. HTTP Security Headers (`next.config.mjs`)
+### F. HTTP Security Headers (`next.config.mjs`)
 - Configured:
   - `X-Frame-Options: DENY`
   - `X-Content-Type-Options: nosniff`
@@ -146,7 +158,7 @@ git checkout main
   - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
   - `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`
 
-### F. Dynamic Browser Tab Titles & SEO Metadata
+### G. Dynamic Browser Tab Titles & SEO Metadata
 - Base template in `app/layout.tsx`: `title: { default: "KCLMC | Mountaineering & Climbing", template: "%s | KCLMC" }`.
 - Route layouts export section titles (`Digital Membership Pass`, `Where We Climb`, `Trips & Meets Calendar`, `Club Merch`, `Sign In`, `Committee Admin Portal`, `Pass Scanner`, etc.).
 - `app/(kclmc)/membership/page.tsx` dynamically sets `document.title` to the member's name upon login: `Alex Honnold | Pass | KCLMC`.
@@ -176,7 +188,7 @@ git checkout main
 
 > [!NOTE]
 > **4. Cloudflare Worker Secrets**:
-> `wrangler.jsonc` defines build-time public variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPERADMIN_EMAIL`, `COMMITTEE_EMAILS`).
+> `wrangler.jsonc` defines build-time public variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPERADMIN_EMAIL`, `COMMITTEE_EMAILS`, `WHATSAPP_COMMUNITY_INVITE_URL`).
 > `SUPABASE_SERVICE_ROLE_KEY` MUST be configured as an encrypted secret in the Cloudflare Dashboard:
 > ```bash
 > npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
@@ -191,6 +203,7 @@ Before taking new features live publicly, verify these settings in the Supabase 
 | Item | Service | Action Required | Status |
 | :--- | :--- | :--- | :--- |
 | **RLS Migration 006** | Supabase | Execute `supabase/migrations/006_harden_roster_rls.sql` in SQL Editor to lock down `kclsu_roster`. | Verified |
+| **Curated Names Migration 008** | Supabase | Execute `supabase/migrations/008_roster_curated_names.sql` for missing member name resolution. | Verified |
 | **Site URL & Redirects** | Supabase | Set Site URL to `https://kclmc.org` and add `https://kclmc.org/auth/callback**` in Auth URL Configuration. | Verified |
 | **Custom SMTP** | Supabase | Configure custom SMTP (Gmail/Purelymail/Resend) to prevent Supabase Free tier 3 emails/hr limit. | Configured |
 | **Service Role Secret** | Cloudflare | Verify `SUPABASE_SERVICE_ROLE_KEY` exists in Cloudflare Worker secrets. | Verified |
@@ -201,7 +214,7 @@ Before taking new features live publicly, verify these settings in the Supabase 
 ## 7. Useful Commands Reference
 
 ```bash
-# Run complete test suite (182 unit, integration & checklist tests)
+# Run complete test suite (211 unit, integration & checklist tests)
 npm test
 
 # Run dedicated security test suite (86 tests covering RLS, RBAC, 2FA, anti-forgery, injection)
