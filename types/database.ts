@@ -107,6 +107,8 @@ export interface TelemetryEvent {
   created_at: string;
 }
 
+export type SuProcessingStatus = 'verified' | 'awaiting_su' | 'revoked';
+
 export interface KclsuRosterRow {
   id: string;
   card_number: string;
@@ -118,6 +120,10 @@ export interface KclsuRosterRow {
   purchase_date: string | null;
   academic_year: string;
   user_id: string | null;
+  is_associate?: boolean;
+  member_email?: string | null;
+  university?: string | null;
+  su_status?: SuProcessingStatus;
   created_at: string;
   updated_at: string;
 }
@@ -132,6 +138,10 @@ export interface KclsuRosterInsert {
   purchase_date?: string | null;
   academic_year?: string;
   user_id?: string | null;
+  is_associate?: boolean;
+  member_email?: string | null;
+  university?: string | null;
+  su_status?: SuProcessingStatus;
 }
 
 export interface KclsuRosterUpdate {
@@ -143,6 +153,11 @@ export interface KclsuRosterUpdate {
   purchase_date?: string | null;
   academic_year?: string;
   user_id?: string | null;
+  is_associate?: boolean;
+  member_email?: string | null;
+  university?: string | null;
+  su_status?: SuProcessingStatus;
   updated_at?: string;
 }
+
 

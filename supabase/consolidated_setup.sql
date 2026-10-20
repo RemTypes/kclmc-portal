@@ -418,7 +418,7 @@ where not exists (select 1 from public.shop_items where name = 'KCLMC Expedition
 -- 10. OFFICIAL KCLSU ROSTER & MEMBERSHIP SYNCHRONIZATION
 -- ============================================================
 
--- Table for official Student Union membership purchases
+-- Table for official Student Union membership purchases & custom Associate IDs
 create table if not exists public.kclsu_roster (
   id              uuid primary key default uuid_generate_v4(),
   card_number     text not null unique,
@@ -430,9 +430,19 @@ create table if not exists public.kclsu_roster (
   purchase_date   text,
   academic_year   text not null default '2026/27',
   user_id         uuid references public.profiles(id) on delete set null,
+  is_associate    boolean not null default false,
+  member_email    text,
+  university      text,
+  su_status       text not null default 'verified' check (su_status in ('verified', 'awaiting_su', 'revoked')),
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
 );
+
+alter table public.kclsu_roster
+  add column if not exists is_associate boolean not null default false,
+  add column if not exists member_email text,
+  add column if not exists university text,
+  add column if not exists su_status text not null default 'verified';
 
 -- Enable RLS & Indexes on kclsu_roster
 alter table public.kclsu_roster enable row level security;
@@ -441,6 +451,8 @@ create index if not exists idx_kclsu_roster_card on public.kclsu_roster(card_num
 create index if not exists idx_kclsu_roster_user on public.kclsu_roster(user_id);
 create index if not exists idx_kclsu_roster_tier on public.kclsu_roster(tier);
 create index if not exists idx_kclsu_roster_year on public.kclsu_roster(academic_year);
+create index if not exists idx_kclsu_roster_is_associate on public.kclsu_roster(is_associate);
+create index if not exists idx_kclsu_roster_su_status on public.kclsu_roster(su_status);
 
 -- Revoke open public SELECT on kclsu_roster; restrict to owner or committee
 drop policy if exists "Anyone can verify membership roster" on public.kclsu_roster;
@@ -472,6 +484,7 @@ begin
     r.academic_year
   from public.kclsu_roster r
   where upper(r.card_number) = upper(trim(card_num))
+    and coalesce(r.su_status, 'verified') != 'revoked'
   limit 1;
 end;
 $$;

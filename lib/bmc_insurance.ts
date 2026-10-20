@@ -76,13 +76,20 @@ export interface BmcFormResponseParseResult {
 }
 
 /**
- * Standardizes KCL Student ID into official email format: [k number]@kcl.ac.uk
+ * Standardizes KCL Student ID into official email format: [k number]@kcl.ac.uk.
+ * For Associate Members (e.g. ASSOC-2601), returns their personal/external email if provided, or empty string.
  */
-export function generateKclEmail(cardNumber: string | null | undefined): string {
-  if (!cardNumber) return '';
+export function generateKclEmail(cardNumber: string | null | undefined, fallbackEmail?: string | null): string {
+  const cleanFallback = (fallbackEmail || '').trim().toLowerCase();
+  if (!cardNumber) return cleanFallback.includes('@') ? cleanFallback : '';
+  const rawUpper = cardNumber.trim().toUpperCase();
+  if (rawUpper.startsWith('ASSOC') || rawUpper.startsWith('EXT-') || rawUpper.startsWith('GUEST-')) {
+    return cleanFallback.includes('@') ? cleanFallback : '';
+  }
   const clean = cardNumber.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (!clean.startsWith('k')) {
-    return `${clean}@kcl.ac.uk`;
+  if (!clean) return cleanFallback.includes('@') ? cleanFallback : '';
+  if (!clean.startsWith('k') && cleanFallback.includes('@')) {
+    return cleanFallback;
   }
   return `${clean}@kcl.ac.uk`;
 }
@@ -266,15 +273,27 @@ export function parseKclsuSalesForBmc(
     const productName = cols[0] || '';
     const transactionId = cols[1] || '';
     const purchaserRaw = cols[2] || '';
+    const purchaserType = cols[3] || '';
     const cardNumber = cols[4] || '';
+    const rawEmail = cols[6] || '';
     const purchaseDate = cols[7] || '';
 
-    if (!cardNumber) continue;
+    const rawCardTrimmed = cardNumber.trim().toUpperCase();
+    const isBlankCard = !rawCardTrimmed || rawCardTrimmed === '-' || rawCardTrimmed === 'N/A';
+    const isAssociateRow =
+      rawCardTrimmed.startsWith('ASSOC') ||
+      /associate|non-kcl|external|guest|alumni/i.test(productName) ||
+      /associate|non-kcl|external|guest|alumni/i.test(purchaserType) ||
+      (isBlankCard && Boolean(transactionId && purchaserRaw));
 
-    const key = cardNumber.trim().toUpperCase();
+    if (isBlankCard && !isAssociateRow) continue;
+
+    const key = isBlankCard
+      ? `ASSOC-SU-${transactionId.replace(/[^A-Z0-9]/gi, '').slice(-8).toUpperCase() || i}`
+      : rawCardTrimmed;
     const { isRec, isUpgrade } = isRecreationalProduct(productName);
     const { formattedName, firstName, lastName } = parsePurchaserName(purchaserRaw);
-    const email = generateKclEmail(key);
+    const email = generateKclEmail(key, rawEmail);
 
     const existing = memberMap.get(key);
 
@@ -285,6 +304,9 @@ export function parseKclsuSalesForBmc(
         existing.productName = `${existing.productName} + ${productName}`;
       } else if (isRec && existing.tier === 'social') {
         existing.tier = 'recreational';
+      }
+      if (!existing.email && email) {
+        existing.email = email;
       }
     } else {
       const tier: 'recreational' | 'social' = isRec ? 'recreational' : 'social';

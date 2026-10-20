@@ -5,6 +5,7 @@ import { validatePasswordStrength } from '@/lib/security/password-validator';
 import { setSessionCookies } from '@/lib/security/cookies';
 import { sanitizeEmail, sanitizeStudentId, sanitizeUniversity } from '@/lib/auth';
 import { trackServerEvent } from '@/lib/telemetry-server';
+import { memberRoster } from '@/lib/roster/service';
 
 function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -114,6 +115,9 @@ export async function POST(request: Request) {
         } catch (profileSyncErr) {
           console.warn('Direct profile sync on signup warning:', profileSyncErr);
         }
+      }
+      if (cleanStudentId) {
+        await memberRoster.linkStudentId(authData.user.id, cleanStudentId).catch(() => {});
       }
     }
 

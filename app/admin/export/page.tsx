@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { generateMembersVCard, validatePhoneNumber } from '@/lib/safety';
 import { isCompleteFullName } from '@/lib/roster';
+import { isAssociateId } from '@/lib/auth';
 
 interface RosterMember {
   cardNumber: string;
@@ -13,9 +14,11 @@ interface RosterMember {
   phone?: string | null;
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
-  university?: string;
+  university?: string | null;
   safetyComplete?: boolean;
   email?: string | null;
+  isAssociate?: boolean;
+  suStatus?: 'verified' | 'awaiting_su' | 'revoked';
 }
 
 export default function ExportPage() {
@@ -508,7 +511,14 @@ export default function ExportPage() {
                     ) : (
                       members.map((m, i) => (
                         <tr key={i} className="hover:bg-[#084746]/30 transition-colors">
-                          <td className="p-4 text-[#FFBD59] font-bold">{m.cardNumber}</td>
+                          <td className="p-4 text-[#FFBD59] font-bold">
+                            <div>{m.cardNumber}</div>
+                            {(m.isAssociate || isAssociateId(m.cardNumber)) && (
+                              <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] bg-[#084746] text-[#FFBD59] border border-[#FFBD59]/30">
+                                🤝 ASSOCIATE
+                              </span>
+                            )}
+                          </td>
                           <td className="p-4 font-bold text-white font-sans">
                             <div className="flex items-center gap-2">
                               <span>{m.name}</span>

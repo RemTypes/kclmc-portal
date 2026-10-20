@@ -6,6 +6,7 @@ import {
   parseKclsuCsv,
   isPlaceholderToken,
   isCompleteFullName,
+  generateNextAssociateId,
 } from '@/lib/roster';
 import { InMemoryRosterAdapter, MemberRosterService } from '@/lib/roster/service';
 
@@ -277,4 +278,36 @@ describe('Roster Core Logic (lib/roster.ts)', () => {
       expect(member?.name).toBe('Marko Janjic');
     });
   });
+
+  describe('Associate Member ID Generation & CSV Parsing', () => {
+    it('generates sequential ASSOC-26XX IDs starting at ASSOC-2601', () => {
+      expect(generateNextAssociateId([])).toBe('ASSOC-2601');
+      expect(generateNextAssociateId(['K25008223', 'K26122068'])).toBe('ASSOC-2601');
+      expect(generateNextAssociateId(['ASSOC-2601', 'K25008223'])).toBe('ASSOC-2602');
+      expect(generateNextAssociateId(['ASSOC-2601', 'ASSOC-2605', 'ASSOC-2602'])).toBe('ASSOC-2606');
+    });
+
+    it('parses Associate / Guest rows with blank card_number or Associate type', () => {
+      const csv = [
+        'product_name,transaction_id,purchaser,type,card_number,dob,email,purchase_date',
+        '[10002480] Climbing/Mountaineering Associate Membership,31900101,"CALDWELL, Tommy",Associate,,1999-05-01,tommy@gmail.com,Fri 25 Sep 2026 11:00',
+        '[10166870] Climbing/Mountaineering Social Membership,31900102,"ONDRA, Adam",Guest,998877,1998-02-05,adam@gmail.com,Fri 25 Sep 2026 12:00',
+      ].join('\n');
+
+      const results = parseKclsuCsv(csv);
+      expect(results).toHaveLength(2);
+
+      const tommy = results.find(r => r.name === 'Tommy Caldwell');
+      expect(tommy).toBeDefined();
+      expect(tommy?.isAssociate).toBe(true);
+      expect(tommy?.cardNumber).toBe('ASSOC-SU-31900101');
+      expect(tommy?.email).toBe('tommy@gmail.com');
+
+      const adam = results.find(r => r.name === 'Adam Ondra');
+      expect(adam).toBeDefined();
+      expect(adam?.isAssociate).toBe(true);
+      expect(adam?.tier).toBe('social');
+    });
+  });
 });
+

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import MembershipCard from '@/components/MembershipCard';
 import { findMemberByCardNumber, KclsuMemberRecord } from '@/lib/roster';
-import { UNIVERSITIES, DEFAULT_UNIVERSITY, sanitizeUniversity } from '@/lib/auth';
+import { UNIVERSITIES, DEFAULT_UNIVERSITY, sanitizeUniversity, isAssociateId } from '@/lib/auth';
 import confetti from 'canvas-confetti';
 import { checkSafetyProfileCompleteness } from '@/lib/safety';
 import { generateBmcPrefilledUrl } from '@/lib/bmc_insurance';
@@ -205,7 +205,8 @@ export default function MembershipDashboard() {
   const [suRecord, setSuRecord] = useState<KclsuMemberRecord | null>(null);
   const [boundStudentId, setBoundStudentId] = useState<string | null>(null);
 
-  // Student ID linking state (for authenticated accounts not yet bound)
+  // Student ID / Associate ID linking state (for authenticated accounts not yet bound)
+  const [linkMode, setLinkMode] = useState<'kcl' | 'associate'>('kcl');
   const [inputStudentId, setInputStudentId] = useState('');
   const [linkLoading, setLinkLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -533,16 +534,27 @@ export default function MembershipDashboard() {
                 🔒
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-mono uppercase tracking-wider text-emerald-400 font-bold">
                     Pass Bound to Your Account
                   </span>
                   <span className="bg-emerald-950 text-emerald-300 text-[10px] font-mono px-2 py-0.5 rounded border border-emerald-500/30">
                     VERIFIED
                   </span>
+                  {(suRecord?.isAssociate || isAssociateId(boundStudentId)) && (
+                    <span className="bg-[#041F1E] text-[#FFBD59] text-[10px] font-mono px-2 py-0.5 rounded border border-[#FFBD59]/40">
+                      🤝 ASSOCIATE MEMBER
+                    </span>
+                  )}
+                  {suRecord?.suStatus === 'awaiting_su' && (
+                    <span className="bg-amber-950 text-amber-300 text-[10px] font-mono px-2 py-0.5 rounded border border-amber-500/40">
+                      ⏳ AWAITING SU SYNC
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm font-bold text-white mt-0.5">
-                  KCL Student ID: <span className="font-mono text-[#FFBD59] tracking-wider">{boundStudentId}</span>
+                  {suRecord?.isAssociate || isAssociateId(boundStudentId) ? 'Associate Member ID:' : 'KCL Student ID:'}{' '}
+                  <span className="font-mono text-[#FFBD59] tracking-wider">{boundStudentId}</span>
                   {suRecord?.name ? ` • ${suRecord.name}` : ''}
                 </p>
                 <p className="text-xs text-zinc-300 mt-0.5">
@@ -566,11 +578,54 @@ export default function MembershipDashboard() {
               <span className="text-[10px] font-mono uppercase tracking-widest text-[#FFBD59] bg-[#041F1E] px-2.5 py-1 rounded border border-[#FFBD59]/30">
                 Account Verification
               </span>
-              <h2 className="text-2xl font-black font-heading uppercase text-white mt-2 mb-1">
-                Link Your KCL Student ID
+              <h2 className="text-2xl font-black font-heading uppercase text-white mt-2 mb-3">
+                {linkMode === 'associate' ? 'Link Your Associate Member ID' : 'Link Your KCL Student ID'}
               </h2>
+
+              {/* Toggle between KCL Student ID and Associate ID */}
+              <div className="inline-grid grid-cols-2 gap-1.5 p-1 bg-[#041F1E] border border-[#FFBD59]/30 rounded-2xl mb-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLinkMode('kcl');
+                    setSearchError('');
+                  }}
+                  className={`py-2 px-4 rounded-xl font-heading font-bold uppercase tracking-wider text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    linkMode === 'kcl'
+                      ? 'bg-[#FFBD59] text-[#052322] shadow-sm'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <span>🎓</span>
+                  <span>KCL Student (K-Number)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLinkMode('associate');
+                    setSearchError('');
+                  }}
+                  className={`py-2 px-4 rounded-xl font-heading font-bold uppercase tracking-wider text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    linkMode === 'associate'
+                      ? 'bg-[#FFBD59] text-[#052322] shadow-sm'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <span>🤝</span>
+                  <span>Associate Member (Custom ID)</span>
+                </button>
+              </div>
+
               <p className="text-xs text-zinc-300 mb-6 font-sans leading-relaxed">
-                Enter your 8-digit King's Student ID (e.g. <span className="font-mono text-[#FFBD59]">K25008223</span>) from your official KCLSU membership purchase. Once verified, your membership pass will be permanently bound to your account (<span className="text-white font-mono">{currentUser.email}</span>).
+                {linkMode === 'associate' ? (
+                  <>
+                    Enter the Custom Associate ID (e.g. <span className="font-mono text-[#FFBD59]">ASSOC-2601</span>) issued to you by the KCLMC Committee while KCLSU processes your associate membership. Once verified, your pass will be permanently bound to your account (<span className="text-white font-mono">{currentUser.email}</span>).
+                  </>
+                ) : (
+                  <>
+                    Enter your 8-digit King's Student ID (e.g. <span className="font-mono text-[#FFBD59]">K25008223</span>) from your official KCLSU membership purchase. Once verified, your membership pass will be permanently bound to your account (<span className="text-white font-mono">{currentUser.email}</span>).
+                  </>
+                )}
               </p>
 
               <form onSubmit={handleLinkStudentId} className="flex flex-col sm:flex-row gap-3">
@@ -582,7 +637,7 @@ export default function MembershipDashboard() {
                     setInputStudentId(e.target.value.toUpperCase());
                     setSearchError('');
                   }}
-                  placeholder="e.g. K25008223"
+                  placeholder={linkMode === 'associate' ? 'e.g. ASSOC-2601' : 'e.g. K25008223'}
                   className="bg-[#041F1E] border border-[#FFBD59]/40 rounded-xl px-4 py-3 text-white font-mono text-sm tracking-wider uppercase focus:outline-none focus:border-[#FFBD59] flex-1"
                 />
                 <button
@@ -669,7 +724,7 @@ export default function MembershipDashboard() {
                             href={generateBmcPrefilledUrl({
                               firstName: suRecord.name.split(' ')[0] || '',
                               lastName: suRecord.name.split(' ').slice(1).join(' ') || '',
-                              membershipType: 'Student',
+                              membershipType: suRecord.isAssociate || isAssociateId(boundStudentId) ? 'Non-Student' : 'Student',
                             })}
                             target="_blank"
                             rel="noopener noreferrer"
