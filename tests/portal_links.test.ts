@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { sanitizeLinkUrl, DEFAULT_PORTAL_LINKS } from '@/lib/links';
+import { sanitizeLinkUrl, DEFAULT_PORTAL_LINKS, resolveLinkId, isValidUuid } from '@/lib/links';
 import { GET, POST, PATCH, DELETE } from '@/app/api/links/route';
 import * as supabaseServer from '@/lib/supabase/server';
 import { NextRequest } from 'next/server';
@@ -33,7 +33,7 @@ describe('Portal Links Domain & Security Utilities', () => {
     expect(sanitizeLinkUrl('not-a-valid-url-format')).toBe('#');
   });
 
-  it('contains expected default links in DEFAULT_PORTAL_LINKS', () => {
+  it('contains expected default links in DEFAULT_PORTAL_LINKS with valid UUIDs', () => {
     expect(DEFAULT_PORTAL_LINKS.length).toBeGreaterThanOrEqual(4);
     const titles = DEFAULT_PORTAL_LINKS.map(l => l.title);
     expect(titles).toContain('Buy 2026/27 Membership');
@@ -42,8 +42,17 @@ describe('Portal Links Domain & Security Utilities', () => {
 
     for (const link of DEFAULT_PORTAL_LINKS) {
       expect(link.is_active).toBe(true);
+      expect(isValidUuid(link.id)).toBe(true);
       expect(sanitizeLinkUrl(link.url)).not.toBe('#');
     }
+  });
+
+  it('resolves legacy default link IDs to standard UUIDs', () => {
+    expect(resolveLinkId('link-kclsu-shop')).toBe('00000000-0000-4000-8000-000000000001');
+    expect(resolveLinkId('link-membership-pass')).toBe('00000000-0000-4000-8000-000000000002');
+    expect(resolveLinkId('link-club-hub')).toBe('00000000-0000-4000-8000-000000000003');
+    expect(resolveLinkId('00000000-0000-4000-8000-000000000001')).toBe('00000000-0000-4000-8000-000000000001');
+    expect(resolveLinkId('custom-random-id')).toBe('custom-random-id');
   });
 });
 
@@ -101,28 +110,41 @@ describe('Portal Links API Route (/api/links)', () => {
           };
         }
         return {
-          select: (cols: string) => ({
-            order: (col: string, { ascending }: { ascending: boolean }) => ({
-              eq: (eqCol: string, eqVal: any) => {
-                const filtered = mockStore.filter(item => item[eqCol] === eqVal);
-                return Promise.resolve({ data: filtered, error: null });
-              },
-            }),
-          }),
-          insert: (newRow: any) => ({
-            select: () => ({
-              single: () => {
-                const created = {
-                  ...newRow,
-                  id: `new-${Date.now()}`,
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                };
-                mockStore.push(created);
-                return Promise.resolve({ data: created, error: null });
-              },
-            }),
-          }),
+          select: (cols: string, opts?: any) => {
+            if (opts?.head) {
+              return Promise.resolve({ count: mockStore.length, error: null });
+            }
+            return {
+              order: (col: string, { ascending }: { ascending: boolean }) => ({
+                eq: (eqCol: string, eqVal: any) => {
+                  const filtered = mockStore.filter(item => item[eqCol] === eqVal);
+                  return Promise.resolve({ data: filtered, error: null });
+                },
+              }),
+              eq: (eqCol: string, eqVal: any) => ({
+                maybeSingle: () => {
+                  const item = mockStore.find(i => i[eqCol] === eqVal);
+                  return Promise.resolve({ data: item || null, error: null });
+                },
+              }),
+            };
+          },
+          insert: (newRows: any) => {
+            const rows = Array.isArray(newRows) ? newRows : [newRows];
+            const createdRows = rows.map(r => ({
+              ...r,
+              id: r.id || `new-${Date.now()}`,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }));
+            mockStore.push(...createdRows);
+            return {
+              select: () => ({
+                single: () => Promise.resolve({ data: createdRows[0], error: null }),
+                then: (fn: any) => Promise.resolve({ data: createdRows, error: null }).then(fn),
+              }),
+            };
+          },
           update: (updates: any) => ({
             eq: (col: string, val: any) => ({
               select: () => ({
@@ -145,6 +167,7 @@ describe('Portal Links API Route (/api/links)', () => {
     };
 
     vi.spyOn(supabaseServer, 'createClient').mockResolvedValue(mockClient as any);
+    vi.spyOn(supabaseServer, 'createAdminClient').mockReturnValue(mockClient as any);
     vi.spyOn(supabaseServer, 'isSupabaseConfigured').mockReturnValue(true);
   };
 
@@ -186,7 +209,7 @@ describe('Portal Links API Route (/api/links)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('POST /api/links allows committee member (role 1) to create a link', async () => {
+  it('POST /api/links allows committee member (role 1) to create a link via admin client', async () => {
     setupMockSupabase(1); // Committee
     const req = new NextRequest('http://localhost:3000/api/links', {
       method: 'POST',
@@ -235,6 +258,23 @@ describe('Portal Links API Route (/api/links)', () => {
     expect(data.link.title).toBe('Updated Link Title');
   });
 
+  it('PATCH /api/links resolves legacy built-in string IDs and materializes update', async () => {
+    setupMockSupabase(1);
+    const req = new NextRequest('http://localhost:3000/api/links', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        id: 'link-kclsu-shop',
+        is_highlighted: false,
+      }),
+    });
+    const res = await PATCH(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.link.id).toBe('00000000-0000-4000-8000-000000000001');
+    expect(data.link.is_highlighted).toBe(false);
+  });
+
   it('DELETE /api/links deletes an existing link', async () => {
     setupMockSupabase(1);
     const req = new NextRequest('http://localhost:3000/api/links?id=test-1', {
@@ -245,5 +285,16 @@ describe('Portal Links API Route (/api/links)', () => {
     const data = await res.json();
     expect(data.success).toBe(true);
     expect(mockStore.find(item => item.id === 'test-1')).toBeUndefined();
+  });
+
+  it('DELETE /api/links handles legacy built-in link IDs gracefully', async () => {
+    setupMockSupabase(1);
+    const req = new NextRequest('http://localhost:3000/api/links?id=link-kclsu-shop', {
+      method: 'DELETE',
+    });
+    const res = await DELETE(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
   });
 });

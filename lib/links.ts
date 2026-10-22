@@ -20,7 +20,7 @@ export interface PortalLink {
 
 export const DEFAULT_PORTAL_LINKS: PortalLink[] = [
   {
-    id: 'link-kclsu-shop',
+    id: '00000000-0000-4000-8000-000000000001',
     title: 'Buy 2026/27 Membership',
     url: 'https://www.kclsu.org/groups/sports/join/mountaineerclimbsoc/',
     subtitle: 'Official KCLSU Union Shop • Required for meets & pass',
@@ -30,7 +30,7 @@ export const DEFAULT_PORTAL_LINKS: PortalLink[] = [
     is_highlighted: true,
   },
   {
-    id: 'link-membership-pass',
+    id: '00000000-0000-4000-8000-000000000002',
     title: 'Activate Digital Climbing Pass',
     url: '/membership',
     subtitle: 'Safety gate, wall discount pass & verification QR',
@@ -40,7 +40,7 @@ export const DEFAULT_PORTAL_LINKS: PortalLink[] = [
     is_highlighted: false,
   },
   {
-    id: 'link-club-hub',
+    id: '00000000-0000-4000-8000-000000000003',
     title: 'Official Club Website & Hub',
     url: '/',
     subtitle: "King's College London Mountaineering Club",
@@ -50,7 +50,7 @@ export const DEFAULT_PORTAL_LINKS: PortalLink[] = [
     is_highlighted: false,
   },
   {
-    id: 'link-guides',
+    id: '00000000-0000-4000-8000-000000000004',
     title: 'Where We Climb & Gym Discounts',
     url: '/guides',
     subtitle: 'London wall guide, partner discounts & crag topos',
@@ -60,7 +60,7 @@ export const DEFAULT_PORTAL_LINKS: PortalLink[] = [
     is_highlighted: false,
   },
   {
-    id: 'link-drops',
+    id: '00000000-0000-4000-8000-000000000005',
     title: 'Society Stash & Apparel Drops',
     url: '/drops/kclmc',
     subtitle: 'Official society tees, hoodies & gear drops',
@@ -70,6 +70,31 @@ export const DEFAULT_PORTAL_LINKS: PortalLink[] = [
     is_highlighted: false,
   },
 ];
+
+export const LEGACY_DEFAULT_LINK_IDS: Record<string, string> = {
+  'link-kclsu-shop': '00000000-0000-4000-8000-000000000001',
+  'link-membership-pass': '00000000-0000-4000-8000-000000000002',
+  'link-club-hub': '00000000-0000-4000-8000-000000000003',
+  'link-guides': '00000000-0000-4000-8000-000000000004',
+  'link-drops': '00000000-0000-4000-8000-000000000005',
+};
+
+/**
+ * Normalizes link IDs, resolving legacy string IDs to valid UUIDs.
+ */
+export function resolveLinkId(id: string): string {
+  if (LEGACY_DEFAULT_LINK_IDS[id]) {
+    return LEGACY_DEFAULT_LINK_IDS[id];
+  }
+  return id;
+}
+
+/**
+ * Checks if a string is a standard RFC4122 UUID.
+ */
+export function isValidUuid(str: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+}
 
 /**
  * Validates and normalizes URLs for bio links.

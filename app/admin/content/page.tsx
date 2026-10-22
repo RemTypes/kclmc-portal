@@ -183,9 +183,14 @@ export default function ContentAdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: link.id, is_active: !link.is_active }),
       });
-      if (res.ok) fetchData();
-    } catch (err) {
-      console.error('Error updating link active state:', err);
+      if (res.ok) {
+        fetchData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Failed to update link visibility');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error updating link visibility');
     }
   }
 
@@ -196,9 +201,14 @@ export default function ContentAdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: link.id, is_highlighted: !link.is_highlighted }),
       });
-      if (res.ok) fetchData();
-    } catch (err) {
-      console.error('Error updating link highlight state:', err);
+      if (res.ok) {
+        fetchData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Failed to update link highlight');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error updating link highlight');
     }
   }
 
@@ -208,9 +218,14 @@ export default function ContentAdminPage() {
       const res = await fetch(`/api/links?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
-      if (res.ok) fetchData();
-    } catch (err) {
-      console.error('Error deleting bio link:', err);
+      if (res.ok) {
+        fetchData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Failed to delete bio link');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error deleting bio link');
     }
   }
 
