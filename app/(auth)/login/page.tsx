@@ -487,7 +487,7 @@ function LoginForm() {
     <div className="min-h-screen bg-[#041F1E] text-slate-100 flex items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans topo-pattern">
       <div className={`w-full ${view === 'two_factor_setup' ? 'max-w-lg' : 'max-w-md'} bg-[#052322] border-2 border-[#FFBD59]/35 rounded-3xl p-6 sm:p-10 shadow-2xl relative z-10 transition-all`}>
         {/* Header */}
-        <div className="flex flex-col items-center text-center mb-8">
+        <div className="flex flex-col items-center text-center mb-6">
           <div className="w-12 h-12 rounded-xl bg-[#084746] border border-[#FFBD59]/50 flex items-center justify-center text-2xl shadow-sm mb-3">
             {view === 'two_factor' || view === 'two_factor_setup' ? '🔐' : '⛰️'}
           </div>
@@ -501,6 +501,65 @@ function LoginForm() {
             {descText}
           </p>
         </div>
+
+        {/* Auth Mode Switcher (Sign In vs Register) */}
+        {(view === 'sign_in' || view === 'sign_up' || view === 'forgot_password') && (
+          <div className="flex bg-[#041F1E] p-1 rounded-2xl border border-[#FFBD59]/30 mb-6">
+            <button
+              type="button"
+              onClick={() => {
+                setView('sign_in');
+                setErrorMsg('');
+                setWarningMsg('');
+              }}
+              className={`flex-1 py-2.5 text-xs font-heading font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
+                view === 'sign_in' || view === 'forgot_password'
+                  ? 'bg-[#FFBD59] text-[#052322] shadow'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setView('sign_up');
+                setErrorMsg('');
+                setWarningMsg('');
+              }}
+              className={`flex-1 py-2.5 text-xs font-heading font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
+                view === 'sign_up'
+                  ? 'bg-[#FFBD59] text-[#052322] shadow'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              Create Account
+            </button>
+          </div>
+        )}
+
+        {/* KCLSU Account Separation Notice for Sign In */}
+        {view === 'sign_in' && !errorMsg && !isLocked && (
+          <div className="mb-6 p-3.5 bg-[#084746]/40 border border-[#FFBD59]/25 rounded-2xl flex items-start gap-2.5 text-xs text-zinc-300 font-sans leading-relaxed">
+            <span className="text-base select-none mt-0.5">ℹ️</span>
+            <div>
+              <strong className="text-[#FFBD59] font-heading uppercase tracking-wide block mb-0.5">Bought membership on KCLSU?</strong>
+              KCLSU shop accounts are separate from this portal. If you haven&apos;t created a portal password yet, please{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setView('sign_up');
+                  setErrorMsg('');
+                  setWarningMsg('');
+                }}
+                className="text-[#FFBD59] underline font-bold hover:text-[#FFE0A3] cursor-pointer"
+              >
+                create your account
+              </button>{' '}
+              using your King&apos;s email or registered union email.
+            </div>
+          </div>
+        )}
 
         {/* Lockout Banner */}
         {isLocked && (
@@ -528,8 +587,23 @@ function LoginForm() {
 
         {/* Error Banner */}
         {errorMsg && !isLocked && (
-          <div className="mb-4 p-3.5 bg-red-950/70 border border-red-500/50 rounded-xl text-red-300 text-xs font-sans leading-relaxed">
-            {errorMsg}
+          <div className="mb-4 p-3.5 bg-red-950/70 border border-red-500/50 rounded-xl text-red-300 text-xs font-sans leading-relaxed space-y-2">
+            <div>{errorMsg}</div>
+            {view === 'sign_in' && (
+              <div className="pt-2 border-t border-red-800/40 text-[11px] text-zinc-200 flex items-center justify-between">
+                <span>First time visiting the portal?</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setView('sign_up');
+                    setErrorMsg('');
+                  }}
+                  className="text-[#FFBD59] font-heading font-bold uppercase tracking-wider hover:underline ml-2 cursor-pointer"
+                >
+                  Create Account →
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -863,6 +937,18 @@ function LoginForm() {
 
             {view === 'sign_up' && (
               <>
+                <div className="p-3 bg-[#084746]/40 border border-[#FFBD59]/25 rounded-2xl flex items-center justify-between text-xs text-zinc-300 font-sans leading-snug">
+                  <span>Haven&apos;t bought membership yet?</span>
+                  <a
+                    href="https://www.kclsu.org/groups/sports/join/mountaineerclimbsoc/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#FFBD59] font-heading font-bold uppercase tracking-wider text-[11px] hover:underline shrink-0 ml-2"
+                  >
+                    Buy on KCLSU ↗
+                  </a>
+                </div>
+
                 <div>
                   <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
                     Full Name

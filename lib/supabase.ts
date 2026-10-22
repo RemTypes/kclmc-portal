@@ -1,6 +1,8 @@
 // Mock Supabase Provider
 // When real keys are provided, this will be swapped for the actual @supabase/supabase-js client
 
+import { PortalLink, DEFAULT_PORTAL_LINKS } from './links';
+
 export type Trip = { id: string, title: string, date: string, type: string };
 export type Guide = { id: string, title: string, description: string, category: 'indoor' | 'crag' };
 export type LeaderboardTeam = { id: string, rank: number, name: string, points: number };
@@ -19,6 +21,7 @@ const mockDb = {
   lube_rounds: [] as LubeRound[],
   shop_items: [] as ShopItem[],
   scorecards: [] as ScorecardSubmission[],
+  portal_links: [...DEFAULT_PORTAL_LINKS] as PortalLink[],
   access_codes: [] as { id: string; code: string }[], // legacy event access codes retired
 };
 

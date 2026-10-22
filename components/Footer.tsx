@@ -1,9 +1,18 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { usePathname } from 'next/navigation';
 
 export default function Footer() {
+  const pathname = usePathname();
   const currentYear = new Date().getFullYear();
+
+  // Bio-link directory (/links) uses a minimal inline footer
+  if (pathname === '/links') {
+    return null;
+  }
 
   return (
     <footer className="bg-[#052322] text-white pt-14 pb-10 px-6 md:px-12 border-t border-[#084746] font-sans">
@@ -143,6 +152,13 @@ export default function Footer() {
             kclmc.committee@gmail.com
           </a>
           <div className="pt-2 flex flex-col gap-2">
+            <Link
+              href="/links"
+              className="text-xs text-zinc-300 hover:text-[#FFBD59] transition-colors inline-flex items-center gap-1.5"
+            >
+              <span>🔗</span>
+              <span>Social &amp; Bio Links (/links)</span>
+            </Link>
             <a
               href="https://www.instagram.com/kclmc/"
               target="_blank"

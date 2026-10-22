@@ -4,8 +4,9 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { supabaseMock } from '@/lib/supabase';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
+import { PortalLink } from '@/lib/links';
 
-type TabName = 'trips' | 'guides' | 'drops' | 'rounds' | 'leaderboard' | 'scorecards';
+type TabName = 'trips' | 'guides' | 'drops' | 'links' | 'rounds' | 'leaderboard' | 'scorecards';
 
 export default function ContentAdminPage() {
   const [activeTab, setActiveTab] = useState<TabName>('trips');
@@ -18,6 +19,7 @@ export default function ContentAdminPage() {
   const [individuals, setIndividuals] = useState<any[]>([]);
   const [shopItems, setShopItems] = useState<any[]>([]);
   const [scorecards, setScorecards] = useState<any[]>([]);
+  const [links, setLinks] = useState<PortalLink[]>([]);
   
   const [loading, setLoading] = useState(true);
 
@@ -37,6 +39,15 @@ export default function ContentAdminPage() {
   const [newTeam, setNewTeam] = useState({ rank: 1, name: '', points: 0 });
   const [newInd, setNewInd] = useState({ rank: 1, name: '', uni: '', category: 'Men', points: 0 });
   const [newShopItem, setNewShopItem] = useState({ name: '', brand: 'KCL', currentMoq: 0, targetMoq: 30, price: 20 });
+  const [newLink, setNewLink] = useState({
+    title: '',
+    url: '',
+    subtitle: '',
+    icon: '🔗',
+    sort_order: 10,
+    is_active: true,
+    is_highlighted: false,
+  });
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -118,7 +129,89 @@ export default function ContentAdminPage() {
     setTeams(teamsData || []);
     setIndividuals(indData || []);
     setScorecards(scorecardsData || []);
+
+    // Fetch Portal Bio Links
+    try {
+      const linksRes = await fetch('/api/links');
+      if (linksRes.ok) {
+        const linksData = await linksRes.json();
+        if (Array.isArray(linksData.links)) {
+          setLinks(linksData.links);
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching bio links in CMS:', err);
+    }
+
     setLoading(false);
+  }
+
+  // Portal Link Handlers
+  async function handleAddLink(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newLink.title || !newLink.url) return;
+    try {
+      const res = await fetch('/api/links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newLink),
+      });
+      if (res.ok) {
+        setNewLink({
+          title: '',
+          url: '',
+          subtitle: '',
+          icon: '🔗',
+          sort_order: links.length + 2,
+          is_active: true,
+          is_highlighted: false,
+        });
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to create link');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error creating link');
+    }
+  }
+
+  async function handleToggleLinkActive(link: PortalLink) {
+    try {
+      const res = await fetch('/api/links', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: link.id, is_active: !link.is_active }),
+      });
+      if (res.ok) fetchData();
+    } catch (err) {
+      console.error('Error updating link active state:', err);
+    }
+  }
+
+  async function handleToggleLinkHighlight(link: PortalLink) {
+    try {
+      const res = await fetch('/api/links', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: link.id, is_highlighted: !link.is_highlighted }),
+      });
+      if (res.ok) fetchData();
+    } catch (err) {
+      console.error('Error updating link highlight state:', err);
+    }
+  }
+
+  async function handleDeleteLink(id: string) {
+    if (!confirm('Are you sure you want to remove this link from /links?')) return;
+    try {
+      const res = await fetch(`/api/links?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) fetchData();
+    } catch (err) {
+      console.error('Error deleting bio link:', err);
+    }
   }
 
   // Generic Handlers
@@ -234,6 +327,7 @@ export default function ContentAdminPage() {
           {tabButton('trips', '🏔️ KCLMC Trips')}
           {tabButton('guides', '🧗 Crags & Gyms')}
           {tabButton('drops', '👕 Shop Drops')}
+          {tabButton('links', '🔗 Bio Links (/links)')}
           {tabButton('rounds', '🏆 LUBE Rounds')}
           {tabButton('leaderboard', '📊 Rankings')}
           {tabButton('scorecards', '📝 Scorecards')}
@@ -434,6 +528,201 @@ export default function ContentAdminPage() {
                     <button onClick={() => handleDelete('shop_items', item.id)} className="text-xs font-mono text-red-400 hover:text-red-300 border border-red-900 px-3 py-1.5 rounded-lg hover:bg-red-950 transition-colors">
                       Delete
                     </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : activeTab === 'links' ? (
+          <div className="grid lg:grid-cols-2 gap-8">
+            {/* Create Bio Link Card */}
+            <div className="bg-[#052322] border border-[#084746] p-6 rounded-2xl shadow-xl space-y-4">
+              <div>
+                <h2 className="text-xl font-bold font-heading uppercase text-white">Add Bio Link (/links)</h2>
+                <p className="text-xs text-zinc-300 mt-1">
+                  Custom link cards displayed on <code className="text-[#FFBD59] font-mono">kclmc.org/links</code> for social media bios (Instagram, KCLSU, etc.).
+                </p>
+              </div>
+
+              <form onSubmit={handleAddLink} className="space-y-4 pt-1">
+                <div>
+                  <label className="text-xs font-mono text-zinc-400 block mb-1">Button Title</label>
+                  <input
+                    required
+                    value={newLink.title}
+                    onChange={e => setNewLink({ ...newLink, title: e.target.value })}
+                    placeholder="e.g. Portland Weekend Meet Signups"
+                    className="w-full bg-[#041F1E] border border-[#084746] rounded-xl p-3 text-white text-sm focus:outline-none focus:border-[#FFBD59]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-mono text-zinc-400 block mb-1">Destination URL</label>
+                  <input
+                    required
+                    value={newLink.url}
+                    onChange={e => setNewLink({ ...newLink, url: e.target.value })}
+                    placeholder="e.g. /trips or https://kclsu.org/..."
+                    className="w-full bg-[#041F1E] border border-[#084746] rounded-xl p-3 text-white text-sm font-mono focus:outline-none focus:border-[#FFBD59]"
+                  />
+                  <span className="text-[10px] text-zinc-500 font-sans block mt-1">
+                    Accepts root-relative portal links (e.g. <code>/membership</code>) or full external URLs.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="text-xs font-mono text-zinc-400 block mb-1">Subtitle / Note (Optional)</label>
+                  <input
+                    value={newLink.subtitle}
+                    onChange={e => setNewLink({ ...newLink, subtitle: e.target.value })}
+                    placeholder="e.g. Signups open this Friday at 6pm"
+                    className="w-full bg-[#041F1E] border border-[#084746] rounded-xl p-3 text-white text-sm focus:outline-none focus:border-[#FFBD59]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-mono text-zinc-400 block mb-1">Emoji Icon</label>
+                    <input
+                      value={newLink.icon}
+                      onChange={e => setNewLink({ ...newLink, icon: e.target.value })}
+                      placeholder="e.g. 🧗, ⛰️, 👕, 🏛️"
+                      className="w-full bg-[#041F1E] border border-[#084746] rounded-xl p-3 text-white text-sm text-center focus:outline-none focus:border-[#FFBD59]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-mono text-zinc-400 block mb-1">Sort Order</label>
+                    <input
+                      type="number"
+                      value={newLink.sort_order}
+                      onChange={e => setNewLink({ ...newLink, sort_order: parseInt(e.target.value) || 0 })}
+                      className="w-full bg-[#041F1E] border border-[#084746] rounded-xl p-3 text-white text-sm font-mono focus:outline-none focus:border-[#FFBD59]"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-1 border-t border-[#084746]">
+                  <label className="flex items-center gap-2 text-xs font-sans text-zinc-200 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={newLink.is_highlighted}
+                      onChange={e => setNewLink({ ...newLink, is_highlighted: e.target.checked })}
+                      className="w-4 h-4 rounded bg-[#041F1E] border border-[#084746] accent-[#FFBD59]"
+                    />
+                    <span>Highlight with Gold Accent Border (Featured Primary Action)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs font-sans text-zinc-200 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={newLink.is_active}
+                      onChange={e => setNewLink({ ...newLink, is_active: e.target.checked })}
+                      className="w-4 h-4 rounded bg-[#041F1E] border border-[#084746] accent-[#FFBD59]"
+                    />
+                    <span>Active and Visible on /links</span>
+                  </label>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-[#FFBD59] hover:bg-[#FFE0A3] text-[#052322] py-3 rounded-xl font-heading font-black text-xs uppercase tracking-wider transition-colors shadow-md"
+                >
+                  Publish Link to Directory →
+                </button>
+              </form>
+            </div>
+
+            {/* Current Bio Links List */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold font-heading uppercase text-white">
+                  Live Bio Links ({links.length})
+                </h2>
+                <Link
+                  href="/links"
+                  target="_blank"
+                  className="text-xs font-mono text-[#FFBD59] hover:underline flex items-center gap-1"
+                >
+                  <span>Preview /links</span>
+                  <span>↗</span>
+                </Link>
+              </div>
+
+              <div className="space-y-3">
+                {links.map((link) => (
+                  <div
+                    key={link.id}
+                    className={`bg-[#052322] border rounded-xl p-4 shadow-md transition-all ${
+                      link.is_highlighted ? 'border-[#FFBD59]/80 shadow-[0_0_15px_rgba(255,189,89,0.15)]' : 'border-[#084746]'
+                    } ${!link.is_active ? 'opacity-50' : ''}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <span className="text-2xl p-1.5 bg-[#041F1E] border border-[#084746] rounded-lg shrink-0">
+                          {link.icon || '🔗'}
+                        </span>
+                        <div className="truncate">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-bold text-white font-heading text-base truncate">
+                              {link.title}
+                            </h3>
+                            {link.is_highlighted && (
+                              <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-[#FFBD59]/20 text-[#FFBD59] border border-[#FFBD59]/40 font-bold uppercase">
+                                ★ Highlighted
+                              </span>
+                            )}
+                            <span className={`text-[9px] font-mono px-2 py-0.5 rounded uppercase font-bold ${
+                              link.is_active
+                                ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                                : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                            }`}>
+                              {link.is_active ? 'Active' : 'Hidden'}
+                            </span>
+                          </div>
+
+                          {link.subtitle && (
+                            <p className="text-xs text-zinc-300 font-sans mt-0.5 truncate">
+                              {link.subtitle}
+                            </p>
+                          )}
+                          <p className="text-[11px] text-[#FFBD59]/80 font-mono mt-1 truncate">
+                            {link.url}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => handleToggleLinkHighlight(link)}
+                          className={`text-xs p-1.5 rounded-lg border transition-colors ${
+                            link.is_highlighted
+                              ? 'border-[#FFBD59] bg-[#FFBD59]/20 text-[#FFBD59]'
+                              : 'border-zinc-700 text-zinc-400 hover:text-white'
+                          }`}
+                          title="Toggle Highlight"
+                        >
+                          ★
+                        </button>
+                        <button
+                          onClick={() => handleToggleLinkActive(link)}
+                          className={`text-xs px-2.5 py-1 rounded-lg border font-mono transition-colors ${
+                            link.is_active
+                              ? 'border-emerald-800 text-emerald-400 hover:bg-emerald-950'
+                              : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'
+                          }`}
+                          title="Toggle Active / Hidden"
+                        >
+                          {link.is_active ? 'Hide' : 'Show'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteLink(link.id)}
+                          className="text-xs font-mono text-red-400 hover:text-red-300 border border-red-900 px-2 py-1 rounded-lg hover:bg-red-950 transition-colors"
+                          title="Delete Link"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
