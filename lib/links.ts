@@ -2,7 +2,7 @@
  * KCLMC Portal Links Domain Module
  * 
  * Manages official directory links for social media bios (Instagram, SU, Linktree alternative).
- * Provides default fallbacks, data types, and sanitization.
+ * All link data is dynamically loaded and managed through the Supabase database.
  */
 
 export interface PortalLink {
@@ -17,59 +17,6 @@ export interface PortalLink {
   created_at?: string;
   updated_at?: string;
 }
-
-export const DEFAULT_PORTAL_LINKS: PortalLink[] = [
-  {
-    id: '00000000-0000-4000-8000-000000000001',
-    title: 'Buy 2026/27 Membership',
-    url: 'https://www.kclsu.org/groups/sports/join/mountaineerclimbsoc/',
-    subtitle: 'Official KCLSU Union Shop • Required for meets & pass',
-    icon: '🏛️',
-    sort_order: 1,
-    is_active: true,
-    is_highlighted: true,
-  },
-  {
-    id: '00000000-0000-4000-8000-000000000002',
-    title: 'Activate Digital Climbing Pass',
-    url: '/membership',
-    subtitle: 'Safety gate, wall discount pass & verification QR',
-    icon: '🧗',
-    sort_order: 2,
-    is_active: true,
-    is_highlighted: false,
-  },
-  {
-    id: '00000000-0000-4000-8000-000000000003',
-    title: 'Official Club Website & Hub',
-    url: '/',
-    subtitle: "King's College London Mountaineering Club",
-    icon: '⛰️',
-    sort_order: 3,
-    is_active: true,
-    is_highlighted: false,
-  },
-  {
-    id: '00000000-0000-4000-8000-000000000004',
-    title: 'Where We Climb & Gym Discounts',
-    url: '/guides',
-    subtitle: 'London wall guide, partner discounts & crag topos',
-    icon: '📍',
-    sort_order: 4,
-    is_active: true,
-    is_highlighted: false,
-  },
-  {
-    id: '00000000-0000-4000-8000-000000000005',
-    title: 'Society Stash & Apparel Drops',
-    url: '/drops/kclmc',
-    subtitle: 'Official society tees, hoodies & gear drops',
-    icon: '👕',
-    sort_order: 5,
-    is_active: true,
-    is_highlighted: false,
-  },
-];
 
 export const LEGACY_DEFAULT_LINK_IDS: Record<string, string> = {
   'link-kclsu-shop': '00000000-0000-4000-8000-000000000001',

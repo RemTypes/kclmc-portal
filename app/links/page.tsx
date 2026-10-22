@@ -3,10 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { PortalLink, DEFAULT_PORTAL_LINKS } from '@/lib/links';
+import { PortalLink } from '@/lib/links';
 
 export default function LinksPage() {
-  const [links, setLinks] = useState<PortalLink[]>(DEFAULT_PORTAL_LINKS);
+  const [links, setLinks] = useState<PortalLink[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -15,12 +15,12 @@ export default function LinksPage() {
         const res = await fetch('/api/links');
         if (res.ok) {
           const data = await res.json();
-          if (Array.isArray(data.links) && data.links.length > 0) {
+          if (Array.isArray(data.links)) {
             setLinks(data.links);
           }
         }
       } catch (err) {
-        console.warn('Failed to fetch live bio links, using fallback:', err);
+        console.error('Failed to fetch bio links from database:', err);
       } finally {
         setLoading(false);
       }
@@ -101,7 +101,18 @@ export default function LinksPage() {
 
         {/* Link Cards Stack */}
         <div className="w-full space-y-3.5 mt-2">
-          {links.map((link) => {
+          {loading ? (
+            <div className="space-y-3 w-full animate-pulse">
+              {[1, 2, 3, 4].map(n => (
+                <div key={n} className="h-16 bg-[#052322] border border-[#084746] rounded-2xl w-full" />
+              ))}
+            </div>
+          ) : links.length === 0 ? (
+            <div className="p-6 text-center text-xs text-zinc-400 font-sans bg-[#052322] border border-[#084746] rounded-2xl">
+              No active bio links currently published.
+            </div>
+          ) : (
+            links.map((link) => {
             const isExternal = link.url.startsWith('http') || link.url.startsWith('mailto:');
             const cardClasses = `block w-full p-4 rounded-2xl transition-all duration-200 text-left select-none group relative overflow-hidden ${
               link.is_highlighted
@@ -156,7 +167,7 @@ export default function LinksPage() {
                 {cardContent}
               </Link>
             );
-          })}
+          }))}
         </div>
 
         {/* Quick KCLSU Membership Guidance Badge */}

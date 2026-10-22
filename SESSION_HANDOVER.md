@@ -42,7 +42,7 @@ The **KCLMC Platform** is the official digital infrastructure for the **King's C
 8. **Bio Links Directory (`/links`)**:
    - Mobile-first, high-conversion Linktree alternative designed in KCLMC Green & Gold (`#041F1E`, `#052322`, `#FFBD59`).
    - Bypasses global site chrome for maximum mobile retention, featuring official crest, quick social icon row, and interactive link cards with prominent gold pulse highlight styling.
-   - Dynamic database backing via `portal_links` table with fallback to `DEFAULT_PORTAL_LINKS` and real-time committee CMS controls at `/admin/content`.
+   - Dynamic database backing via `portal_links` table with real-time committee CMS controls at `/admin/content`.
 9. **Registration & Auth UX (`/login`)**:
    - Segmented top controls (`[ Sign In ]` | `[ Create Account ]`) eliminating member confusion.
    - KCLSU separation explanatory banner clarifying that union shop transactions require creating a portal account.

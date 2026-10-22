@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { sanitizeLinkUrl, DEFAULT_PORTAL_LINKS, resolveLinkId, isValidUuid } from '@/lib/links';
+import { sanitizeLinkUrl, resolveLinkId, isValidUuid } from '@/lib/links';
 import { GET, POST, PATCH, DELETE } from '@/app/api/links/route';
 import * as supabaseServer from '@/lib/supabase/server';
 import { NextRequest } from 'next/server';
@@ -33,18 +33,11 @@ describe('Portal Links Domain & Security Utilities', () => {
     expect(sanitizeLinkUrl('not-a-valid-url-format')).toBe('#');
   });
 
-  it('contains expected default links in DEFAULT_PORTAL_LINKS with valid UUIDs', () => {
-    expect(DEFAULT_PORTAL_LINKS.length).toBeGreaterThanOrEqual(4);
-    const titles = DEFAULT_PORTAL_LINKS.map(l => l.title);
-    expect(titles).toContain('Buy 2026/27 Membership');
-    expect(titles).toContain('Activate Digital Climbing Pass');
-    expect(titles).toContain('Official Club Website & Hub');
-
-    for (const link of DEFAULT_PORTAL_LINKS) {
-      expect(link.is_active).toBe(true);
-      expect(isValidUuid(link.id)).toBe(true);
-      expect(sanitizeLinkUrl(link.url)).not.toBe('#');
-    }
+  it('validates standard UUID formats correctly', () => {
+    expect(isValidUuid('00000000-0000-4000-8000-000000000001')).toBe(true);
+    expect(isValidUuid('e28f35c6-943e-4b95-a5f1-3221bfd8c512')).toBe(true);
+    expect(isValidUuid('not-a-uuid')).toBe(false);
+    expect(isValidUuid('link-kclsu-shop')).toBe(false);
   });
 
   it('resolves legacy default link IDs to standard UUIDs', () => {
@@ -56,19 +49,31 @@ describe('Portal Links Domain & Security Utilities', () => {
   });
 });
 
-describe('Portal Links API Route (/api/links)', () => {
+describe('Portal Links API Route (/api/links) - Database Driven', () => {
   let mockStore: any[] = [];
 
   beforeEach(() => {
     vi.restoreAllMocks();
     mockStore = [
       {
+        id: '00000000-0000-4000-8000-000000000001',
+        title: 'Buy 2026/27 Membership',
+        url: 'https://www.kclsu.org/groups/sports/join/mountaineerclimbsoc/',
+        subtitle: 'Official KCLSU Union Shop',
+        icon: '🏛️',
+        sort_order: 1,
+        is_active: true,
+        is_highlighted: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
         id: 'test-1',
         title: 'Test Link 1',
         url: 'https://kclmc.org/test',
         subtitle: 'Test description',
         icon: '🧗',
-        sort_order: 1,
+        sort_order: 2,
         is_active: true,
         is_highlighted: false,
         created_at: new Date().toISOString(),
@@ -80,7 +85,7 @@ describe('Portal Links API Route (/api/links)', () => {
         url: 'https://kclmc.org/inactive',
         subtitle: 'Hidden link',
         icon: '🔒',
-        sort_order: 2,
+        sort_order: 3,
         is_active: false,
         is_highlighted: false,
         created_at: new Date().toISOString(),
@@ -110,38 +115,29 @@ describe('Portal Links API Route (/api/links)', () => {
           };
         }
         return {
-          select: (cols: string, opts?: any) => {
-            if (opts?.head) {
-              return Promise.resolve({ count: mockStore.length, error: null });
-            }
-            return {
-              order: (col: string, { ascending }: { ascending: boolean }) => ({
-                eq: (eqCol: string, eqVal: any) => {
-                  const filtered = mockStore.filter(item => item[eqCol] === eqVal);
-                  return Promise.resolve({ data: filtered, error: null });
-                },
-              }),
-              eq: (eqCol: string, eqVal: any) => ({
-                maybeSingle: () => {
-                  const item = mockStore.find(i => i[eqCol] === eqVal);
-                  return Promise.resolve({ data: item || null, error: null });
-                },
-              }),
-            };
-          },
-          insert: (newRows: any) => {
-            const rows = Array.isArray(newRows) ? newRows : [newRows];
-            const createdRows = rows.map(r => ({
-              ...r,
-              id: r.id || `new-${Date.now()}`,
+          select: () => ({
+            order: (col: string, { ascending }: { ascending: boolean }) => ({
+              eq: (eqCol: string, eqVal: any) => {
+                const filtered = mockStore.filter(item => item[eqCol] === eqVal);
+                return Promise.resolve({ data: filtered, error: null });
+              },
+              then: (fn: any) => {
+                const sorted = [...mockStore].sort((a, b) => (ascending ? a[col] - b[col] : b[col] - a[col]));
+                return Promise.resolve({ data: sorted, error: null }).then(fn);
+              },
+            }),
+          }),
+          insert: (newRow: any) => {
+            const created = {
+              ...newRow,
+              id: newRow.id || `new-${Date.now()}`,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
-            }));
-            mockStore.push(...createdRows);
+            };
+            mockStore.push(created);
             return {
               select: () => ({
-                single: () => Promise.resolve({ data: createdRows[0], error: null }),
-                then: (fn: any) => Promise.resolve({ data: createdRows, error: null }).then(fn),
+                single: () => Promise.resolve({ data: created, error: null }),
               }),
             };
           },
@@ -171,9 +167,8 @@ describe('Portal Links API Route (/api/links)', () => {
     vi.spyOn(supabaseServer, 'isSupabaseConfigured').mockReturnValue(true);
   };
 
-  it('GET /api/links returns active links for public visitors', async () => {
+  it('GET /api/links returns active links strictly from database for public visitors', async () => {
     setupMockSupabase(null);
-    const req = new NextRequest('http://localhost:3000/api/links');
     const res = await GET();
     expect(res.status).toBe(200);
     const data = await res.json();
@@ -209,7 +204,7 @@ describe('Portal Links API Route (/api/links)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('POST /api/links allows committee member (role 1) to create a link via admin client', async () => {
+  it('POST /api/links inserts link directly into database via admin client', async () => {
     setupMockSupabase(1); // Committee
     const req = new NextRequest('http://localhost:3000/api/links', {
       method: 'POST',
@@ -241,7 +236,7 @@ describe('Portal Links API Route (/api/links)', () => {
     expect(res.status).toBe(400);
   });
 
-  it('PATCH /api/links updates an existing link', async () => {
+  it('PATCH /api/links updates an existing link in the database', async () => {
     setupMockSupabase(1);
     const req = new NextRequest('http://localhost:3000/api/links', {
       method: 'PATCH',
@@ -258,7 +253,7 @@ describe('Portal Links API Route (/api/links)', () => {
     expect(data.link.title).toBe('Updated Link Title');
   });
 
-  it('PATCH /api/links resolves legacy built-in string IDs and materializes update', async () => {
+  it('PATCH /api/links resolves legacy IDs and updates database row', async () => {
     setupMockSupabase(1);
     const req = new NextRequest('http://localhost:3000/api/links', {
       method: 'PATCH',
@@ -275,7 +270,7 @@ describe('Portal Links API Route (/api/links)', () => {
     expect(data.link.is_highlighted).toBe(false);
   });
 
-  it('DELETE /api/links deletes an existing link', async () => {
+  it('DELETE /api/links deletes an existing link from the database', async () => {
     setupMockSupabase(1);
     const req = new NextRequest('http://localhost:3000/api/links?id=test-1', {
       method: 'DELETE',
@@ -287,7 +282,7 @@ describe('Portal Links API Route (/api/links)', () => {
     expect(mockStore.find(item => item.id === 'test-1')).toBeUndefined();
   });
 
-  it('DELETE /api/links handles legacy built-in link IDs gracefully', async () => {
+  it('DELETE /api/links resolves legacy IDs and deletes database row', async () => {
     setupMockSupabase(1);
     const req = new NextRequest('http://localhost:3000/api/links?id=link-kclsu-shop', {
       method: 'DELETE',
@@ -296,5 +291,6 @@ describe('Portal Links API Route (/api/links)', () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.success).toBe(true);
+    expect(mockStore.find(item => item.id === '00000000-0000-4000-8000-000000000001')).toBeUndefined();
   });
 });

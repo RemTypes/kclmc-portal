@@ -2,13 +2,12 @@ import { NextResponse } from 'next/server';
 import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { getAuthenticatedUserRole } from '@/lib/auth';
 import { supabaseMock } from '@/lib/supabase';
-import { DEFAULT_PORTAL_LINKS, PortalLink, sanitizeLinkUrl, resolveLinkId, isValidUuid } from '@/lib/links';
+import { PortalLink, sanitizeLinkUrl, resolveLinkId } from '@/lib/links';
 
 /**
  * GET /api/links
- * Retrieves bio links for /links.
+ * Retrieves bio links securely from the portal_links database table.
  * Committee accounts receive all links (including inactive), while public visitors receive only active links.
- * When portal_links is empty in Supabase, automatically seeds the default links using the admin client.
  */
 export async function GET() {
   try {
@@ -26,76 +25,37 @@ export async function GET() {
         // Fall through as public visitor
       }
 
-      try {
-        const admin = createAdminClient();
-        let query = admin
-          .from('portal_links')
-          .select('*')
-          .order('sort_order', { ascending: true });
+      const admin = createAdminClient();
+      let query = admin
+        .from('portal_links')
+        .select('*')
+        .order('sort_order', { ascending: true });
 
-        if (!isCommittee) {
-          query = query.eq('is_active', true);
-        }
-
-        const { data, error } = await query;
-        if (!error && Array.isArray(data) && data.length > 0) {
-          return NextResponse.json({ links: data });
-        }
-
-        // If table has 0 rows, auto-seed with default links
-        if (!error && Array.isArray(data) && data.length === 0) {
-          try {
-            const seedRows = DEFAULT_PORTAL_LINKS.map(link => ({
-              id: link.id,
-              title: link.title,
-              url: link.url,
-              subtitle: link.subtitle,
-              icon: link.icon,
-              sort_order: link.sort_order,
-              is_active: link.is_active,
-              is_highlighted: link.is_highlighted,
-            }));
-            const { data: seeded, error: seedError } = await admin
-              .from('portal_links')
-              .insert(seedRows)
-              .select();
-
-            if (!seedError && Array.isArray(seeded) && seeded.length > 0) {
-              const result = isCommittee ? seeded : seeded.filter(l => l.is_active);
-              return NextResponse.json({ links: result });
-            }
-          } catch (seedErr) {
-            console.warn('Auto-seed portal_links failed:', seedErr);
-          }
-        }
-      } catch (err) {
-        console.warn('portal_links table fetch failed, falling back to defaults:', err);
+      if (!isCommittee) {
+        query = query.eq('is_active', true);
       }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return NextResponse.json({ links: data || [] });
     } else {
       // Mock provider fallback
       const { data } = await supabaseMock.from('portal_links').select<PortalLink>();
-      if (Array.isArray(data) && data.length > 0) {
-        const filtered = isCommittee ? data : data.filter(l => l.is_active);
-        return NextResponse.json({ links: filtered });
-      }
+      const list = data || [];
+      const filtered = isCommittee ? list : list.filter(l => l.is_active);
+      return NextResponse.json({ links: filtered });
     }
-
-    // Default static fallback
-    return NextResponse.json({
-      links: DEFAULT_PORTAL_LINKS,
-    });
   } catch (err: any) {
     return NextResponse.json(
-      { links: DEFAULT_PORTAL_LINKS, error: err.message },
-      { status: 200 } // Gracefully return defaults even on unexpected exceptions
+      { links: [], error: err.message },
+      { status: 500 }
     );
   }
 }
 
 /**
  * POST /api/links
- * Creates a new bio link card in the directory (Role >= 1).
- * Uses createAdminClient to ensure RLS does not block legitimate committee operations.
+ * Creates a new bio link card securely in the database (Role >= 1).
  */
 export async function POST(request: Request) {
   try {
@@ -163,8 +123,7 @@ export async function POST(request: Request) {
 
 /**
  * PATCH /api/links
- * Updates an existing link card or toggle properties (Role >= 1).
- * Supports both database UUIDs and legacy default link IDs.
+ * Updates an existing link in the database (Role >= 1).
  */
 export async function PATCH(request: Request) {
   try {
@@ -206,39 +165,6 @@ export async function PATCH(request: Request) {
 
     if (isSupabaseConfigured()) {
       const admin = createAdminClient();
-
-      // Check if target link exists in database
-      const { data: existing } = await admin
-        .from('portal_links')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (!existing) {
-        // If row is a built-in default link that hasn't been seeded yet, materialize it with updates applied
-        const defaultLink = DEFAULT_PORTAL_LINKS.find(l => l.id === id);
-        if (defaultLink) {
-          const toInsert = {
-            id: defaultLink.id,
-            title: updates.title ?? defaultLink.title,
-            url: updates.url ?? defaultLink.url,
-            subtitle: updates.subtitle !== undefined ? updates.subtitle : defaultLink.subtitle,
-            icon: updates.icon ?? defaultLink.icon,
-            sort_order: updates.sort_order ?? defaultLink.sort_order,
-            is_active: updates.is_active !== undefined ? updates.is_active : defaultLink.is_active,
-            is_highlighted: updates.is_highlighted !== undefined ? updates.is_highlighted : defaultLink.is_highlighted,
-          };
-          const { data: inserted, error: insertError } = await admin
-            .from('portal_links')
-            .insert(toInsert)
-            .select()
-            .single();
-
-          if (insertError) throw insertError;
-          return NextResponse.json({ link: inserted, success: true });
-        }
-      }
-
       const { data, error } = await admin
         .from('portal_links')
         .update(updates)
@@ -262,7 +188,7 @@ export async function PATCH(request: Request) {
 
 /**
  * DELETE /api/links
- * Removes a link from the directory (Role >= 1).
+ * Removes a link securely from the database (Role >= 1).
  */
 export async function DELETE(request: Request) {
   try {
@@ -299,30 +225,6 @@ export async function DELETE(request: Request) {
 
     if (isSupabaseConfigured()) {
       const admin = createAdminClient();
-
-      // Check if this was the first action on an unseeded table
-      const { count } = await admin
-        .from('portal_links')
-        .select('*', { count: 'exact', head: true });
-
-      if (count === 0) {
-        // Seed the other default links (excluding the one being deleted)
-        const othersToSeed = DEFAULT_PORTAL_LINKS
-          .filter(l => l.id !== id)
-          .map(l => ({
-            id: l.id,
-            title: l.title,
-            url: l.url,
-            subtitle: l.subtitle,
-            icon: l.icon,
-            sort_order: l.sort_order,
-            is_active: l.is_active,
-            is_highlighted: l.is_highlighted,
-          }));
-        await admin.from('portal_links').insert(othersToSeed);
-        return NextResponse.json({ success: true });
-      }
-
       const { error } = await admin
         .from('portal_links')
         .delete()
