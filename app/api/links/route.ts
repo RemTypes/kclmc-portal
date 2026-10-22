@@ -5,17 +5,38 @@ import { supabaseMock } from '@/lib/supabase';
 import { PortalLink, sanitizeLinkUrl, resolveLinkId } from '@/lib/links';
 
 /**
- * GET /api/links
- * Retrieves bio links securely from the portal_links database table.
- * Committee accounts receive all links (including inactive), while public visitors receive only active links.
+ * Returns the best database client for committee operations.
+ * If SUPABASE_SERVICE_ROLE_KEY is set, uses createAdminClient() to bypass RLS.
+ * Otherwise, falls back to userClient so postgREST receives the committee member's
+ * session JWT and satisfies public.get_user_role() >= 1 in RLS.
  */
-export async function GET() {
+function getCommitteeDbClient(userClient?: any) {
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return createAdminClient();
+  }
+  return userClient || createAdminClient();
+}
+
+/**
+ * GET /api/links
+ * Retrieves bio links from the portal_links database table.
+ * 
+ * Standard public calls (e.g. kclmc.org/links) ALWAYS return active links only (is_active = true),
+ * even if the browsing user happens to be logged in as committee.
+ * 
+ * Passing ?scope=admin returns all links (including hidden ones) strictly for verified committee members.
+ */
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const isAdminScope = searchParams.get('scope') === 'admin' || searchParams.get('all') === 'true';
+
     let isCommittee = false;
+    let userClient: any = null;
 
     if (isSupabaseConfigured()) {
       try {
-        const userClient = await createClient();
+        userClient = await createClient();
         const { data: { user } } = await userClient.auth.getUser();
         if (user) {
           const role = await getAuthenticatedUserRole(userClient, user);
@@ -25,13 +46,22 @@ export async function GET() {
         // Fall through as public visitor
       }
 
-      const admin = createAdminClient();
-      let query = admin
+      // Reject non-committee requests for admin scope
+      if (isAdminScope && !isCommittee) {
+        return NextResponse.json(
+          { error: 'Forbidden: Committee access required to view inactive links' },
+          { status: 403 }
+        );
+      }
+
+      const db = getCommitteeDbClient(userClient);
+      let query = db
         .from('portal_links')
         .select('*')
         .order('sort_order', { ascending: true });
 
-      if (!isCommittee) {
+      // Unless explicitly requested via authenticated admin scope, only return active links
+      if (!isAdminScope) {
         query = query.eq('is_active', true);
       }
 
@@ -40,9 +70,15 @@ export async function GET() {
       return NextResponse.json({ links: data || [] });
     } else {
       // Mock provider fallback
+      if (isAdminScope && !isCommittee) {
+        return NextResponse.json(
+          { error: 'Forbidden: Committee access required' },
+          { status: 403 }
+        );
+      }
       const { data } = await supabaseMock.from('portal_links').select<PortalLink>();
       const list = data || [];
-      const filtered = isCommittee ? list : list.filter(l => l.is_active);
+      const filtered = isAdminScope ? list : list.filter(l => l.is_active);
       return NextResponse.json({ links: filtered });
     }
   } catch (err: any) {
@@ -59,8 +95,10 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
+    let userClient: any = null;
+
     if (isSupabaseConfigured()) {
-      const userClient = await createClient();
+      userClient = await createClient();
       const { data: { user } } = await userClient.auth.getUser();
       if (!user) {
         return NextResponse.json(
@@ -100,8 +138,8 @@ export async function POST(request: Request) {
     };
 
     if (isSupabaseConfigured()) {
-      const admin = createAdminClient();
-      const { data, error } = await admin
+      const db = getCommitteeDbClient(userClient);
+      const { data, error } = await db
         .from('portal_links')
         .insert(newLink)
         .select()
@@ -127,8 +165,10 @@ export async function POST(request: Request) {
  */
 export async function PATCH(request: Request) {
   try {
+    let userClient: any = null;
+
     if (isSupabaseConfigured()) {
-      const userClient = await createClient();
+      userClient = await createClient();
       const { data: { user } } = await userClient.auth.getUser();
       if (!user) {
         return NextResponse.json(
@@ -164,8 +204,8 @@ export async function PATCH(request: Request) {
     updates.updated_at = new Date().toISOString();
 
     if (isSupabaseConfigured()) {
-      const admin = createAdminClient();
-      const { data, error } = await admin
+      const db = getCommitteeDbClient(userClient);
+      const { data, error } = await db
         .from('portal_links')
         .update(updates)
         .eq('id', id)
@@ -192,8 +232,10 @@ export async function PATCH(request: Request) {
  */
 export async function DELETE(request: Request) {
   try {
+    let userClient: any = null;
+
     if (isSupabaseConfigured()) {
-      const userClient = await createClient();
+      userClient = await createClient();
       const { data: { user } } = await userClient.auth.getUser();
       if (!user) {
         return NextResponse.json(
@@ -224,8 +266,8 @@ export async function DELETE(request: Request) {
     const id = resolveLinkId(String(rawId));
 
     if (isSupabaseConfigured()) {
-      const admin = createAdminClient();
-      const { error } = await admin
+      const db = getCommitteeDbClient(userClient);
+      const { error } = await db
         .from('portal_links')
         .delete()
         .eq('id', id);

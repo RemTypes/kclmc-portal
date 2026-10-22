@@ -28,6 +28,8 @@ export default function LinksPage() {
     loadLinks();
   }, []);
 
+  const visibleLinks = links.filter(l => l.is_active);
+
   return (
     <div className="min-h-screen bg-[#041F1E] text-slate-100 flex flex-col items-center justify-between p-4 sm:p-6 font-sans relative overflow-x-hidden topo-pattern">
       {/* Background radial glow */}
@@ -107,12 +109,12 @@ export default function LinksPage() {
                 <div key={n} className="h-16 bg-[#052322] border border-[#084746] rounded-2xl w-full" />
               ))}
             </div>
-          ) : links.length === 0 ? (
+          ) : visibleLinks.length === 0 ? (
             <div className="p-6 text-center text-xs text-zinc-400 font-sans bg-[#052322] border border-[#084746] rounded-2xl">
               No active bio links currently published.
             </div>
           ) : (
-            links.map((link) => {
+            visibleLinks.map((link) => {
             const isExternal = link.url.startsWith('http') || link.url.startsWith('mailto:');
             const cardClasses = `block w-full p-4 rounded-2xl transition-all duration-200 text-left select-none group relative overflow-hidden ${
               link.is_highlighted

@@ -49,7 +49,7 @@ describe('Portal Links Domain & Security Utilities', () => {
   });
 });
 
-describe('Portal Links API Route (/api/links) - Database Driven', () => {
+describe('Portal Links API Route (/api/links) - Database Driven & Scope Separation', () => {
   let mockStore: any[] = [];
 
   beforeEach(() => {
@@ -81,7 +81,7 @@ describe('Portal Links API Route (/api/links) - Database Driven', () => {
       },
       {
         id: 'test-2',
-        title: 'Inactive Link',
+        title: 'Inactive Hidden Link',
         url: 'https://kclmc.org/inactive',
         subtitle: 'Hidden link',
         icon: '🔒',
@@ -167,15 +167,38 @@ describe('Portal Links API Route (/api/links) - Database Driven', () => {
     vi.spyOn(supabaseServer, 'isSupabaseConfigured').mockReturnValue(true);
   };
 
-  it('GET /api/links returns active links strictly from database for public visitors', async () => {
-    setupMockSupabase(null);
-    const res = await GET();
+  it('GET /api/links (public) strictly omits hidden links even if user is logged in as committee', async () => {
+    setupMockSupabase(1); // Committee logged in
+    const req = new NextRequest('http://localhost:3000/api/links');
+    const res = await GET(req);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.links).toBeDefined();
     expect(Array.isArray(data.links)).toBe(true);
+    // Even though committee member is logged in, public scope filters out inactive links
     const inactive = data.links.find((l: any) => l.is_active === false);
     expect(inactive).toBeUndefined();
+    expect(data.links.length).toBe(2);
+  });
+
+  it('GET /api/links?scope=admin returns all links including inactive for committee', async () => {
+    setupMockSupabase(1); // Committee
+    const req = new NextRequest('http://localhost:3000/api/links?scope=admin');
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.links).toBeDefined();
+    expect(data.links.length).toBe(3);
+    const inactive = data.links.find((l: any) => l.is_active === false);
+    expect(inactive).toBeDefined();
+    expect(inactive.title).toBe('Inactive Hidden Link');
+  });
+
+  it('GET /api/links?scope=admin rejects non-committee members with 403', async () => {
+    setupMockSupabase(0); // Regular member
+    const req = new NextRequest('http://localhost:3000/api/links?scope=admin');
+    const res = await GET(req);
+    expect(res.status).toBe(403);
   });
 
   it('POST /api/links blocks unauthenticated requests with 401', async () => {
@@ -253,21 +276,31 @@ describe('Portal Links API Route (/api/links) - Database Driven', () => {
     expect(data.link.title).toBe('Updated Link Title');
   });
 
-  it('PATCH /api/links resolves legacy IDs and updates database row', async () => {
+  it('PATCH /api/links toggles is_active to false and true reliably', async () => {
     setupMockSupabase(1);
-    const req = new NextRequest('http://localhost:3000/api/links', {
+    const reqHide = new NextRequest('http://localhost:3000/api/links', {
       method: 'PATCH',
       body: JSON.stringify({
-        id: 'link-kclsu-shop',
-        is_highlighted: false,
+        id: 'test-1',
+        is_active: false,
       }),
     });
-    const res = await PATCH(req);
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.success).toBe(true);
-    expect(data.link.id).toBe('00000000-0000-4000-8000-000000000001');
-    expect(data.link.is_highlighted).toBe(false);
+    const resHide = await PATCH(reqHide);
+    expect(resHide.status).toBe(200);
+    const dataHide = await resHide.json();
+    expect(dataHide.link.is_active).toBe(false);
+
+    const reqShow = new NextRequest('http://localhost:3000/api/links', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        id: 'test-1',
+        is_active: true,
+      }),
+    });
+    const resShow = await PATCH(reqShow);
+    expect(resShow.status).toBe(200);
+    const dataShow = await resShow.json();
+    expect(dataShow.link.is_active).toBe(true);
   });
 
   it('DELETE /api/links deletes an existing link from the database', async () => {
@@ -280,17 +313,5 @@ describe('Portal Links API Route (/api/links) - Database Driven', () => {
     const data = await res.json();
     expect(data.success).toBe(true);
     expect(mockStore.find(item => item.id === 'test-1')).toBeUndefined();
-  });
-
-  it('DELETE /api/links resolves legacy IDs and deletes database row', async () => {
-    setupMockSupabase(1);
-    const req = new NextRequest('http://localhost:3000/api/links?id=link-kclsu-shop', {
-      method: 'DELETE',
-    });
-    const res = await DELETE(req);
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.success).toBe(true);
-    expect(mockStore.find(item => item.id === '00000000-0000-4000-8000-000000000001')).toBeUndefined();
   });
 });

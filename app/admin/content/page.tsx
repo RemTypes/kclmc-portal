@@ -130,9 +130,15 @@ export default function ContentAdminPage() {
     setIndividuals(indData || []);
     setScorecards(scorecardsData || []);
 
-    // Fetch Portal Bio Links
+    // Fetch Portal Bio Links for Committee CMS
+    await fetchLinks();
+
+    setLoading(false);
+  }
+
+  async function fetchLinks() {
     try {
-      const linksRes = await fetch('/api/links');
+      const linksRes = await fetch('/api/links?scope=admin');
       if (linksRes.ok) {
         const linksData = await linksRes.json();
         if (Array.isArray(linksData.links)) {
@@ -142,8 +148,6 @@ export default function ContentAdminPage() {
     } catch (err) {
       console.warn('Error fetching bio links in CMS:', err);
     }
-
-    setLoading(false);
   }
 
   // Portal Link Handlers
@@ -166,7 +170,7 @@ export default function ContentAdminPage() {
           is_active: true,
           is_highlighted: false,
         });
-        fetchData();
+        fetchLinks();
       } else {
         const err = await res.json();
         alert(err.error || 'Failed to create link');
@@ -177,55 +181,72 @@ export default function ContentAdminPage() {
   }
 
   async function handleToggleLinkActive(link: PortalLink) {
+    const nextActive = !link.is_active;
+    // Optimistic UI update
+    setLinks(prev => prev.map(l => l.id === link.id ? { ...l, is_active: nextActive } : l));
+
     try {
       const res = await fetch('/api/links', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: link.id, is_active: !link.is_active }),
+        body: JSON.stringify({ id: link.id, is_active: nextActive }),
       });
       if (res.ok) {
-        fetchData();
+        fetchLinks();
       } else {
         const data = await res.json().catch(() => ({}));
         alert(data.error || 'Failed to update link visibility');
+        fetchLinks();
       }
     } catch (err: any) {
       alert(err.message || 'Error updating link visibility');
+      fetchLinks();
     }
   }
 
   async function handleToggleLinkHighlight(link: PortalLink) {
+    const nextHighlight = !link.is_highlighted;
+    // Optimistic UI update
+    setLinks(prev => prev.map(l => l.id === link.id ? { ...l, is_highlighted: nextHighlight } : l));
+
     try {
       const res = await fetch('/api/links', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: link.id, is_highlighted: !link.is_highlighted }),
+        body: JSON.stringify({ id: link.id, is_highlighted: nextHighlight }),
       });
       if (res.ok) {
-        fetchData();
+        fetchLinks();
       } else {
         const data = await res.json().catch(() => ({}));
         alert(data.error || 'Failed to update link highlight');
+        fetchLinks();
       }
     } catch (err: any) {
       alert(err.message || 'Error updating link highlight');
+      fetchLinks();
     }
   }
 
   async function handleDeleteLink(id: string) {
     if (!confirm('Are you sure you want to remove this link from /links?')) return;
+    // Optimistic UI removal
+    setLinks(prev => prev.filter(l => l.id !== id));
+
     try {
       const res = await fetch(`/api/links?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
       if (res.ok) {
-        fetchData();
+        fetchLinks();
       } else {
         const data = await res.json().catch(() => ({}));
         alert(data.error || 'Failed to delete bio link');
+        fetchLinks();
       }
     } catch (err: any) {
       alert(err.message || 'Error deleting bio link');
+      fetchLinks();
     }
   }
 

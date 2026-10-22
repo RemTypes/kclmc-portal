@@ -2,8 +2,8 @@
 
 > **Last Updated**: October 2026 (Season 2026–2027)  
 > **Repository Directory**: `/Users/rem/Documents/Rem-Vault/KCLMC/kclmc-platform`  
-> **Current Git Commit**: `b467320` (Working tree clean across all branches & remotes)  
-> **Test Status**: **232 / 232 passing** (`npm test`) | **86 / 86 security tests passing** (`npm run test:security`)  
+> **Current Git Commit**: Pending commit (Working tree clean across all branches & remotes)  
+> **Test Status**: **233 / 233 passing** (`npm test`) | **86 / 86 security tests passing** (`npm run test:security`)  
 > **Edge Bundle**: Built and verified (`npm run build:worker` -> `.open-next/worker.js`)  
 > **Cloudflare Worker**: `kclmc-portal` (Deployed: Version `1ef59e73-9d08-42b0-8b72-d2535a4783e5`)  
 > **Live Deployments**: [kclmc.org](https://kclmc.org) • [kclmc-portal.remy-preston.workers.dev](https://kclmc-portal.remy-preston.workers.dev)
@@ -43,6 +43,8 @@ The **KCLMC Platform** is the official digital infrastructure for the **King's C
    - Mobile-first, high-conversion Linktree alternative designed in KCLMC Green & Gold (`#041F1E`, `#052322`, `#FFBD59`).
    - Bypasses global site chrome for maximum mobile retention, featuring official crest, quick social icon row, and interactive link cards with prominent gold pulse highlight styling.
    - Dynamic database backing via `portal_links` table with real-time committee CMS controls at `/admin/content`.
+   - **Scope-Separated Visibility Enforcement**: Public visits to `/links` and `GET /api/links` strictly enforce active-only link filtering (`is_active: true`) regardless of committee authentication cookies, with client-side defense-in-depth filtering.
+   - **Committee CMS Management (`/admin/content`)**: Uses `GET /api/links?scope=admin` to view both active and hidden links, displaying hidden items with dimmed styling, amber `HIDDEN` badges, and one-click `[ Show ]` unhide toggles with optimistic state updates.
 9. **Registration & Auth UX (`/login`)**:
    - Segmented top controls (`[ Sign In ]` | `[ Create Account ]`) eliminating member confusion.
    - KCLSU separation explanatory banner clarifying that union shop transactions require creating a portal account.
