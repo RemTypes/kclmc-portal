@@ -2,8 +2,8 @@
 
 > **Last Updated**: October 2026 (Season 2026–2027)  
 > **Repository Directory**: `/Users/rem/Documents/Rem-Vault/KCLMC/kclmc-platform`  
-> **Current Git Commit**: `286468b` (Working tree clean across all branches & remotes)  
-> **Test Status**: **211 / 211 passing** (`npm test`) | **86 / 86 security tests passing** (`npm run test:security`)  
+> **Current Git Commit**: `43d3ecf` (Working tree clean across all branches & remotes)  
+> **Test Status**: **229 / 229 passing** (`npm test`) | **86 / 86 security tests passing** (`npm run test:security`)  
 > **Edge Bundle**: Built and verified (`npm run build:worker` -> `.open-next/worker.js`)  
 > **Cloudflare Worker**: `kclmc-portal` (Deployed: Version `1ef59e73-9d08-42b0-8b72-d2535a4783e5`)  
 > **Live Deployments**: [kclmc.org](https://kclmc.org) • [kclmc-portal.remy-preston.workers.dev](https://kclmc-portal.remy-preston.workers.dev)
@@ -39,12 +39,22 @@ The **KCLMC Platform** is the official digital infrastructure for the **King's C
    - Group-buy merchandise pre-order system with live MOQ (Minimum Order Quantity) tracking.
 7. **Trips & Meets (`/trips`)**:
    - Mountaineering, trad, and bouldering trip calendar (Peak District, Harrison's Rocks, Portland, Font, Highlands).
-8. **Committee Administration Portal (`/admin`)**:
-   - **Payment Reconciliation (`/admin/reconcile`)**: 3-tier CSV reconciliation engine matching KCLSU payment reports against membership and merchandise orders.
-   - **Pass Scanner (`/admin/scan`)**: Mobile QR and barcode scanner for committee check-ins at climbing walls.
-   - **Content Manager (`/admin/content`)**: Manage trips, guides, and merchandise.
-   - **Manufacturer Export (`/admin/export`)**: Sizing matrix generator for garment printers and structured vCard generation (`KCLMC 26/27`).
-   - **Modules & Permissions (`/admin/modules`)**: Dynamic route access and feature flags.
+8. **Bio Links Directory (`/links`)**:
+   - Mobile-first, high-conversion Linktree alternative designed in KCLMC Green & Gold (`#041F1E`, `#052322`, `#FFBD59`).
+   - Bypasses global site chrome for maximum mobile retention, featuring official crest, quick social icon row, and interactive link cards with prominent gold pulse highlight styling.
+   - Dynamic database backing via `portal_links` table with fallback to `DEFAULT_PORTAL_LINKS` and real-time committee CMS controls at `/admin/content`.
+9. **Registration & Auth UX (`/login`)**:
+   - Segmented top controls (`[ Sign In ]` | `[ Create Account ]`) eliminating member confusion.
+   - KCLSU separation explanatory banner clarifying that union shop transactions require creating a portal account.
+   - Inline "First time visiting the portal? Create account →" one-click helper on failed credential attempts.
+10. **Associate Member System (`ASSOC-26XX`)**:
+    - Dedicated custom ID generator and membership linking toggle for non-King's climbers (alumni, UoL, staff, guests).
+11. **Committee Administration Portal (`/admin`)**:
+    - **Payment Reconciliation (`/admin/reconcile`)**: 3-tier CSV reconciliation engine matching KCLSU payment reports against membership and merchandise orders.
+    - **Pass Scanner (`/admin/scan`)**: Mobile QR and barcode scanner for committee check-ins at climbing walls.
+    - **Content Manager (`/admin/content`)**: Manage trips, guides, merchandise drops, and bio links.
+    - **Manufacturer Export (`/admin/export`)**: Sizing matrix generator for garment printers and structured vCard generation (`KCLMC 26/27`).
+    - **Modules & Permissions (`/admin/modules`)**: Dynamic route access and feature flags.
 
 ---
 
