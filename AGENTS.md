@@ -28,7 +28,7 @@ Before making changes, determine the task track and cut the branch from fresh `o
   git fetch origin main
   git checkout -b quick/<slug> origin/main
   ```
-- **PR Title**: `quick: <concise summary>` or `fix: <concise summary>`
+- **PR Title**: `fix(<scope>): <concise summary>` or `quick(<scope>): <concise summary>`
 
 ### Track B: Standard Features (`feat/<slug>`)
 - **Use For**: New user features, new routes, self-contained tools (e.g. guide additions, new export formats, scanner enhancements).
@@ -37,7 +37,7 @@ Before making changes, determine the task track and cut the branch from fresh `o
   git fetch origin main
   git checkout -b feat/<slug> origin/main
   ```
-- **PR Title**: `feat: <concise summary>`
+- **PR Title**: `feat(<scope>): <concise summary>`
 
 ### Track C: Architectural Migrations (`epic/<slug>` or `arch/<slug>`)
 - **Use For**: Long-running infrastructure changes, such as the Supabase replacement/migration (`epic/replace-supabase`).
@@ -53,13 +53,46 @@ Before making changes, determine the task track and cut the branch from fresh `o
     ```
   - This ensures all recently merged quick fixes automatically flow into the migration branch with zero drift.
 
-## 3. Mandatory Pre-PR Verification Gate
+## 3. Commit Message & PR Title Style (Repository Standard)
+All commit messages and PR titles must strictly follow the repository's **Conventional Commits** pattern:
+
+```text
+<type>(<scope>): <imperative subject in lowercase>
+```
+
+### Types:
+- `feat`: New user-facing feature or API capability (e.g. `feat(links): ...`, `feat(auth): ...`)
+- `fix`: Bug fix, security patch, UI correction (e.g. `fix(links): ...`, `fix(security): ...`, `fix(auth): ...`)
+- `refactor`: Structural code cleanup or deep-module seam improvements with zero functional change (e.g. `refactor(roster): ...`)
+- `docs`: Documentation, handover, or architecture guides (e.g. `docs(handover): ...`, `docs(rules): ...`)
+- `chore`: Tooling, build config, CI, dependencies, wrangler (e.g. `chore(cloudflare): ...`, `chore: ...`)
+- `test`: Adding or updating test suites (e.g. `test(links): ...`)
+
+### Standard Scopes:
+- `links`: Bio links directory, `/links`, `/api/links`, CMS link manager
+- `auth`: Authentication, login/signup UX, 2FA/TOTP, rate limiting, sessions
+- `roster`: KCLSU roster, membership tiers, curated names, Associate Members
+- `membership`: Digital passes, pass scanner, QR verification, Apple/Android card save
+- `safety`: Safety gate, BMC risk statement, emergency directory
+- `export`: vCard / CSV exports, manufacturer apparel sizing
+- `security`: RLS policies, audit logs, credential protection, anti-forgery
+- `cloudflare` / `deploy`: Wrangler, OpenNext worker bundle, CI/CD, preview
+- `handover`: Session handover documentation (`SESSION_HANDOVER.md`)
+- `rules`: Agent rules, guidelines (`AGENTS.md`)
+
+### Formatting Rules:
+- **Imperative mood**: Use imperative verbs ("enforce", "add", "implement", "resolve", "make", "anonymize", "remove", "update") rather than past tense ("enforced", "added").
+- **Lowercase first letter**: Start the subject in lowercase (e.g. `feat(auth): make KCL student ID compulsory...`).
+- **No trailing period**: Never end the commit subject with a period (`.`).
+- **Concise & Descriptive**: Focus on the *intent* and *subsystem affected*. Avoid vague messages like `fix: bug` or `updates`.
+
+## 4. Mandatory Pre-PR Verification Gate
 Before pushing any branch or opening a PR, the agent MUST run and pass the full verification suite:
 1. **Automated Tests**: `npm test` (all tests passing, 233+ tests).
 2. **TypeScript Compilation**: `npx tsc --noEmit` (0 errors).
 3. **Edge Worker Build**: `npm run build:worker` (OpenNext Cloudflare worker compiles cleanly to `.open-next/worker.js`).
 
-## 4. Pull Request Creation (`gh pr create`)
+## 5. Pull Request Creation (`gh pr create`)
 Once verification passes:
 1. Push the branch to remote:
    ```bash
