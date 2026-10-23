@@ -103,7 +103,11 @@ export async function POST(request: Request) {
 
     // JIT Password Auto-Bump to Cloudflare D1
     if (data?.user?.id) {
-      autoBumpUserPasswordInD1(data.user.id, data.user.email || '', password).catch(() => {});
+      try {
+        await autoBumpUserPasswordInD1(data.user.id, data.user.email || '', password);
+      } catch (bumpErr) {
+        console.warn('[ResetPassword] JIT password auto-bump non-fatal error:', bumpErr);
+      }
     }
 
     const response = NextResponse.json({

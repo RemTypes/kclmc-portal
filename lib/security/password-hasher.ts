@@ -91,14 +91,17 @@ export async function autoBumpUserPasswordInD1(
   try {
     const db = await getD1Database();
     if (!db) {
+      console.warn('[autoBumpUserPasswordInD1] D1 database handle not available (bypassing bump)');
       return false;
     }
 
-    // 1. Check if user already has an active, modern PBKDF2 hash in D1
+    const cleanEmail = (email || '').trim().toLowerCase();
+
+    // 1. Check if user already exists in D1 by either UUID or email
     const existing = await db
-      .prepare('SELECT password_hash, salt FROM users WHERE id = ?')
-      .bind(userId)
-      .first<{ password_hash: string; salt: string }>();
+      .prepare('SELECT id, email, password_hash, salt FROM users WHERE id = ? OR LOWER(email) = LOWER(?) LIMIT 1')
+      .bind(userId, cleanEmail || userId)
+      .first<{ id: string; email: string; password_hash: string; salt: string }>();
 
     if (existing && !isPlaceholderPassword(existing.password_hash) && existing.salt) {
       // Already bumped to native PBKDF2 hash, no action required
@@ -108,21 +111,31 @@ export async function autoBumpUserPasswordInD1(
     // 2. Hash plaintext password with fresh random 32-byte salt and 100k iterations
     const { hash, salt } = hashPassword(password);
     const now = new Date().toISOString();
-    const cleanEmail = (email || '').trim().toLowerCase() || `${userId}@kclmc.internal`;
 
-    // 3. Persist into D1 users table
-    await db
-      .prepare(`
-        INSERT INTO users (id, email, password_hash, salt, role, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          password_hash = excluded.password_hash,
-          salt = excluded.salt,
-          updated_at = excluded.updated_at
-      `)
-      .bind(userId, cleanEmail, hash, salt, role, now, now)
-      .run();
+    if (existing) {
+      // Update existing record by its primary key ID
+      await db
+        .prepare(`
+          UPDATE users SET
+            password_hash = ?,
+            salt = ?,
+            updated_at = ?
+          WHERE id = ?
+        `)
+        .bind(hash, salt, now, existing.id)
+        .run();
+    } else {
+      // User doesn't exist in D1 yet, insert new record
+      await db
+        .prepare(`
+          INSERT INTO users (id, email, password_hash, salt, role, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `)
+        .bind(userId, cleanEmail || `${userId}@kclmc.internal`, hash, salt, role, now, now)
+        .run();
+    }
 
+    console.log(`[autoBumpUserPasswordInD1] Successfully bumped password hash in D1 for ${cleanEmail || userId}`);
     return true;
   } catch (err: any) {
     // Non-blocking catch to ensure zero authentication side-effects

@@ -224,8 +224,12 @@ export class AuthSessionService {
     const session = authData.session;
     const userRole = await getAuthenticatedUserRole(serverSupabase, user);
 
-    // JIT Password Auto-Bump to Cloudflare D1 (Asynchronous, Zero Risk, Non-blocking)
-    autoBumpUserPasswordInD1(user.id, cleanEmail, password, userRole).catch(() => {});
+    // JIT Password Auto-Bump to Cloudflare D1 (Zero Risk, Non-blocking)
+    try {
+      await autoBumpUserPasswordInD1(user.id, cleanEmail, password, userRole);
+    } catch (bumpErr) {
+      console.warn('[Session] JIT password auto-bump non-fatal error:', bumpErr);
+    }
 
     const safeDestination = (requestedNext && requestedNext !== '/login' && !requestedNext.startsWith('/login?') && !requestedNext.startsWith('/auth'))
       ? requestedNext

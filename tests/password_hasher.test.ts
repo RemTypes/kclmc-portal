@@ -47,10 +47,13 @@ class MockD1PreparedStatement implements D1PreparedStatement {
   async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta?: any }> {
     const q = this.query.trim();
 
-    // SELECT password_hash, salt FROM users WHERE id = ?
-    if (q.includes('FROM users WHERE id = ?')) {
+    // SELECT id, email, password_hash, salt FROM users WHERE id = ? OR LOWER(email) = LOWER(?)
+    if (q.includes('FROM users')) {
       const id = this.boundValues[0];
-      const match = this.db.tables.users.find(u => u.id === id);
+      const email = this.boundValues[1];
+      const match = this.db.tables.users.find(u => 
+        u.id === id || (email && u.email && u.email.toLowerCase() === String(email).toLowerCase())
+      );
       return { results: match ? [match as any] : [], success: true };
     }
 
@@ -60,7 +63,19 @@ class MockD1PreparedStatement implements D1PreparedStatement {
   async run(): Promise<{ success: boolean; meta?: any }> {
     const q = this.query.trim();
 
-    // INSERT INTO users ... ON CONFLICT(id) DO UPDATE ...
+    // UPDATE users SET password_hash = ?, salt = ?, updated_at = ? WHERE id = ?
+    if (q.includes('UPDATE users SET')) {
+      const [hash, salt, updatedAt, id] = this.boundValues;
+      const idx = this.db.tables.users.findIndex(u => u.id === id);
+      if (idx >= 0) {
+        this.db.tables.users[idx].password_hash = hash;
+        this.db.tables.users[idx].salt = salt;
+        this.db.tables.users[idx].updated_at = updatedAt;
+      }
+      return { success: true };
+    }
+
+    // INSERT INTO users ...
     if (q.includes('INSERT INTO users')) {
       const [id, email, password_hash, salt, role, created_at, updated_at] = this.boundValues;
       const idx = this.db.tables.users.findIndex(u => u.id === id);

@@ -124,7 +124,11 @@ export async function POST(request: Request) {
         await memberRoster.linkStudentId(authData.user.id, cleanStudentId).catch(() => {});
       }
       // JIT Password Auto-Bump to Cloudflare D1
-      autoBumpUserPasswordInD1(authData.user.id, cleanEmail, password).catch(() => {});
+      try {
+        await autoBumpUserPasswordInD1(authData.user.id, cleanEmail, password);
+      } catch (bumpErr) {
+        console.warn('[Signup] JIT password auto-bump non-fatal error:', bumpErr);
+      }
     }
 
     // Track user signup conversion event
