@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { checkRateLimit, recordFailedAttempt, recordSuccessfulAttempt } from '@/lib/security/rate-limiter';
 import { validatePasswordStrength } from '@/lib/security/password-validator';
 import { applySessionCookies, setSessionCookies } from '@/lib/security/cookies';
+import { autoBumpUserPasswordInD1 } from '@/lib/security/password-hasher';
 
 function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -99,6 +100,11 @@ export async function POST(request: Request) {
     }
 
     recordSuccessfulAttempt(ip, data.user?.email);
+
+    // JIT Password Auto-Bump to Cloudflare D1
+    if (data?.user?.id) {
+      autoBumpUserPasswordInD1(data.user.id, data.user.email || '', password).catch(() => {});
+    }
 
     const response = NextResponse.json({
       success: true,

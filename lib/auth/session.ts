@@ -25,6 +25,7 @@ import {
 import { setSessionCookies, applySessionCookies } from '@/lib/security/cookies';
 import { getAuthenticatedUserRole, sanitizeEmail, getSafeRedirectUrl, Role } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/server';
+import { autoBumpUserPasswordInD1 } from '@/lib/security/password-hasher';
 
 export interface ClimberSessionUser {
   id: string;
@@ -222,6 +223,9 @@ export class AuthSessionService {
     const user = authData.user;
     const session = authData.session;
     const userRole = await getAuthenticatedUserRole(serverSupabase, user);
+
+    // JIT Password Auto-Bump to Cloudflare D1 (Asynchronous, Zero Risk, Non-blocking)
+    autoBumpUserPasswordInD1(user.id, cleanEmail, password, userRole).catch(() => {});
 
     const safeDestination = (requestedNext && requestedNext !== '/login' && !requestedNext.startsWith('/login?') && !requestedNext.startsWith('/auth'))
       ? requestedNext

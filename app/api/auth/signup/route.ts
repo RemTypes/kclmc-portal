@@ -6,6 +6,7 @@ import { setSessionCookies } from '@/lib/security/cookies';
 import { sanitizeEmail, sanitizeStudentId, sanitizeUniversity } from '@/lib/auth';
 import { trackServerEvent } from '@/lib/telemetry-server';
 import { memberRoster } from '@/lib/roster/service';
+import { autoBumpUserPasswordInD1 } from '@/lib/security/password-hasher';
 
 function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -122,6 +123,8 @@ export async function POST(request: Request) {
       if (cleanStudentId) {
         await memberRoster.linkStudentId(authData.user.id, cleanStudentId).catch(() => {});
       }
+      // JIT Password Auto-Bump to Cloudflare D1
+      autoBumpUserPasswordInD1(authData.user.id, cleanEmail, password).catch(() => {});
     }
 
     // Track user signup conversion event
