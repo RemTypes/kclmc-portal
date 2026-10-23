@@ -59,6 +59,20 @@ export async function getAuthenticatedUserRole(
     }
   }
 
+  // 3. Fallback to D1 database if bound and user ID exists
+  try {
+    const { getD1Database } = await import('@/lib/db/d1');
+    const d1 = await getD1Database();
+    if (d1 && user.id) {
+      const d1Profile = await d1.prepare('SELECT role FROM profiles WHERE id = ?').bind(user.id).first<{ role: number }>();
+      if (d1Profile && (d1Profile.role === 1 || d1Profile.role === 2)) {
+        return d1Profile.role as Role;
+      }
+    }
+  } catch {
+    // Non-blocking edge fallback
+  }
+
   return 0;
 }
 

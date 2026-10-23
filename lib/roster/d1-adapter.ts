@@ -12,7 +12,7 @@ import {
   UpdateRosterMemberInput,
   PublicPassVerificationResult,
 } from './service';
-import { KclsuMemberRecord } from '@/lib/roster';
+import { KclsuMemberRecord, isCompleteFullName } from '@/lib/roster';
 import type { Profile, SuProcessingStatus } from '@/types/database';
 import { D1Database, getD1Database } from '@/lib/db/d1';
 import { isAssociateId } from '@/lib/auth';
@@ -189,11 +189,12 @@ export class D1RosterAdapter implements RosterStorageAdapter {
         r.member_email,
         r.university,
         r.su_status,
+        p.full_name AS profile_full_name,
         p.phone,
         p.emergency_contact_name,
         p.emergency_contact_phone
       FROM kclsu_roster r
-      LEFT JOIN profiles p ON r.user_id = p.id
+      LEFT JOIN profiles p ON (r.user_id = p.id) OR (r.user_id IS NULL AND p.student_id = r.card_number)
       ORDER BY r.purchase_date DESC
     `;
 
@@ -208,10 +209,13 @@ export class D1RosterAdapter implements RosterStorageAdapter {
         row.emergency_contact_phone.trim().length >= 8
       );
       const isAssoc = Boolean(row.is_associate || isAssociateId(card));
+      const rosterNameHasFull = isCompleteFullName(row.full_name);
+      const profileNameHasFull = isCompleteFullName(row.profile_full_name);
+      const resolvedName = rosterNameHasFull ? row.full_name : (profileNameHasFull ? row.profile_full_name : row.full_name);
 
       return {
         cardNumber: card,
-        name: row.full_name,
+        name: resolvedName,
         rawPurchaser: row.raw_purchaser || '',
         tier: row.tier as 'social' | 'recreational',
         productName: row.product_name,

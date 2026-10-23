@@ -24,6 +24,8 @@ import { sanitizeUniversity, isAssociateId, sanitizeEmail } from '@/lib/auth';
 import type { Profile, Membership, SuProcessingStatus } from '@/types/database';
 import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { trackServerEvent } from '@/lib/telemetry-server';
+import { D1RosterAdapter } from './d1-adapter';
+import { D1Database, getD1Database } from '@/lib/db/d1';
 
 export interface RosterMemberDirectoryItem {
   cardNumber: string;
@@ -929,13 +931,49 @@ export class InMemoryRosterAdapter implements RosterStorageAdapter {
  * Deep MemberRosterService
  */
 export class MemberRosterService {
-  constructor(private storage: RosterStorageAdapter = new PostgresRosterAdapter()) {}
+  private explicitAdapter = false;
+  private cachedD1Adapter: D1RosterAdapter | null = null;
+  private cachedD1Db: D1Database | null = null;
+
+  constructor(private storage: RosterStorageAdapter = new PostgresRosterAdapter()) {
+    if (arguments.length > 0 && storage !== undefined) {
+      this.explicitAdapter = true;
+    }
+  }
 
   /**
    * Sets the active storage adapter (useful for testing or swapping to in-memory mode)
    */
   setStorageAdapter(adapter: RosterStorageAdapter): void {
     this.storage = adapter;
+    this.explicitAdapter = true;
+  }
+
+  /**
+   * Dynamically resolves the active storage adapter.
+   * If an adapter was explicitly injected (e.g. in test suites), it is returned.
+   * Otherwise, if Cloudflare D1 is available (Edge worker isolate with env.DB), D1RosterAdapter is used.
+   * Defaults to PostgresRosterAdapter (Supabase) if D1 is not bound.
+   */
+  async getStorage(): Promise<RosterStorageAdapter> {
+    if (this.explicitAdapter) {
+      return this.storage;
+    }
+
+    try {
+      const d1 = await getD1Database();
+      if (d1) {
+        if (!this.cachedD1Adapter || this.cachedD1Db !== d1) {
+          this.cachedD1Db = d1;
+          this.cachedD1Adapter = new D1RosterAdapter(d1);
+        }
+        return this.cachedD1Adapter;
+      }
+    } catch (e) {
+      console.warn('[MemberRosterService] Failed to resolve D1 database, falling back to default storage:', e);
+    }
+
+    return this.storage;
   }
 
   /**
@@ -954,7 +992,8 @@ export class MemberRosterService {
       };
     }
 
-    let profile = await this.storage.findProfile(user.id);
+    const storage = await this.getStorage();
+    let profile = await storage.findProfile(user.id);
 
     // Auto-heal profile or create initial row if missing
     if (profile) {
@@ -964,11 +1003,11 @@ export class MemberRosterService {
         const updates: Partial<Profile> = {};
         if (!profile.student_id && metaStudentId) updates.student_id = metaStudentId;
         if (!profile.university && metaUni) updates.university = metaUni;
-        const healed = await this.storage.upsertProfile(user.id, updates);
+        const healed = await storage.upsertProfile(user.id, updates);
         if (healed) profile = healed;
       }
     } else {
-      profile = await this.storage.upsertProfile(user.id, {
+      profile = await storage.upsertProfile(user.id, {
         full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Climber',
         student_id: user.user_metadata?.student_id || null,
         university: user.user_metadata?.university || "King's College London",
@@ -979,7 +1018,7 @@ export class MemberRosterService {
     // Determine active student ID
     let activeStudentId = profile?.student_id || user.user_metadata?.student_id || null;
     if (!activeStudentId) {
-      const linkedRecord = await this.storage.findRosterRecordByUserId(user.id);
+      const linkedRecord = await storage.findRosterRecordByUserId(user.id);
       if (linkedRecord?.cardNumber) {
         activeStudentId = linkedRecord.cardNumber;
       }
@@ -995,10 +1034,10 @@ export class MemberRosterService {
         cleanId = `K${cleanId}`;
       }
       boundStudentId = cleanId;
-      suRecord = await this.storage.findRosterRecord(cleanId);
+      suRecord = await storage.findRosterRecord(cleanId);
 
       if (suRecord && suRecord.suStatus !== 'revoked') {
-        this.storage.bindRosterRecord(cleanId, user.id, suRecord).catch(() => {});
+        storage.bindRosterRecord(cleanId, user.id, suRecord).catch(() => {});
         membership = {
           id: suRecord.cardNumber,
           user_id: user.id,
@@ -1042,6 +1081,7 @@ export class MemberRosterService {
     emergencyPhone?: string | null;
     dietary?: string | null;
   }): Promise<{ success: boolean; profile: Profile | null; safetyCheck: SafetyCompletenessResult }> {
+    const storage = await this.getStorage();
     const effectiveUniversity = sanitizeUniversity(
       data.university === 'Other UK Institution' ? data.customUniversity : data.university
     );
@@ -1054,7 +1094,7 @@ export class MemberRosterService {
       dietary_requirements: typeof data.dietary === 'string' ? data.dietary.trim().slice(0, 500) : null,
     };
 
-    const updated = await this.storage.upsertProfile(userId, updatePayload);
+    const updated = await storage.upsertProfile(userId, updatePayload);
     const safetyCheck = checkSafetyProfileCompleteness(updated);
 
     return {
@@ -1068,6 +1108,7 @@ export class MemberRosterService {
    * Links a KCL student ID or Committee-issued Associate ID to an authenticated Climber account.
    */
   async linkStudentId(userId: string, rawStudentId: string): Promise<LinkMemberResult> {
+    const storage = await this.getStorage();
     let cleanId = (rawStudentId || '').trim().toUpperCase();
     if (/^\d{6,9}$/.test(cleanId)) {
       cleanId = `K${cleanId}`;
@@ -1084,7 +1125,7 @@ export class MemberRosterService {
     const safeDisplayId = cleanId.replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
 
     // 1. Conflict check: already bound in profiles table?
-    const existingProfile = await this.storage.findProfileByStudentId(cleanId);
+    const existingProfile = await storage.findProfileByStudentId(cleanId);
     if (existingProfile && existingProfile.id !== userId) {
       return {
         success: false,
@@ -1094,7 +1135,7 @@ export class MemberRosterService {
     }
 
     // 2. Conflict check: already bound in kclsu_roster table?
-    const existingRoster = await this.storage.findRosterRecord(cleanId);
+    const existingRoster = await storage.findRosterRecord(cleanId);
     if ((existingRoster as any)?.user_id && (existingRoster as any).user_id !== userId) {
       return {
         success: false,
@@ -1126,7 +1167,7 @@ export class MemberRosterService {
     }
 
     // 4. Bind roster record and update profile
-    await this.storage.bindRosterRecord(cleanId, userId, memberRecord);
+    await storage.bindRosterRecord(cleanId, userId, memberRecord);
     const profileUpdates: Partial<Profile> = {
       student_id: cleanId,
       full_name: memberRecord.name,
@@ -1134,7 +1175,7 @@ export class MemberRosterService {
     if (memberRecord.university) {
       profileUpdates.university = memberRecord.university;
     }
-    await this.storage.upsertProfile(userId, profileUpdates);
+    await storage.upsertProfile(userId, profileUpdates);
 
     // 5. Emit activation telemetry
     trackServerEvent('membership_activated', {
@@ -1168,7 +1209,8 @@ export class MemberRosterService {
     nextAssociateId: string;
     members: RosterMemberDirectoryItem[];
   }> {
-    const result = await this.storage.listRosterWithProfiles();
+    const storage = await this.getStorage();
+    const result = await storage.listRosterWithProfiles();
     const associateCount = result.members.filter(m => m.isAssociate || !m.cardNumber.toUpperCase().startsWith('K')).length;
     const awaitingSuCount = result.members.filter(m => m.suStatus === 'awaiting_su').length;
     const nextAssociateId = generateNextAssociateId(result.members.map(m => m.cardNumber), '26');
@@ -1201,7 +1243,8 @@ export class MemberRosterService {
       return { valid: false, error: 'Invalid membership ID characters', statusCode: 400 };
     }
 
-    return this.storage.verifyPublicPass(clean);
+    const storage = await this.getStorage();
+    return storage.verifyPublicPass(clean);
   }
 
   /**
@@ -1231,7 +1274,8 @@ export class MemberRosterService {
       };
     }
 
-    const { count, error } = await this.storage.upsertRosterRecords(records);
+    const storage = await this.getStorage();
+    const { count, error } = await storage.upsertRosterRecords(records);
     if (error) {
       return {
         success: false,
@@ -1244,7 +1288,7 @@ export class MemberRosterService {
 
     return {
       success: true,
-      source: this.storage.isConfigured() ? 'supabase' : 'local_preview',
+      source: storage instanceof D1RosterAdapter ? 'cloudflare_d1' : (storage.isConfigured() ? 'supabase' : 'local_preview'),
       totalSynced: count,
       records,
     };
@@ -1255,7 +1299,8 @@ export class MemberRosterService {
    * shielding it from future CSV reconciliation overwrites.
    */
   async updateMemberName(cardNumber: string, fullName: string): Promise<{ success: boolean; error?: string }> {
-    return this.storage.updateMemberName(cardNumber, fullName);
+    const storage = await this.getStorage();
+    return storage.updateMemberName(cardNumber, fullName);
   }
 
   /**
@@ -1270,7 +1315,8 @@ export class MemberRosterService {
       return { success: false, error: 'Please provide the associate member\'s full name.' };
     }
 
-    const currentRoster = await this.storage.listRosterWithProfiles();
+    const storage = await this.getStorage();
+    const currentRoster = await storage.listRosterWithProfiles();
     const existingCards = currentRoster.members.map(m => m.cardNumber);
     const requestedId = input.customCardNumber || input.cardNumber;
     const cardNumber = requestedId && requestedId.trim()
@@ -1281,7 +1327,7 @@ export class MemberRosterService {
       return { success: false, error: 'Invalid custom Associate ID format' };
     }
 
-    const existing = await this.storage.findRosterRecord(cardNumber);
+    const existing = await storage.findRosterRecord(cardNumber);
     if (existing) {
       return { success: false, error: `ID ${cardNumber} already exists in the roster` };
     }
@@ -1309,7 +1355,7 @@ export class MemberRosterService {
       suStatus,
     };
 
-    return this.storage.createAssociateRecord(record);
+    return storage.createAssociateRecord(record);
   }
 
   /**
@@ -1323,7 +1369,8 @@ export class MemberRosterService {
     if (!cardNumber || !cardNumber.trim()) {
       return { success: false, error: 'Card number / Member ID is required.' };
     }
-    return this.storage.updateRosterMember(cardNumber, updates);
+    const storage = await this.getStorage();
+    return storage.updateRosterMember(cardNumber, updates);
   }
 
   /**
@@ -1333,7 +1380,8 @@ export class MemberRosterService {
     if (!cardNumber || !cardNumber.trim()) {
       return { success: false, error: 'Card number / Member ID is required.' };
     }
-    return this.storage.deleteRosterMember(cardNumber);
+    const storage = await this.getStorage();
+    return storage.deleteRosterMember(cardNumber);
   }
 }
 

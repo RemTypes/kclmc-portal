@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { D1RosterAdapter } from '@/lib/roster/d1-adapter';
-import { D1Database, D1PreparedStatement } from '@/lib/db/d1';
+import { D1Database, D1PreparedStatement, setD1DatabaseOverride } from '@/lib/db/d1';
+import { MemberRosterService } from '@/lib/roster/service';
 import { KclsuMemberRecord } from '@/lib/roster';
 
 /**
@@ -89,9 +90,10 @@ class MockD1PreparedStatement implements D1PreparedStatement {
     // listRosterWithProfiles join query
     if (q.includes('FROM kclsu_roster r') && q.includes('LEFT JOIN profiles p')) {
       const joined = this.db.tables.kclsu_roster.map(r => {
-        const prof = this.db.tables.profiles.find(p => p.id === r.user_id) || {};
+        const prof = this.db.tables.profiles.find(p => (r.user_id && p.id === r.user_id) || (!r.user_id && p.student_id === r.card_number)) || {};
         return {
           ...r,
+          profile_full_name: prof.full_name || null,
           phone: prof.phone || null,
           emergency_contact_name: prof.emergency_contact_name || null,
           emergency_contact_phone: prof.emergency_contact_phone || null,
@@ -372,5 +374,62 @@ describe('Cloudflare D1 Roster Storage Adapter (D1RosterAdapter)', () => {
     expect(deleteRes.success).toBe(true);
     const deleted = await adapter.findRosterRecord('K26000003');
     expect(deleted).toBeNull();
+  });
+});
+
+describe('MemberRosterService dynamic D1 resolution', () => {
+  let mockDb: MockD1Database;
+
+  beforeEach(() => {
+    mockDb = new MockD1Database();
+  });
+
+  afterEach(() => {
+    setD1DatabaseOverride(null);
+  });
+
+  it('dynamically uses D1RosterAdapter when D1 database is available', async () => {
+    setD1DatabaseOverride(mockDb);
+    const service = new MemberRosterService();
+
+    const storage = await service.getStorage();
+    expect(storage).toBeInstanceOf(D1RosterAdapter);
+
+    await service.syncRoster([
+      {
+        cardNumber: 'K26001234',
+        name: 'Alex Honnold',
+        rawPurchaser: 'HONNOLD, Alex',
+        tier: 'recreational',
+        productName: 'Rec',
+        transactionId: 'TX-D1-1',
+        purchaseDate: '20 Sep 2026',
+      },
+    ]);
+
+    const roster = await service.listRoster();
+    expect(roster.source).toBe('cloudflare_d1');
+    expect(roster.total).toBe(1);
+    expect(roster.members[0].name).toBe('Alex Honnold');
+  });
+
+  it('preserves explicitly injected storage adapter even if D1 is bound', async () => {
+    setD1DatabaseOverride(mockDb);
+    const customMockAdapter = {
+      isConfigured: () => true,
+      listRosterWithProfiles: async () => ({
+        source: 'custom_mock',
+        members: [],
+        socialCount: 0,
+        recreationalCount: 0,
+      }),
+    } as any;
+
+    const service = new MemberRosterService(customMockAdapter);
+    const storage = await service.getStorage();
+    expect(storage).toBe(customMockAdapter);
+
+    const roster = await service.listRoster();
+    expect(roster.source).toBe('custom_mock');
   });
 });
