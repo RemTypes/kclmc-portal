@@ -76,6 +76,19 @@ export class D1RosterAdapter implements RosterStorageAdapter {
     const avatar_url = data.avatar_url ?? existing?.avatar_url ?? null;
     const now = new Date().toISOString();
 
+    // FAILSAFE TIER 2: Edge User Shadowing
+    // Automatically ensure the parent `users` record exists so foreign key constraints never fail for new signups
+    const shadowEmail = `${userId}@shadow.kclmc.internal`;
+    await db
+      .prepare(`
+        INSERT INTO users (id, email, password_hash, salt, role, created_at, updated_at)
+        VALUES (?, ?, 'AUTH_EXTERNAL_SUPABASE', 'EXTERNAL', ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          updated_at = excluded.updated_at
+      `)
+      .bind(userId, shadowEmail, role, now, now)
+      .run();
+
     await db
       .prepare(`
         INSERT INTO profiles (
@@ -135,6 +148,14 @@ export class D1RosterAdapter implements RosterStorageAdapter {
     const db = await this.getDb();
     const cleanId = cardNumber.trim().toUpperCase();
     const now = new Date().toISOString();
+
+    if (userId) {
+      // FAILSAFE: Ensure parent profile and user record exist if linking is called before profile creation
+      const prof = await this.findProfile(userId);
+      if (!prof) {
+        await this.upsertProfile(userId, { full_name: memberData?.name || 'Climber' });
+      }
+    }
 
     if (memberData) {
       await db

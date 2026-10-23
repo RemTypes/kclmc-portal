@@ -11,6 +11,7 @@ class MockD1Database implements D1Database {
   public tables: Record<string, any[]> = {
     profiles: [],
     kclsu_roster: [],
+    users: [],
   };
 
   prepare(query: string): D1PreparedStatement {
@@ -107,6 +108,19 @@ class MockD1PreparedStatement implements D1PreparedStatement {
 
   async run(): Promise<{ success: boolean; meta?: any }> {
     const q = this.query.trim();
+
+    // INSERT INTO users
+    if (q.includes('INSERT INTO users')) {
+      const [id, email, password_hash, salt, role, created_at, updated_at] = this.boundValues;
+      const idx = this.db.tables.users.findIndex(u => u.id === id);
+      const row = { id, email, password_hash, salt, role, created_at, updated_at };
+      if (idx >= 0) {
+        this.db.tables.users[idx] = { ...this.db.tables.users[idx], ...row };
+      } else {
+        this.db.tables.users.push(row);
+      }
+      return { success: true };
+    }
 
     // INSERT INTO profiles
     if (q.includes('INSERT INTO profiles')) {
@@ -431,5 +445,70 @@ describe('MemberRosterService dynamic D1 resolution', () => {
 
     const roster = await service.listRoster();
     expect(roster.source).toBe('custom_mock');
+  });
+
+  // TIER 1: Kill-Switch Feature Flag
+  it('instantly reverts to Supabase storage when ROSTER_STORAGE_ENGINE is set to supabase', async () => {
+    setD1DatabaseOverride(mockDb);
+    const originalEnv = process.env.ROSTER_STORAGE_ENGINE;
+    try {
+      process.env.ROSTER_STORAGE_ENGINE = 'supabase';
+      const service = new MemberRosterService();
+      const storage = await service.getStorage();
+      expect(storage).not.toBeInstanceOf(D1RosterAdapter);
+    } finally {
+      process.env.ROSTER_STORAGE_ENGINE = originalEnv;
+    }
+  });
+
+  // TIER 2: Edge User Shadowing (No FK crash)
+  it('automatically shadows parent user in users table on profile upsert to prevent FK violations', async () => {
+    const adapter = new D1RosterAdapter(mockDb);
+    const brandNewId = 'new-climber-uuid-' + Date.now();
+
+    const profile = await adapter.upsertProfile(brandNewId, {
+      full_name: 'New Climber',
+      university: "King's College London",
+      student_id: 'K26008888',
+    });
+
+    expect(profile).toBeDefined();
+    expect(profile?.full_name).toBe('New Climber');
+
+    // Verify shadow user was created in users table
+    const shadowUser = mockDb.tables.users.find(u => u.id === brandNewId);
+    expect(shadowUser).toBeDefined();
+    expect(shadowUser.email).toContain('@shadow.kclmc.internal');
+  });
+
+  // TIER 3: Circuit Breaker Fallback
+  it('circuit breaker catches D1 runtime errors and fails over to secondary storage', async () => {
+    // Force mockDb to throw on prepare
+    mockDb.prepare = () => {
+      throw new Error('D1 transient database lock error');
+    };
+    setD1DatabaseOverride(mockDb);
+
+    let fallbackCalled = false;
+    const fallbackStorage = {
+      isConfigured: () => true,
+      listRosterWithProfiles: async () => {
+        fallbackCalled = true;
+        return {
+          source: 'supabase_fallback',
+          members: [],
+          socialCount: 0,
+          recreationalCount: 0,
+        };
+      },
+    } as any;
+
+    const service = new MemberRosterService(fallbackStorage);
+    // Remove explicit adapter flag to simulate production runtime fallback
+    (service as any).explicitAdapter = false;
+
+    const result = await service.listRoster();
+    expect(fallbackCalled).toBe(true);
+    expect(result.source).toBe('supabase_fallback');
   });
 });

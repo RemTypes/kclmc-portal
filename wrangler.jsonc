@@ -24,6 +24,7 @@
     }
   },
   "vars": {
+    "ROSTER_STORAGE_ENGINE": "d1",
     "NEXT_PUBLIC_SUPABASE_URL": "https://bsvnyibipcwrcyzqilge.supabase.co",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg",
     "SUPERADMIN_EMAIL": "admin@kclmc.org",
@@ -43,6 +44,7 @@
       }
     ],
     "vars": {
+      "ROSTER_STORAGE_ENGINE": "d1",
       "NEXT_PUBLIC_SUPABASE_URL": "https://bsvnyibipcwrcyzqilge.supabase.co",
       "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg",
       "SUPERADMIN_EMAIL": "admin@kclmc.org",
