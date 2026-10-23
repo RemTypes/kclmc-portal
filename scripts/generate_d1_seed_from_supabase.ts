@@ -106,7 +106,59 @@ async function runExport() {
     `-- Exported At: ${new Date().toISOString()}`,
     '-- ============================================================',
     '',
+    'PRAGMA foreign_keys = OFF;',
+    '',
   ];
+
+  const knownUserIds = new Set<string>();
+
+  // Export auth users using admin API
+  try {
+    const { data: authData, error: authErr } = await supabase.auth.admin.listUsers();
+    if (!authErr && authData?.users?.length) {
+      console.log(`  ✔ auth.users: ${authData.users.length} accounts exported`);
+      allStatements.push('-- Data for table: users (Migrated from Supabase Auth)');
+      for (const u of authData.users) {
+        knownUserIds.add(u.id);
+        const id = escapeSqlValue(u.id);
+        const email = escapeSqlValue(u.email);
+        const createdAt = escapeSqlValue(u.created_at);
+        const updatedAt = escapeSqlValue(u.updated_at || u.created_at);
+        const meta = u.user_metadata || {};
+        const role = meta.role ?? (String(u.email || '').includes('admin@kclmc.org') ? 2 : 0);
+        const mfaSecret = escapeSqlValue(meta.totp_secret || null);
+        const mfaBackup = escapeSqlValue(meta.backup_codes || null);
+
+        allStatements.push(`INSERT OR REPLACE INTO users (id, email, password_hash, salt, role, mfa_secret, mfa_backup_codes, created_at, updated_at) VALUES (${id}, ${email}, 'MIGRATED_ACCOUNT', '', ${role}, ${mfaSecret}, ${mfaBackup}, ${createdAt}, ${updatedAt});`);
+      }
+      allStatements.push('');
+    }
+  } catch (err: any) {
+    console.warn('  ⚠️ Could not export auth.users:', err.message);
+  }
+
+  // Pre-seed any profiles that don't have an auth.users record
+  try {
+    const { data: profileRows } = await supabase.from('profiles').select('id, student_id, full_name');
+    if (profileRows) {
+      let missingCount = 0;
+      for (const p of profileRows) {
+        if (!knownUserIds.has(p.id)) {
+          knownUserIds.add(p.id);
+          missingCount++;
+          const id = escapeSqlValue(p.id);
+          const emailVal = p.student_id ? `${String(p.student_id).toLowerCase()}@kcl.ac.uk` : `${p.id.slice(0, 8)}@kclmc.org`;
+          const email = escapeSqlValue(emailVal);
+          allStatements.push(`INSERT OR REPLACE INTO users (id, email, password_hash, salt, role, created_at, updated_at) VALUES (${id}, ${email}, 'MIGRATED_PROFILE', '', 0, datetime('now'), datetime('now'));`);
+        }
+      }
+      if (missingCount > 0) {
+        console.log(`  ✔ Synthesized ${missingCount} parent user accounts for existing profiles`);
+      }
+    }
+  } catch (err: any) {
+    console.warn('  ⚠️ Could not reconcile profile users:', err.message);
+  }
 
   for (const table of tables) {
     const stmts = await exportTableToSql(table);
@@ -116,6 +168,8 @@ async function runExport() {
       allStatements.push('');
     }
   }
+
+  allStatements.push('PRAGMA foreign_keys = ON;');
 
   const outDir = path.resolve(process.cwd(), 'd1');
   if (!fs.existsSync(outDir)) {
