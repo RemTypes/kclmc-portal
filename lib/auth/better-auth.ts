@@ -29,7 +29,13 @@ export interface BetterAuthEnv {
   [key: string]: any;
 }
 
-const EPHEMERAL_DEV_SECRET = crypto.randomBytes(32).toString("hex");
+let ephemeralDevSecret: string | null = null;
+function getEphemeralDevSecret(): string {
+  if (!ephemeralDevSecret) {
+    ephemeralDevSecret = crypto.randomBytes(32).toString("hex");
+  }
+  return ephemeralDevSecret;
+}
 
 export function createBetterAuth(env: BetterAuthEnv) {
   if (!env?.DB) {
@@ -46,7 +52,7 @@ export function createBetterAuth(env: BetterAuthEnv) {
       throw new Error("[BetterAuth] Missing or insecure BETTER_AUTH_SECRET environment secret.");
     }
   }
-  const secret = rawSecret || EPHEMERAL_DEV_SECRET;
+  const secret = rawSecret || getEphemeralDevSecret();
 
   const baseURL =
     env.BETTER_AUTH_URL ||

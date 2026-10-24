@@ -48,7 +48,13 @@ function hashToken(val: string): string {
   return crypto.createHash('sha256').update(val).digest('hex');
 }
 
-const EPHEMERAL_2FA_SECRET = crypto.randomBytes(32).toString('hex');
+let ephemeral2FASecret: string | null = null;
+function getEphemeral2FASecret(): string {
+  if (!ephemeral2FASecret) {
+    ephemeral2FASecret = crypto.randomBytes(32).toString('hex');
+  }
+  return ephemeral2FASecret;
+}
 
 function getTwoFactorSecretKey(): Buffer {
   const secret =
@@ -61,7 +67,7 @@ function getTwoFactorSecretKey(): Buffer {
     if (process.env.NODE_ENV === 'production' && process.env.NEXT_PHASE !== 'phase-production-build') {
       throw new Error('[2FA] Missing mandatory server-side secret key for 2FA HMAC sealing in production.');
     }
-    return crypto.createHash('sha256').update(`kclmc-2fa-seal:${EPHEMERAL_2FA_SECRET}`).digest();
+    return crypto.createHash('sha256').update(`kclmc-2fa-seal:${getEphemeral2FASecret()}`).digest();
   }
   return crypto.createHash('sha256').update(`kclmc-2fa-seal:${secret}`).digest();
 }
@@ -75,9 +81,13 @@ export function seal2FAAttestation(userId: string): string {
   if (!userId) return '';
   const timestamp = Date.now();
   const payload = `${userId}:${timestamp}`;
-  const key = getTwoFactorSecretKey();
-  const signature = crypto.createHmac('sha256', key).update(payload).digest('hex');
-  return `${userId}.${timestamp}.${signature}`;
+  try {
+    const key = getTwoFactorSecretKey();
+    const signature = crypto.createHmac('sha256', key).update(payload).digest('hex');
+    return `${userId}.${timestamp}.${signature}`;
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -102,10 +112,10 @@ export function verify2FAAttestation(token?: string | null, expectedUserId?: str
   }
 
   const payload = `${tokenUserId}:${timestampStr}`;
-  const key = getTwoFactorSecretKey();
-  const expectedSig = crypto.createHmac('sha256', key).update(payload).digest('hex');
 
   try {
+    const key = getTwoFactorSecretKey();
+    const expectedSig = crypto.createHmac('sha256', key).update(payload).digest('hex');
     const a = Buffer.from(signature, 'hex');
     const b = Buffer.from(expectedSig, 'hex');
     if (a.length !== b.length) return false;
