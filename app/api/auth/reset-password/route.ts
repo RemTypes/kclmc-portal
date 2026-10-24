@@ -4,6 +4,8 @@ import { checkRateLimit, recordFailedAttempt, recordSuccessfulAttempt } from '@/
 import { validatePasswordStrength } from '@/lib/security/password-validator';
 import { applySessionCookies, setSessionCookies } from '@/lib/security/cookies';
 import { autoBumpUserPasswordInD1 } from '@/lib/security/password-hasher';
+import { getCloudflareEnv, getD1Database } from '@/lib/db/d1';
+import { createBetterAuth } from '@/lib/auth/better-auth';
 
 function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -20,7 +22,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const { password } = body;
+    const { password, token } = body;
 
     // 1. Rate limiting on password reset
     const rateCheck = checkRateLimit(ip);
@@ -46,7 +48,47 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Update password via Supabase server client (supports cookie session and Bearer token)
+    // 3. If a Better Auth reset token was provided in the request
+    if (token && typeof token === 'string' && token.trim()) {
+      const cleanToken = token.trim();
+      const env = await getCloudflareEnv();
+      const db = (await getD1Database()) || env?.DB;
+
+      if (db) {
+        try {
+          const auth = createBetterAuth({ ...env, DB: db });
+          const baRes = await auth.api.resetPassword({
+            body: {
+              newPassword: password,
+              token: cleanToken,
+            },
+            asResponse: true,
+          });
+
+          if (baRes.ok) {
+            recordSuccessfulAttempt(ip);
+            const sessionCookie = baRes.headers.get('set-cookie');
+            const response = NextResponse.json({
+              success: true,
+              message: 'Your password has been reset successfully. You are now logged in.',
+            });
+            if (sessionCookie) {
+              response.headers.set('set-cookie', sessionCookie);
+            }
+            return response;
+          } else {
+            const errData = await baRes.json().catch(() => ({}));
+            const errMsg = errData.message || 'The password reset link is invalid or has expired.';
+            recordFailedAttempt(ip, undefined, errMsg);
+            return NextResponse.json({ error: errMsg }, { status: 400 });
+          }
+        } catch (baErr: any) {
+          console.warn('[RESET PASSWORD] Better Auth reset failed:', baErr);
+        }
+      }
+    }
+
+    // 4. Fallback: Update password via Supabase server client (supports cookie session and Bearer token)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsvnyibipcwrcyzqilge.supabase.co';
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg';
 
@@ -99,31 +141,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    recordSuccessfulAttempt(ip, data.user?.email);
+    recordSuccessfulAttempt(ip);
 
-    // JIT Password Auto-Bump to Cloudflare D1
-    if (data?.user?.id) {
+    // Auto-bump the newly set password into Cloudflare D1
+    if (data?.user?.id && data?.user?.email) {
       try {
-        await autoBumpUserPasswordInD1(data.user.id, data.user.email || '', password);
+        await autoBumpUserPasswordInD1(data.user.id, data.user.email, password, 0);
       } catch (bumpErr) {
-        console.warn('[ResetPassword] JIT password auto-bump non-fatal error:', bumpErr);
+        console.warn('[RESET PASSWORD] D1 auto-bump notice:', bumpErr);
       }
     }
 
     const response = NextResponse.json({
       success: true,
-      message: 'Password updated successfully. You are now logged in.',
+      message: 'Password updated successfully.',
     });
 
     if (cookiesToSet.length > 0) {
       applySessionCookies(response, cookiesToSet);
+    } else if (data?.session) {
+      setSessionCookies(response, data.session);
     }
 
     return response;
   } catch (err: any) {
-    console.error('Reset password handler error:', err);
+    console.error('Password reset handler error:', err);
     return NextResponse.json(
-      { error: 'An unexpected error occurred while resetting your password.' },
+      { error: 'An unexpected error occurred. Please try again later.' },
       { status: 500 }
     );
   }

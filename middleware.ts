@@ -23,10 +23,65 @@ export async function middleware(request: NextRequest) {
   const moduleDef = getModuleByRoute(path);
   if (moduleDef && !moduleDef.enabled && !path.startsWith('/admin')) {
     const hasAuthCookie = request.cookies.getAll().some(
-      c => c.name.startsWith('sb-') || c.name === 'kclmc_session'
+      c => c.name.startsWith('sb-') || c.name === 'kclmc_session' || c.name.includes('better-auth.session_token')
     );
     if (!hasAuthCookie) {
       return NextResponse.redirect(new URL(`/403?from=${encodeURIComponent(path)}&req=disabled`, request.url));
+    }
+  }
+
+  // 1.5. Check Better Auth Edge Session on D1 first (sub-5ms)
+  const hasBetterAuthCookie = request.cookies.getAll().some(c => c.name.includes('better-auth.session_token'));
+  if (hasBetterAuthCookie) {
+    try {
+      const { getCloudflareEnv, getD1Database } = await import('./lib/db/d1');
+      const env = await getCloudflareEnv();
+      const db = (await getD1Database()) || env?.DB;
+      if (db) {
+        const { createBetterAuth } = await import('./lib/auth/better-auth');
+        const auth = createBetterAuth({ ...env, DB: db });
+        const session = await auth.api.getSession({ headers: request.headers });
+
+        if (session?.user) {
+          const baUser = session.user;
+          const role = (baUser as any).role ?? getUserRole(baUser.email);
+
+          // Admin API checks
+          const isAdminApi =
+            path.startsWith('/api/reconcile') ||
+            path === '/api/roster' ||
+            (path === '/api/telemetry' && request.method === 'GET');
+
+          if (isAdminApi && role < 1) {
+            return NextResponse.json({ error: 'Unauthorized: Committee access required' }, { status: 403 });
+          }
+
+          // Admin page clearance
+          if (path.startsWith('/admin') || path === '/status' || path.startsWith('/status/')) {
+            if (role < 1) {
+              return NextResponse.redirect(new URL(`/403?req=committee&from=${encodeURIComponent(path)}`, request.url));
+            }
+            if (moduleDef && !moduleDef.enabled && role < 2) {
+              return NextResponse.redirect(new URL(`/403?from=${encodeURIComponent(path)}&req=disabled`, request.url));
+            }
+            if (path.startsWith('/admin/ml') && role < 2) {
+              return NextResponse.redirect(new URL(`/403?req=superadmin&from=${encodeURIComponent(path)}`, request.url));
+            }
+          }
+
+          // Disabled public module checks
+          if (moduleDef && !moduleDef.enabled && !path.startsWith('/admin')) {
+            if (role < 2) {
+              return NextResponse.redirect(new URL(`/403?from=${encodeURIComponent(path)}&req=disabled`, request.url));
+            }
+          }
+
+          // Authenticated via Better Auth, allow pass-through
+          return supabaseResponse;
+        }
+      }
+    } catch (baErr) {
+      console.warn('[Middleware] Better Auth edge resolution non-fatal warning:', baErr);
     }
   }
 

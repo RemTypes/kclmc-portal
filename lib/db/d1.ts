@@ -80,3 +80,29 @@ export async function getD1Database(): Promise<D1Database | null> {
 
   return null;
 }
+
+/**
+ * Returns the Cloudflare Worker environment bindings (DB, EMAIL, etc.).
+ */
+export async function getCloudflareEnv(): Promise<Record<string, any>> {
+  try {
+    const { getCloudflareContext } = await import('@opennextjs/cloudflare');
+    let ctx: any;
+    try {
+      ctx = await (getCloudflareContext as any)({ async: true });
+    } catch {
+      ctx = await getCloudflareContext();
+    }
+    if (ctx?.env) {
+      return ctx.env;
+    }
+  } catch {
+    // Not running inside Cloudflare Worker runtime
+  }
+
+  const globalEnv = (globalThis as any)?.env;
+  if (globalEnv) return globalEnv;
+
+  return (globalThis as any) || {};
+}
+
