@@ -27,9 +27,12 @@ export async function getAuthenticatedUser(request?: Request): Promise<Authentic
 
       let headersObj: Headers;
       if (request?.headers) {
-        headersObj = request.headers;
+        headersObj = new Headers(request.headers);
       } else {
         headersObj = new Headers();
+      }
+
+      if (!headersObj.has('cookie')) {
         try {
           const { cookies } = await import('next/headers');
           const c = await cookies();
@@ -46,8 +49,15 @@ export async function getAuthenticatedUser(request?: Request): Promise<Authentic
           profile = await db.prepare('SELECT * FROM profiles WHERE id = ?').bind(u.id).first();
         } catch {}
 
-        const rawRole = (u as any).role ?? profile?.role ?? getUserRole(u.email);
-        const role = (rawRole === 1 || rawRole === 2 ? rawRole : 0) as Role;
+        let role: Role = 0;
+        const emailRole = getUserRole(u.email);
+        if (emailRole >= 1) {
+          role = emailRole;
+        } else if (profile?.role === 1 || profile?.role === 2) {
+          role = profile.role as Role;
+        } else if ((u as any).role === 1 || (u as any).role === 2) {
+          role = (u as any).role as Role;
+        }
 
         return {
           id: u.id,

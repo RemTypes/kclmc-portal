@@ -44,7 +44,20 @@ export async function middleware(request: NextRequest) {
 
         if (session?.user) {
           const baUser = session.user;
-          const role = (baUser as any).role ?? getUserRole(baUser.email);
+          const emailRole = getUserRole(baUser.email);
+          let role = 0;
+          if (emailRole >= 1) {
+            role = emailRole;
+          } else if ((baUser as any).role === 1 || (baUser as any).role === 2) {
+            role = (baUser as any).role;
+          } else {
+            try {
+              const profile = await db.prepare('SELECT role FROM profiles WHERE id = ?').bind(baUser.id).first();
+              if (profile && ((profile as any).role === 1 || (profile as any).role === 2)) {
+                role = (profile as any).role;
+              }
+            } catch {}
+          }
 
           // Admin API checks
           const isAdminApi =

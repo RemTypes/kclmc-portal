@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { getAuthenticatedUserRole } from '@/lib/auth';
+import { createAdminClient } from '@/lib/supabase/server';
+import { getAuthenticatedUser } from '@/lib/auth/server';
 import {
   parseKclsuSalesForBmc,
   parseBmcFormResponses,
@@ -14,31 +14,16 @@ import { sendSmtpEmail } from '@/lib/bmc_smtp';
 
 export async function POST(request: Request) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsvnyibipcwrcyzqilge.supabase.co';
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg';
-
-    const serverSupabase = createServerClient(supabaseUrl, supabaseKey, {
-      cookies: {
-        getAll() {
-          const cookieHeader = request.headers.get('cookie') || '';
-          return cookieHeader.split(';').map(c => {
-            const [name, ...rest] = c.trim().split('=');
-            return { name, value: rest.join('=') };
-          });
-        },
-        setAll() {},
-      },
-    });
-
-    const { data: { user } } = await serverSupabase.auth.getUser();
+    const user = await getAuthenticatedUser(request);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized: Sign in required' }, { status: 401 });
     }
 
-    const role = await getAuthenticatedUserRole(serverSupabase, user);
-    if (role < 1) {
+    if (user.role < 1) {
       return NextResponse.json({ error: 'Forbidden: Committee clearance required' }, { status: 403 });
     }
+
+    const serverSupabase = createAdminClient();
 
     const body = await request.json().catch(() => ({}));
     const {

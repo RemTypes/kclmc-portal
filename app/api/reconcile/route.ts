@@ -1,15 +1,22 @@
 import { NextResponse } from 'next/server';
-import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
-import { getAuthenticatedUserRole } from '@/lib/auth';
+import { createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
+import { getAuthenticatedUser } from '@/lib/auth/server';
 import { store } from '@/lib/store';
 
 export async function POST(request: Request) {
   try {
-    if (isSupabaseConfigured()) {
-      const userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      const role = await getAuthenticatedUserRole(userClient, user);
-      if (role < 1) {
+    const user = await getAuthenticatedUser(request);
+    if (user) {
+      if (user.role < 1) {
+        return NextResponse.json(
+          { error: 'Unauthorized: Committee access required to reconcile transactions' },
+          { status: 403 }
+        );
+      }
+    } else {
+      const { getD1Database } = await import('@/lib/db/d1');
+      const d1 = await getD1Database();
+      if (d1 || isSupabaseConfigured()) {
         return NextResponse.json(
           { error: 'Unauthorized: Committee access required to reconcile transactions' },
           { status: 403 }
