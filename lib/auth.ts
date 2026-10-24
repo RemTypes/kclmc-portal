@@ -45,14 +45,18 @@ export async function getAuthenticatedUserRole(
   // 2. Query profiles table in Supabase if client & user ID exist
   if (supabase && typeof supabase.from === 'function' && user.id) {
     try {
-      const query = supabase.from('profiles').select('role').eq('id', user.id);
-      const res = typeof query?.maybeSingle === 'function'
-        ? await query.maybeSingle()
-        : (typeof query?.single === 'function' ? await query.single() : null);
+      const fromObj = supabase.from('profiles');
+      if (typeof fromObj?.select === 'function') {
+        const query = fromObj.select('role');
+        const eqQuery = typeof query?.eq === 'function' ? query.eq('id', user.id) : null;
+        const res = typeof eqQuery?.maybeSingle === 'function'
+          ? await eqQuery.maybeSingle()
+          : (typeof eqQuery?.single === 'function' ? await eqQuery.single() : null);
 
-      const profile = res?.data;
-      if (profile && (profile.role === 1 || profile.role === 2)) {
-        return profile.role as Role;
+        const profile = res?.data;
+        if (profile && (profile.role === 1 || profile.role === 2)) {
+          return profile.role as Role;
+        }
       }
     } catch (e) {
       console.warn('Failed to query user profile role:', e);
