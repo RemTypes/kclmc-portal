@@ -1,6 +1,8 @@
 import { getCloudflareEnv, getD1Database } from "@/lib/db/d1";
 import { createBetterAuth } from "@/lib/auth/better-auth";
 
+export const dynamic = 'force-dynamic';
+
 async function handler(request: Request) {
   const env = await getCloudflareEnv();
   const db = (await getD1Database()) || env?.DB;

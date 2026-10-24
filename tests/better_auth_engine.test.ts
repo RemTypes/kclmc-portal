@@ -56,7 +56,7 @@ describe('Better Auth & Cloudflare Email Engine', () => {
 
     expect(res.success).toBe(true);
     expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
-      to: [{ email: 'member@kcl.ac.uk' }],
+      to: [{ email: 'member@kcl.ac.uk', name: 'member' }],
       from: { email: 'portal@kclmc.org', name: 'KCLMC Portal' },
       subject: 'Reset Password',
     }));

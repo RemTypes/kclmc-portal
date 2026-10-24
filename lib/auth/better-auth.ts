@@ -91,21 +91,30 @@ export function createBetterAuth(env: BetterAuthEnv) {
       enabled: true,
       requireEmailVerification: false,
       sendResetPassword: async ({ user, url }) => {
-        const { html, text } = renderPasswordResetEmail(user.name || "Climber", url);
+        const recipientName = user.name || user.email.split("@")[0] || "Climber";
+        const { html, text } = renderPasswordResetEmail(recipientName, url);
         await sendEmail(env, {
           to: user.email,
+          name: recipientName,
           subject: "Reset your KCLMC password",
           html,
           text,
         });
       },
     },
+    advanced: {
+      ipAddress: {
+        ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"],
+      },
+    },
     plugins: [
       magicLink({
         sendMagicLink: async ({ email, url }) => {
+          const recipientName = email.split("@")[0] || "Climber";
           const { html, text } = renderMagicLinkEmail(url);
           await sendEmail(env, {
             to: email,
+            name: recipientName,
             subject: "Your 1-click KCLMC sign-in link",
             html,
             text,

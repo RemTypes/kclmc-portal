@@ -7,6 +7,7 @@
 
 export interface SendEmailOptions {
   to: string;
+  name?: string;
   subject: string;
   html: string;
   text: string;
@@ -23,12 +24,13 @@ export async function sendEmail(
 ): Promise<EmailDispatchResult> {
   const fromAddress = process.env.EMAIL_FROM || env?.EMAIL_FROM || "portal@kclmc.org";
   const replyToAddress = "kclmc.committee@gmail.com";
+  const recipientName = options.name?.trim() || options.to.split("@")[0] || "Climber";
 
   // Production dispatch via Cloudflare Workers send_email binding
   if (env?.EMAIL && typeof env.EMAIL.send === 'function') {
     try {
       await env.EMAIL.send({
-        to: [{ email: options.to }],
+        to: [{ email: options.to, name: recipientName }],
         from: { email: fromAddress, name: "KCLMC Portal" },
         replyTo: { email: replyToAddress, name: "KCLMC Committee" },
         subject: options.subject,
