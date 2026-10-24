@@ -4,8 +4,12 @@ import { createBetterAuth } from '@/lib/auth/better-auth';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { getAuthenticatedUserRole } from '@/lib/auth';
 
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse>;
+export async function GET(): Promise<NextResponse>;
+export async function GET(request?: Request): Promise<NextResponse> {
   try {
+    const req = request || new Request('http://localhost:3000/api/auth/me');
+
     // 1. Try resolving Better Auth session directly from D1 on edge (<10ms)
     const env = await getCloudflareEnv();
     const db = (await getD1Database()) || env?.DB;
@@ -13,7 +17,7 @@ export async function GET(request: Request) {
     if (db) {
       try {
         const auth = createBetterAuth({ ...env, DB: db });
-        const session = await auth.api.getSession({ headers: request.headers });
+        const session = await auth.api.getSession({ headers: req.headers });
 
         if (session?.user) {
           const user = session.user;
