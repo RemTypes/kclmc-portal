@@ -39,7 +39,7 @@
     "SMTP_PORT": "465",
     "SMTP_FROM": "King's College London Mountaineering Club <kclmc.committee@gmail.com>",
     "EMAIL_FROM": "portal@kclmc.org",
-    "BETTER_AUTH_URL": "https://kclmc-portal.remy-preston.workers.dev",
+    "BETTER_AUTH_URL": "https://kclmc.org",
     "BETTER_AUTH_SECRET": "kclmc-secret-production-auth-key-2026-edge",
     "WHATSAPP_COMMUNITY_INVITE_URL": "https://chat.whatsapp.com/CPVH7dfM88QCGuFYyLcrDF?s=cl&p=i&mlu=0&ilr=4"
   },
@@ -67,7 +67,7 @@
       "SMTP_PORT": "465",
       "SMTP_FROM": "King's College London Mountaineering Club <kclmc.committee@gmail.com>",
       "EMAIL_FROM": "portal@kclmc.org",
-      "BETTER_AUTH_URL": "https://kclmc-portal.remy-preston.workers.dev",
+      "BETTER_AUTH_URL": "https://kclmc.org",
       "BETTER_AUTH_SECRET": "kclmc-secret-production-auth-key-2026-edge",
       "WHATSAPP_COMMUNITY_INVITE_URL": "https://chat.whatsapp.com/CPVH7dfM88QCGuFYyLcrDF?s=cl&p=i&mlu=0&ilr=4"
     }

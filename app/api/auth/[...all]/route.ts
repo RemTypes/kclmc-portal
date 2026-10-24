@@ -15,7 +15,8 @@ async function handler(request: Request) {
     );
   }
 
-  const auth = createBetterAuth({ ...env, DB: db });
+  const origin = new URL(request.url).origin;
+  const auth = createBetterAuth({ ...env, DB: db, BETTER_AUTH_URL: origin });
   return auth.handler(request);
 }
 

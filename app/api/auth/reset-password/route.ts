@@ -56,7 +56,8 @@ export async function POST(request: Request) {
 
       if (db) {
         try {
-          const auth = createBetterAuth({ ...env, DB: db });
+          const origin = new URL(request.url).origin;
+          const auth = createBetterAuth({ ...env, DB: db, BETTER_AUTH_URL: origin });
           const baRes = await auth.api.resetPassword({
             body: {
               newPassword: password,

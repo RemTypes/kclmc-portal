@@ -46,7 +46,7 @@ export function createBetterAuth(env: BetterAuthEnv) {
     env.BETTER_AUTH_URL ||
     process.env.BETTER_AUTH_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
-    "https://kclmc-portal.remy-preston.workers.dev";
+    "https://kclmc.org";
 
   return betterAuth({
     database: {
@@ -55,6 +55,29 @@ export function createBetterAuth(env: BetterAuthEnv) {
     },
     secret,
     baseURL,
+    trustedOrigins: async (request?: Request) => {
+      const allowed = [
+        "https://kclmc.org",
+        "https://*.kclmc.org",
+        "https://kclmc-portal.remy-preston.workers.dev",
+        "https://*.workers.dev",
+        "https://*.pages.dev",
+        "http://localhost:3000",
+        "http://localhost:*",
+        "http://127.0.0.1:*",
+      ];
+      if (request) {
+        const originHeader = request.headers.get("origin");
+        const referer = request.headers.get("referer");
+        if (originHeader) allowed.push(originHeader);
+        if (referer) {
+          try {
+            allowed.push(new URL(referer).origin);
+          } catch {}
+        }
+      }
+      return allowed;
+    },
     user: {
       additionalFields: {
         role: {

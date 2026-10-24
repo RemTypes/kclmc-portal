@@ -197,7 +197,8 @@ export class AuthSessionService {
 
       if (db) {
         const { createBetterAuth } = await import('@/lib/auth/better-auth');
-        const auth = createBetterAuth({ ...env, DB: db });
+        const reqOrigin = input instanceof Request ? new URL(input.url).origin : undefined;
+        const auth = createBetterAuth({ ...env, DB: db, ...(reqOrigin ? { BETTER_AUTH_URL: reqOrigin } : {}) });
         const baRes = await auth.api.signInEmail({
           body: { email: cleanEmail, password },
           asResponse: true,
