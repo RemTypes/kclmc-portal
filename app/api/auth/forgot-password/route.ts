@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
 import { checkRateLimit, recordFailedAttempt, recordSuccessfulAttempt, verifyCaptchaToken } from '@/lib/security/rate-limiter';
 import { sanitizeEmail } from '@/lib/auth';
+import { getCloudflareEnv, getD1Database } from '@/lib/db/d1';
+import { createBetterAuth } from '@/lib/auth/better-auth';
+import { createServerClient } from '@supabase/ssr';
 
 function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -58,36 +60,58 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3. Supabase password reset request
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsvnyibipcwrcyzqilge.supabase.co';
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg';
-
-    const serverSupabase = createServerClient(supabaseUrl, supabaseKey, {
-      cookies: {
-        getAll() {
-          const cookieHeader = request.headers.get('cookie') || '';
-          return cookieHeader.split(';').map(c => {
-            const [name, ...rest] = c.trim().split('=');
-            return { name, value: rest.join('=') };
-          });
-        },
-        setAll() {},
-      },
-    });
-
+    // 3. Dispatch Password Reset via Better Auth on D1 & Cloudflare Email Service
     const origin = new URL(request.url).origin;
-    const { error: resetError } = await serverSupabase.auth.resetPasswordForEmail(cleanEmail, {
-      redirectTo: `${origin}/auth/callback?next=/update-password`,
-    });
+    const env = await getCloudflareEnv();
+    const db = (await getD1Database()) || env?.DB;
 
-    if (resetError) {
-      recordFailedAttempt(ip, cleanEmail, resetError.message);
-      // Prevent user enumeration by returning consistent success response for security
-      console.warn(`[PASSWORD RESET] Supabase notice for ${cleanEmail}: ${resetError.message}`);
-    } else {
-      recordSuccessfulAttempt(ip, cleanEmail);
+    let dispatched = false;
+    if (db) {
+      try {
+        const auth = createBetterAuth({ ...env, DB: db, BETTER_AUTH_URL: origin });
+        await auth.api.requestPasswordReset({
+          body: {
+            email: cleanEmail,
+            redirectTo: `${origin}/update-password`,
+          },
+        });
+        dispatched = true;
+        recordSuccessfulAttempt(ip, cleanEmail);
+        console.log(`[PASSWORD RESET] Cloudflare Email dispatched for ${cleanEmail}`);
+      } catch (betterAuthErr: any) {
+        console.warn(`[PASSWORD RESET] Better Auth notice for ${cleanEmail}:`, betterAuthErr?.message || betterAuthErr);
+      }
     }
 
+    // 4. Fallback to Supabase password reset if D1 was unavailable
+    if (!dispatched) {
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsvnyibipcwrcyzqilge.supabase.co';
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg';
+
+        const serverSupabase = createServerClient(supabaseUrl, supabaseKey, {
+          cookies: {
+            getAll() { return []; },
+            setAll() {},
+          },
+        });
+
+        const { error: resetError } = await serverSupabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: `${origin}/auth/callback?next=/update-password`,
+        });
+
+        if (resetError) {
+          recordFailedAttempt(ip, cleanEmail, resetError.message);
+          console.warn(`[PASSWORD RESET] Supabase fallback notice for ${cleanEmail}: ${resetError.message}`);
+        } else {
+          recordSuccessfulAttempt(ip, cleanEmail);
+        }
+      } catch (fallbackErr) {
+        console.warn('[PASSWORD RESET] Supabase fallback failed:', fallbackErr);
+      }
+    }
+
+    // Always return generic success response to prevent email enumeration
     return NextResponse.json({
       success: true,
       message: 'If an account exists with this email, a password reset link has been dispatched.',

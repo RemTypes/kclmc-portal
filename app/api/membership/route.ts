@@ -1,21 +1,20 @@
 import { NextResponse } from 'next/server';
-import { createClient, isSupabaseConfigured } from '@/lib/supabase/server';
+import { getAuthenticatedUser } from '@/lib/auth/server';
 import { memberRoster } from '@/lib/roster/service';
+
+export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/membership
  * Resolves current Climber profile, linked student ID, pass tier, and safety compliance.
  */
-export async function GET() {
+export async function GET(request: Request): Promise<NextResponse>;
+export async function GET(): Promise<NextResponse>;
+export async function GET(request?: Request): Promise<NextResponse> {
   try {
-    if (!isSupabaseConfigured()) {
-      return NextResponse.json({ authenticated: false, user: null }, { status: 200 });
-    }
+    const user = await getAuthenticatedUser(request);
 
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json({ authenticated: false, user: null }, { status: 200 });
     }
 
@@ -31,16 +30,11 @@ export async function GET() {
  * POST /api/membership
  * Updates climber safety profile notes (phone, emergency contact).
  */
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   try {
-    if (!isSupabaseConfigured()) {
-      return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
-    }
+    const user = await getAuthenticatedUser(request);
 
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 

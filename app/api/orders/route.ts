@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
-import { getUserRole, getAuthenticatedUserRole } from '@/lib/auth';
+import { createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
+import { getAuthenticatedUser } from '@/lib/auth/server';
 import type { MerchOrder } from '@/types/database';
 
 // In-memory fallback cache for development when Supabase is not configured
@@ -69,10 +69,8 @@ export async function GET(request: Request) {
       }
 
       // Restrict unauthenticated listing of customer PII: require committee role
-      const userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      const role = await getAuthenticatedUserRole(userClient, user);
-      if (role < 1) {
+      const user = await getAuthenticatedUser(request);
+      if (!user || user.role < 1) {
         return NextResponse.json(
           { error: 'Unauthorized: Committee access required to list all orders' },
           { status: 403 }
@@ -223,10 +221,8 @@ export async function PUT(request: Request) {
     }
 
     // Require committee privileges to modify order statuses
-    const userClient = await createClient();
-    const { data: { user } } = await userClient.auth.getUser();
-    const role = await getAuthenticatedUserRole(userClient, user);
-    if (role < 1) {
+    const user = await getAuthenticatedUser(request);
+    if (!user || user.role < 1) {
       return NextResponse.json(
         { error: 'Unauthorized: Committee privileges required to modify orders' },
         { status: 403 }

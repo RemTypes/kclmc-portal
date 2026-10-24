@@ -45,6 +45,16 @@ export function validateProductionSecrets(): EnvValidationResult {
     warnings.push('NOTICE: SUPERADMIN_EMAIL is not explicitly defined; falling back to default committee whitelist.');
   }
 
+  // 5. Better Auth Secret Verification
+  const betterAuthSecret = process.env.BETTER_AUTH_SECRET || '';
+  if (isProd) {
+    if (betterAuthSecret === 'kclmc-secret-production-auth-key-2026-edge') {
+      errors.push('CRITICAL: BETTER_AUTH_SECRET is configured with the publicly leaked key in production!');
+    } else if (!betterAuthSecret) {
+      warnings.push('NOTICE: BETTER_AUTH_SECRET is not configured in process.env; ensure it is provisioned via Cloudflare Worker secrets binding.');
+    }
+  }
+
   if (isProd && errors.length > 0) {
     console.error('[ENV GUARD CRITICAL ERROR]', errors.join('; '));
   }

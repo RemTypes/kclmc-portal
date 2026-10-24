@@ -22,7 +22,7 @@ import { parseKclsuCsv, sanitizeCsvCell } from '@/lib/roster';
 import { getUserRole, getAuthenticatedUserRole, getSafeRedirectUrl, sanitizeStudentId, sanitizeEmail } from '@/lib/auth';
 import { validatePasswordStrength, COMMON_PASSWORDS_BLACKLIST, calculateEntropy } from '@/lib/security/password-validator';
 import { checkRateLimit, recordFailedAttempt, recordSuccessfulAttempt, verifyCaptchaToken, clearRateLimitStores, getSecurityAuditLogs } from '@/lib/security/rate-limiter';
-import { create2FAChallenge, create2FAEnrollmentChallenge, isUser2FAEnrolled, verify2FAChallenge, requiresMandatory2FA, generateBackupCodes, getOrCreateBackupCodes, getUserHashedBackupCodes, setUserHashedBackupCodes, calculateTOTP, verifyTOTP, setUserTOTPSecret, clear2FAStores } from '@/lib/security/two-factor';
+import { create2FAChallenge, create2FAEnrollmentChallenge, isUser2FAEnrolled, verify2FAChallenge, requiresMandatory2FA, generateBackupCodes, getOrCreateBackupCodes, getUserHashedBackupCodes, setUserHashedBackupCodes, calculateTOTP, verifyTOTP, setUserTOTPSecret, clear2FAStores, seal2FAAttestation, verify2FAAttestation } from '@/lib/security/two-factor';
 import { applySessionCookies, setSessionCookies, clearSessionCookies, getAuthCookiePrefix, SESSION_COOKIE_OPTIONS } from '@/lib/security/cookies';
 import { POST as authLoginPost } from '@/app/api/auth/login/route';
 import { POST as authSignupPost } from '@/app/api/auth/signup/route';
@@ -33,6 +33,7 @@ import { POST as authVerifyOtpPost } from '@/app/api/auth/verify-otp/route';
 import { POST as authLogoutPost } from '@/app/api/auth/logout/route';
 import { GET as authMeGet } from '@/app/api/auth/me/route';
 import { GET as membershipGet, POST as membershipPost } from '@/app/api/membership/route';
+import { GET as bmcInsuranceGet } from '@/app/api/admin/bmc-insurance/route';
 import { NextResponse } from 'next/server';
 
 describe('Security Testing Suite', () => {
@@ -440,6 +441,11 @@ describe('Security Testing Suite', () => {
 
     it('safely skips invalid order codes with SQL injection in CSV data', async () => {
       vi.mocked(isSupabaseConfigured).mockReturnValue(false);
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'comm-1', email: 'kclmc.committee@gmail.com' } } }),
+        },
+      } as any);
 
       const rows = [
         { orderCode: "KCL-1234' OR '1'='1", Amount: '20.00' },
@@ -1105,6 +1111,55 @@ describe('Security Testing Suite', () => {
       expect(result.enrolledSecret).toBe(setupSecret);
       expect(result.sessionData).toEqual({ session: { token: 'jwt' } });
     });
+
+    it('seals and verifies cryptographic 2FA attestation tokens tied to user ID', () => {
+      const userId = 'attestation-user-123';
+      const token = seal2FAAttestation(userId);
+      expect(token).toBeTruthy();
+      expect(token.split('.')).toHaveLength(3);
+
+      // Successfully verifies with matching user ID
+      expect(verify2FAAttestation(token, userId)).toBe(true);
+      expect(verify2FAAttestation(token)).toBe(true);
+
+      // Rejects forged / mismatched user ID
+      expect(verify2FAAttestation(token, 'different-user-456')).toBe(false);
+
+      // Rejects plain 'true' string (NEW-002 forge attempt)
+      expect(verify2FAAttestation('true', userId)).toBe(false);
+      expect(verify2FAAttestation('true')).toBe(false);
+
+      // Rejects tampered signature
+      const [u, t, sig] = token.split('.');
+      const tampered = `${u}.${t}.${sig.slice(0, -4)}0000`;
+      expect(verify2FAAttestation(tampered, userId)).toBe(false);
+
+      // Rejects null / empty / malformed tokens
+      expect(verify2FAAttestation(null)).toBe(false);
+      expect(verify2FAAttestation('')).toBe(false);
+      expect(verify2FAAttestation('malformed.token')).toBe(false);
+    });
+
+    it('fails closed and returns false in verify2FAAttestation without throwing if secret is missing in production', () => {
+      const origNodeEnv = process.env.NODE_ENV;
+      const origSecret = process.env.BETTER_AUTH_SECRET;
+      const origSupabase = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      try {
+        (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
+        delete process.env.BETTER_AUTH_SECRET;
+        delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+        delete process.env.NEXTAUTH_SECRET;
+        delete process.env.SUPABASE_JWT_SECRET;
+
+        // Must fail closed (return false) rather than throwing unhandled exception
+        expect(() => verify2FAAttestation('test-user.1700000000000.abc123sig')).not.toThrow();
+        expect(verify2FAAttestation('test-user.1700000000000.abc123sig')).toBe(false);
+      } finally {
+        (process.env as Record<string, string | undefined>).NODE_ENV = origNodeEnv;
+        if (origSecret) process.env.BETTER_AUTH_SECRET = origSecret;
+        if (origSupabase) process.env.SUPABASE_SERVICE_ROLE_KEY = origSupabase;
+      }
+    });
   });
 
   // =========================================================================
@@ -1441,6 +1496,37 @@ describe('Security Testing Suite', () => {
       const data = await res.json();
       expect(data.success).toBe(true);
       expect(data.destination).toBe('/membership');
+    });
+
+    it('GET /api/admin/bmc-insurance enforces handler-level authentication and committee clearance', async () => {
+      // 1. Unauthenticated request -> 401
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: null,
+          }),
+        },
+      } as any);
+
+      const unauthReq = new Request('http://localhost:3000/api/admin/bmc-insurance');
+      const unauthRes = await bmcInsuranceGet(unauthReq);
+      expect(unauthRes.status).toBe(401);
+
+      // 2. Authenticated non-committee member (role 0) -> 403
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: 'u-climber', email: 'climber@kcl.ac.uk' } },
+            error: null,
+          }),
+        },
+      } as any);
+
+      const memberReq = new Request('http://localhost:3000/api/admin/bmc-insurance');
+      const memberRes = await bmcInsuranceGet(memberReq);
+      expect(memberRes.status).toBe(403);
     });
   });
 });
