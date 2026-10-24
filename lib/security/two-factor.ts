@@ -48,14 +48,21 @@ function hashToken(val: string): string {
   return crypto.createHash('sha256').update(val).digest('hex');
 }
 
+const EPHEMERAL_2FA_SECRET = crypto.randomBytes(32).toString('hex');
+
 function getTwoFactorSecretKey(): Buffer {
   const secret =
     process.env.BETTER_AUTH_SECRET ||
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.NEXTAUTH_SECRET ||
-    process.env.SUPABASE_JWT_SECRET ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    'kclmc-secure-production-2fa-token-salt-2026';
+    process.env.SUPABASE_JWT_SECRET;
+
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production' && process.env.NEXT_PHASE !== 'phase-production-build') {
+      throw new Error('[2FA] Missing mandatory server-side secret key for 2FA HMAC sealing in production.');
+    }
+    return crypto.createHash('sha256').update(`kclmc-2fa-seal:${EPHEMERAL_2FA_SECRET}`).digest();
+  }
   return crypto.createHash('sha256').update(`kclmc-2fa-seal:${secret}`).digest();
 }
 

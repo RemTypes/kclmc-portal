@@ -42,11 +42,22 @@ async function handler(request: Request) {
 
         if (!isCommittee && db && email) {
           try {
-            const profile = await db
-              .prepare('SELECT role FROM profiles WHERE LOWER(email) = LOWER(?)')
-              .bind(email)
-              .first();
-            if (profile && ((profile as any).role === 1 || (profile as any).role === 2)) {
+            const row = (await db
+              .prepare(`
+                SELECT COALESCE(p.role, u.role, 0) AS role
+                FROM users u
+                LEFT JOIN profiles p ON p.id = u.id
+                WHERE LOWER(u.email) = LOWER(?)
+                UNION ALL
+                SELECT COALESCE(p.role, ba.role, 0) AS role
+                FROM "user" ba
+                LEFT JOIN profiles p ON p.id = ba.id
+                WHERE LOWER(ba.email) = LOWER(?)
+                LIMIT 1
+              `)
+              .bind(email, email)
+              .first()) as { role: number } | null;
+            if (row && Number(row.role) >= 1) {
               isCommittee = true;
             }
           } catch {}
@@ -81,7 +92,6 @@ async function handler(request: Request) {
     return new Response(
       JSON.stringify({
         error: "Authentication service temporarily unavailable",
-        message: authErr?.message || "Internal auth initialization failure",
       }),
       {
         status: 503,

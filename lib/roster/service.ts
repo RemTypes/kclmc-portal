@@ -1102,7 +1102,7 @@ export class MemberRosterService {
             valid_from: '2026-09-01',
             valid_until: '2027-08-31',
             payment_reference: suRecord.transactionId,
-            is_active: true,
+            is_active: Boolean(safetyCheck.isComplete),
             created_at: new Date().toISOString(),
           };
         }

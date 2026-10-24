@@ -59,12 +59,18 @@ export async function middleware(request: NextRequest) {
           }
 
           // Admin API checks
+          const isOrdersAdminApi =
+            path.startsWith('/api/orders') &&
+            (request.method === 'PUT' ||
+              request.method === 'DELETE' ||
+              (request.method === 'GET' && !request.nextUrl.searchParams.has('code')));
+
           const isAdminApi =
             path.startsWith('/api/admin') ||
             path.startsWith('/api/reconcile') ||
             (path.startsWith('/api/roster') && !path.startsWith('/api/roster/link')) ||
             (path.startsWith('/api/links') && request.method !== 'GET') ||
-            path.startsWith('/api/orders') ||
+            isOrdersAdminApi ||
             (path === '/api/telemetry' && request.method === 'GET');
 
           if (isAdminApi && role < 1) {
@@ -122,12 +128,18 @@ export async function middleware(request: NextRequest) {
       url.searchParams.set('next', path);
       return NextResponse.redirect(url);
     }
+    const isOrdersAdminApi =
+      path.startsWith('/api/orders') &&
+      (request.method === 'PUT' ||
+        request.method === 'DELETE' ||
+        (request.method === 'GET' && !request.nextUrl.searchParams.has('code')));
+
     if (
       path.startsWith('/api/admin') ||
       path.startsWith('/api/reconcile') ||
       (path.startsWith('/api/roster') && !path.startsWith('/api/roster/link')) ||
       (path.startsWith('/api/links') && request.method !== 'GET') ||
-      path.startsWith('/api/orders') ||
+      isOrdersAdminApi ||
       (path === '/api/telemetry' && request.method === 'GET')
     ) {
       return NextResponse.json({ error: 'Unauthorized: Committee access required' }, { status: 403 });
@@ -163,12 +175,18 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // 3. Server-side middleware protection for Admin API endpoints
+  const isOrdersAdminApi =
+    path.startsWith('/api/orders') &&
+    (request.method === 'PUT' ||
+      request.method === 'DELETE' ||
+      (request.method === 'GET' && !request.nextUrl.searchParams.has('code')));
+
   const isAdminApi =
     path.startsWith('/api/admin') ||
     path.startsWith('/api/reconcile') ||
     (path.startsWith('/api/roster') && !path.startsWith('/api/roster/link')) ||
     (path.startsWith('/api/links') && request.method !== 'GET') ||
-    path.startsWith('/api/orders') ||
+    isOrdersAdminApi ||
     (path === '/api/telemetry' && request.method === 'GET');
 
   if (isAdminApi) {
