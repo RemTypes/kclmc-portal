@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { createClient } from '@supabase/supabase-js';
+import { getUserRole } from '../lib/auth';
 
 // Simple parser for .env.local if not already in environment
 function loadEnv() {
@@ -61,8 +62,9 @@ async function syncAllAuthUsers() {
   for (const u of allUsers) {
     const id = u.id;
     const email = String(u.email || '').trim().toLowerCase();
-    const meta = u.user_metadata || {};
-    const role = meta.role ?? (email.includes('admin@kclmc.org') || email.includes('remy.preston') ? 2 : 0);
+    const rawRole = Number((u.app_metadata as any)?.role ?? 0);
+    const emailRole = getUserRole(email);
+    const role = emailRole >= 1 ? emailRole : (rawRole === 1 || rawRole === 2 ? rawRole : 0);
     const createdAt = u.created_at || new Date().toISOString();
     const updatedAt = u.updated_at || createdAt;
 

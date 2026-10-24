@@ -32,12 +32,15 @@ export async function getAuthenticatedUser(request?: Request): Promise<Authentic
         headersObj = new Headers();
       }
 
-      if (!headersObj.has('cookie')) {
+      if (!headersObj.has('cookie') || !headersObj.get('cookie')?.includes('session_token')) {
         try {
           const { cookies } = await import('next/headers');
           const c = await cookies();
           const cookieStr = c.getAll().map((x: any) => `${x.name}=${x.value}`).join('; ');
-          if (cookieStr) headersObj.set('cookie', cookieStr);
+          if (cookieStr) {
+            const existing = headersObj.get('cookie');
+            headersObj.set('cookie', existing ? `${existing}; ${cookieStr}` : cookieStr);
+          }
         } catch {}
       }
 
@@ -55,8 +58,6 @@ export async function getAuthenticatedUser(request?: Request): Promise<Authentic
           role = emailRole;
         } else if (profile?.role === 1 || profile?.role === 2) {
           role = profile.role as Role;
-        } else if ((u as any).role === 1 || (u as any).role === 2) {
-          role = (u as any).role as Role;
         }
 
         return {
@@ -80,13 +81,12 @@ export async function getAuthenticatedUser(request?: Request): Promise<Authentic
 
   // 2. Fallback to Supabase SSR session during migration window
   try {
-    const { createClient, isSupabaseConfigured } = await import('@/lib/supabase/server');
-    if (isSupabaseConfigured()) {
-      const supabase = await createClient();
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
+    const { createClient } = await import('@/lib/supabase/server');
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
       if (!authError && user) {
         let role: Role = 0;
@@ -104,7 +104,6 @@ export async function getAuthenticatedUser(request?: Request): Promise<Authentic
           user_metadata: user.user_metadata || {},
         };
       }
-    }
   } catch (err) {
     console.warn('[getAuthenticatedUser] Supabase check non-fatal error:', err);
   }

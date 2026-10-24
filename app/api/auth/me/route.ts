@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCloudflareEnv, getD1Database } from '@/lib/db/d1';
 import { createBetterAuth } from '@/lib/auth/better-auth';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server';
-import { getAuthenticatedUserRole } from '@/lib/auth';
+import { getAuthenticatedUserRole, getUserRole } from '@/lib/auth';
 
 export async function GET(request: Request): Promise<NextResponse>;
 export async function GET(): Promise<NextResponse>;
@@ -31,12 +31,20 @@ export async function GET(request?: Request): Promise<NextResponse> {
             // Non-fatal
           }
 
+          const emailRole = getUserRole(user.email);
+          let role = 0;
+          if (emailRole >= 1) {
+            role = emailRole;
+          } else if (profile?.role === 1 || profile?.role === 2) {
+            role = profile.role;
+          }
+
           return NextResponse.json({
             authenticated: true,
             user: {
               id: user.id,
               email: user.email,
-              role: (user as any).role ?? profile?.role ?? 0,
+              role,
               fullName: user.name || profile?.full_name || null,
               studentId: profile?.student_id || null,
               university: profile?.university || "King's College London",

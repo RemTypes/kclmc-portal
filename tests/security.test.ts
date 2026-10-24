@@ -440,6 +440,11 @@ describe('Security Testing Suite', () => {
 
     it('safely skips invalid order codes with SQL injection in CSV data', async () => {
       vi.mocked(isSupabaseConfigured).mockReturnValue(false);
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'comm-1', email: 'kclmc.committee@gmail.com' } } }),
+        },
+      } as any);
 
       const rows = [
         { orderCode: "KCL-1234' OR '1'='1", Amount: '20.00' },

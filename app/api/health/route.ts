@@ -53,7 +53,6 @@ export async function GET() {
         email_service: {
           has_binding: Boolean(cfEnv?.EMAIL),
           is_send_fn: typeof cfEnv?.EMAIL?.send === 'function',
-          keys: cfEnv ? Object.keys(cfEnv) : [],
         },
         database_engine: {
           status: dbStatus === 'operational' ? 'operational' : 'degraded',

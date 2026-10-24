@@ -231,7 +231,8 @@ export class AuthSessionService {
                   options: {
                     path: '/',
                     httpOnly: true,
-                    sameSite: 'lax',
+                    secure: process.env.NODE_ENV !== 'development',
+                    sameSite: 'strict',
                     maxAge: 60 * 60 * 24 * 7,
                   },
                 });
@@ -559,6 +560,16 @@ export class AuthSessionService {
           applySessionCookies(response, outcome.cookiesToSet);
         } else {
           setSessionCookies(response, outcome.sessionData);
+        }
+
+        if (outcome.user && outcome.user.role >= 1) {
+          response.cookies.set('kclmc_2fa_verified', 'true', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/',
+            maxAge: 60 * 60 * 24 * 7,
+          });
         }
 
         // Clear temporary challenge cookie

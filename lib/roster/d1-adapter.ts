@@ -169,6 +169,7 @@ export class D1RosterAdapter implements RosterStorageAdapter {
           ON CONFLICT(card_number) DO UPDATE SET
             user_id = excluded.user_id,
             updated_at = excluded.updated_at
+          WHERE kclsu_roster.user_id IS NULL OR kclsu_roster.user_id = excluded.user_id
         `)
         .bind(
           crypto.randomUUID(), cleanId, memberData.name, memberData.rawPurchaser,
@@ -183,8 +184,8 @@ export class D1RosterAdapter implements RosterStorageAdapter {
         .run();
     } else {
       await db
-        .prepare('UPDATE kclsu_roster SET user_id = ?, updated_at = ? WHERE UPPER(card_number) = ?')
-        .bind(userId, now, cleanId)
+        .prepare('UPDATE kclsu_roster SET user_id = ?, updated_at = ? WHERE UPPER(card_number) = ? AND (user_id IS NULL OR user_id = ?)')
+        .bind(userId, now, cleanId, userId)
         .run();
     }
   }

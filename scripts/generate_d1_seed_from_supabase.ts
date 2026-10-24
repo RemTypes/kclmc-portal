@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
+import { getUserRole } from '../lib/auth';
 
 // Simple parser for .env.local or wrangler.jsonc if not already in environment
 function loadEnv() {
@@ -125,7 +126,9 @@ async function runExport() {
         const createdAt = escapeSqlValue(u.created_at);
         const updatedAt = escapeSqlValue(u.updated_at || u.created_at);
         const meta = u.user_metadata || {};
-        const role = meta.role ?? (String(u.email || '').includes('admin@kclmc.org') ? 2 : 0);
+        const rawRole = Number((u.app_metadata as any)?.role ?? 0);
+        const emailRole = getUserRole(u.email);
+        const role = emailRole >= 1 ? emailRole : (rawRole === 1 || rawRole === 2 ? rawRole : 0);
         const mfaSecret = escapeSqlValue(meta.totp_secret || null);
         const mfaBackup = escapeSqlValue(meta.backup_codes || null);
 

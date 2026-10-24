@@ -3,6 +3,7 @@ import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/sup
 import { checkSafetyProfileCompleteness } from '@/lib/safety';
 import { findMemberByCardNumber } from '@/lib/roster';
 import { getAuthenticatedUser } from '@/lib/auth/server';
+import { memberRoster } from '@/lib/roster/service';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
     }
 
     // 3. Student ID & KCLSU Roster Verification Check
-    const activeStudentId = profile?.student_id || user.studentId || user.user_metadata?.student_id;
+    const activeStudentId = profile?.student_id;
     if (!activeStudentId) {
       return NextResponse.redirect(`${hostUrl}/membership?error=unlinked_student_id`, {
         status: 307,
@@ -67,16 +68,8 @@ export async function GET(request: Request) {
       });
     }
 
-    const cleanId = activeStudentId.trim().toUpperCase();
-    const admin = createAdminClient();
-    const { data: rosterRow } = await admin
-      .from('kclsu_roster')
-      .select('card_number')
-      .eq('card_number', cleanId)
-      .maybeSingle();
-
-    const isVerified = Boolean(rosterRow) || Boolean(findMemberByCardNumber(cleanId));
-    if (!isVerified) {
+    const passState = await memberRoster.resolveMemberPass(user as any);
+    if (!passState.membership || !passState.suRecord || passState.suRecord.suStatus === 'revoked') {
       return NextResponse.redirect(`${hostUrl}/membership?error=not_on_roster`, {
         status: 307,
         headers: { 'Cache-Control': 'no-store' },

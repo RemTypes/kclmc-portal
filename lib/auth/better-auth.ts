@@ -37,10 +37,13 @@ export function createBetterAuth(env: BetterAuthEnv) {
     dialect: new D1Dialect({ database: env.DB }),
   });
 
-  const secret =
-    env.BETTER_AUTH_SECRET ||
-    process.env.BETTER_AUTH_SECRET ||
-    "kclmc-secret-production-auth-key-2026-edge";
+  const rawSecret = env.BETTER_AUTH_SECRET || process.env.BETTER_AUTH_SECRET;
+  if (!rawSecret || rawSecret === "kclmc-secret-production-auth-key-2026-edge") {
+    if ((process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") && process.env.NEXT_PHASE !== "phase-production-build") {
+      throw new Error("[BetterAuth] Missing or insecure BETTER_AUTH_SECRET environment secret.");
+    }
+  }
+  const secret = rawSecret || "dev-better-auth-secret-for-local-testing-only-123456789";
 
   const baseURL =
     env.BETTER_AUTH_URL ||
@@ -55,35 +58,22 @@ export function createBetterAuth(env: BetterAuthEnv) {
     },
     secret,
     baseURL,
-    trustedOrigins: async (request?: Request) => {
-      const allowed = [
-        "https://kclmc.org",
-        "https://*.kclmc.org",
-        "https://kclmc-portal.remy-preston.workers.dev",
-        "https://*.workers.dev",
-        "https://*.pages.dev",
-        "http://localhost:3000",
-        "http://localhost:*",
-        "http://127.0.0.1:*",
-      ];
-      if (request) {
-        const originHeader = request.headers.get("origin");
-        const referer = request.headers.get("referer");
-        if (originHeader) allowed.push(originHeader);
-        if (referer) {
-          try {
-            allowed.push(new URL(referer).origin);
-          } catch {}
-        }
-      }
-      return allowed;
-    },
+    trustedOrigins: [
+      "https://kclmc.org",
+      "https://*.kclmc.org",
+      "https://kclmc-portal.remy-preston.workers.dev",
+      "https://*.remy-preston.workers.dev",
+      ...(process.env.NODE_ENV !== "production"
+        ? ["http://localhost:3000", "http://127.0.0.1:3000"]
+        : []),
+    ],
     user: {
       additionalFields: {
         role: {
           type: "number",
           required: false,
           defaultValue: 0,
+          input: false,
         },
       },
     },

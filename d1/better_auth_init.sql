@@ -89,7 +89,7 @@ SELECT
   u.id,
   'credential',
   u.id,
-  COALESCE(u.password_hash, 'MIGRATED_ACCOUNT'),
+  CASE WHEN u.password_hash IS NOT NULL AND u.password_hash LIKE '$scrypt$%' THEN u.password_hash ELSE 'MIGRATED_ACCOUNT' END,
   u.created_at,
   u.updated_at
 FROM users u

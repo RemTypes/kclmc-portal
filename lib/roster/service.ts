@@ -20,7 +20,7 @@ import {
   generateNextAssociateId,
 } from '@/lib/roster';
 import { checkSafetyProfileCompleteness, SafetyCompletenessResult } from '@/lib/safety';
-import { sanitizeUniversity, isAssociateId, sanitizeEmail } from '@/lib/auth';
+import { sanitizeUniversity, isAssociateId, sanitizeEmail, getUserRole } from '@/lib/auth';
 import type { Profile, Membership, SuProcessingStatus } from '@/types/database';
 import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { trackServerEvent } from '@/lib/telemetry-server';
@@ -1046,12 +1046,15 @@ export class MemberRosterService {
       let profile = await storage.findProfile(user.id);
 
       // Auto-heal profile or create initial row if missing
+      const metaStudentId = user.user_metadata?.student_id;
+      const existingOwner = metaStudentId ? await storage.findProfileByStudentId(metaStudentId) : null;
+      const canClaimMetaId = Boolean(metaStudentId && (!existingOwner || existingOwner.id === user.id));
+
       if (profile) {
-        const metaStudentId = user.user_metadata?.student_id;
         const metaUni = user.user_metadata?.university;
-        if ((!profile.student_id && metaStudentId) || (!profile.university && metaUni)) {
+        if ((!profile.student_id && canClaimMetaId) || (!profile.university && metaUni)) {
           const updates: Partial<Profile> = {};
-          if (!profile.student_id && metaStudentId) updates.student_id = metaStudentId;
+          if (!profile.student_id && canClaimMetaId) updates.student_id = metaStudentId;
           if (!profile.university && metaUni) updates.university = metaUni;
           const healed = await storage.upsertProfile(user.id, updates);
           if (healed) profile = healed;
@@ -1059,14 +1062,14 @@ export class MemberRosterService {
       } else {
         profile = await storage.upsertProfile(user.id, {
           full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Climber',
-          student_id: user.user_metadata?.student_id || null,
+          student_id: canClaimMetaId ? metaStudentId : null,
           university: user.user_metadata?.university || "King's College London",
           role: 0,
         });
       }
 
       // Determine active student ID
-      let activeStudentId = profile?.student_id || user.user_metadata?.student_id || null;
+      let activeStudentId = profile?.student_id || null;
       if (!activeStudentId) {
         const linkedRecord = await storage.findRosterRecordByUserId(user.id);
         if (linkedRecord?.cardNumber) {
@@ -1078,6 +1081,8 @@ export class MemberRosterService {
       let suRecord: KclsuMemberRecord | null = null;
       let membership: Membership | null = null;
 
+      const safetyCheck = checkSafetyProfileCompleteness(profile);
+
       if (activeStudentId) {
         let cleanId = activeStudentId.trim().toUpperCase();
         if (/^\d{6,9}$/.test(cleanId)) {
@@ -1086,7 +1091,8 @@ export class MemberRosterService {
         boundStudentId = cleanId;
         suRecord = await storage.findRosterRecord(cleanId);
 
-        if (suRecord && suRecord.suStatus !== 'revoked') {
+        const recordOwnerId = (suRecord as any)?.user_id;
+        if (suRecord && suRecord.suStatus !== 'revoked' && (!recordOwnerId || recordOwnerId === user.id)) {
           storage.bindRosterRecord(cleanId, user.id, suRecord).catch(() => {});
           membership = {
             id: suRecord.cardNumber,
@@ -1102,14 +1108,12 @@ export class MemberRosterService {
         }
       }
 
-      const safetyCheck = checkSafetyProfileCompleteness(profile);
-
       return {
         authenticated: true,
         user: {
           id: user.id,
           email: user.email,
-          role: profile?.role ?? 0,
+          role: (user as any).role ?? profile?.role ?? getUserRole(user.email),
           fullName: profile?.full_name || user.user_metadata?.full_name,
         },
         profile,

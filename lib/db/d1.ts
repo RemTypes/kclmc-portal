@@ -20,16 +20,12 @@ export interface D1Database {
 }
 
 let dbOverride: D1Database | null = null;
-let cachedDb: D1Database | null = null;
 
 /**
  * Override the D1 database instance (primarily for automated testing).
  */
 export function setD1DatabaseOverride(db: D1Database | null): void {
   dbOverride = db;
-  if (!db) {
-    cachedDb = null;
-  }
 }
 
 /**
@@ -39,9 +35,6 @@ export function setD1DatabaseOverride(db: D1Database | null): void {
 export async function getD1Database(): Promise<D1Database | null> {
   if (dbOverride) {
     return dbOverride;
-  }
-  if (cachedDb) {
-    return cachedDb;
   }
 
   try {
@@ -54,8 +47,7 @@ export async function getD1Database(): Promise<D1Database | null> {
     }
     const env = ctx?.env;
     if (env?.DB) {
-      cachedDb = env.DB as D1Database;
-      return cachedDb;
+      return env.DB as D1Database;
     }
   } catch {
     // Not running inside Cloudflare Worker runtime
@@ -64,18 +56,15 @@ export async function getD1Database(): Promise<D1Database | null> {
   // Check if globally bound in Cloudflare worker globalThis or process.env
   const globalEnv = (globalThis as any)?.env;
   if (globalEnv?.DB) {
-    cachedDb = globalEnv.DB as D1Database;
-    return cachedDb;
+    return globalEnv.DB as D1Database;
   }
 
   if ((globalThis as any)?.DB) {
-    cachedDb = (globalThis as any).DB as D1Database;
-    return cachedDb;
+    return (globalThis as any).DB as D1Database;
   }
 
   if ((process.env as any)?.DB) {
-    cachedDb = (process.env as any).DB as D1Database;
-    return cachedDb;
+    return (process.env as any).DB as D1Database;
   }
 
   return null;

@@ -111,6 +111,11 @@ export async function autoBumpUserPasswordInD1(
     // 2. Hash plaintext password with fresh random 32-byte salt and 100k iterations
     const { hash, salt } = hashPassword(password);
     const now = new Date().toISOString();
+    let baHash: string | null = null;
+    try {
+      const { hashPassword: hashBetterAuthPassword } = await import('better-auth/crypto');
+      baHash = await hashBetterAuthPassword(password);
+    } catch {}
 
     if (existing) {
       // Update existing record by its primary key ID
@@ -124,6 +129,14 @@ export async function autoBumpUserPasswordInD1(
         `)
         .bind(hash, salt, now, existing.id)
         .run();
+
+      if (baHash) {
+        await db
+          .prepare(`UPDATE "account" SET password = ?, updatedAt = ? WHERE userId = ? AND providerId = 'credential'`)
+          .bind(baHash, now, existing.id)
+          .run()
+          .catch(() => {});
+      }
     } else {
       // User doesn't exist in D1 yet, insert new record
       await db
@@ -133,6 +146,28 @@ export async function autoBumpUserPasswordInD1(
         `)
         .bind(userId, cleanEmail || `${userId}@kclmc.internal`, hash, salt, role, now, now)
         .run();
+
+      if (baHash) {
+        await db
+          .prepare(`
+            INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt, role)
+            VALUES (?, ?, ?, 1, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET updatedAt = excluded.updatedAt
+          `)
+          .bind(userId, cleanEmail.split('@')[0] || 'Climber', cleanEmail, now, now, role)
+          .run()
+          .catch(() => {});
+
+        await db
+          .prepare(`
+            INSERT INTO "account" (id, accountId, providerId, userId, password, createdAt, updatedAt)
+            VALUES (?, ?, 'credential', ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET password = excluded.password, updatedAt = excluded.updatedAt
+          `)
+          .bind(`acc_${userId}`, userId, userId, baHash, now, now)
+          .run()
+          .catch(() => {});
+      }
     }
 
     console.log(`[autoBumpUserPasswordInD1] Successfully bumped password hash in D1 for ${cleanEmail || userId}`);

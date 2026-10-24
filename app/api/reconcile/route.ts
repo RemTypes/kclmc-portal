@@ -6,22 +6,11 @@ import { store } from '@/lib/store';
 export async function POST(request: Request) {
   try {
     const user = await getAuthenticatedUser(request);
-    if (user) {
-      if (user.role < 1) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Committee access required to reconcile transactions' },
-          { status: 403 }
-        );
-      }
-    } else {
-      const { getD1Database } = await import('@/lib/db/d1');
-      const d1 = await getD1Database();
-      if (d1 || isSupabaseConfigured()) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Committee access required to reconcile transactions' },
-          { status: 403 }
-        );
-      }
+    if (!user || user.role < 1) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Committee access required to reconcile transactions' },
+        { status: user ? 403 : 401 }
+      );
     }
 
     const data = await request.json(); // Array of parsed CSV rows

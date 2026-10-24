@@ -112,7 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets(token_ha
 CREATE TABLE IF NOT EXISTS profiles (
   id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   full_name TEXT NOT NULL DEFAULT '',
-  student_id TEXT,
+  student_id TEXT UNIQUE,
   university TEXT NOT NULL DEFAULT "King's College London",
   phone TEXT,
   emergency_contact_name TEXT,

@@ -48,8 +48,6 @@ export async function middleware(request: NextRequest) {
           let role = 0;
           if (emailRole >= 1) {
             role = emailRole;
-          } else if ((baUser as any).role === 1 || (baUser as any).role === 2) {
-            role = (baUser as any).role;
           } else {
             try {
               const profile = await db.prepare('SELECT role FROM profiles WHERE id = ?').bind(baUser.id).first();
@@ -61,12 +59,26 @@ export async function middleware(request: NextRequest) {
 
           // Admin API checks
           const isAdminApi =
+            path.startsWith('/api/admin') ||
             path.startsWith('/api/reconcile') ||
-            path === '/api/roster' ||
+            path.startsWith('/api/roster') ||
             (path === '/api/telemetry' && request.method === 'GET');
 
           if (isAdminApi && role < 1) {
             return NextResponse.json({ error: 'Unauthorized: Committee access required' }, { status: 403 });
+          }
+
+          // Mandatory Committee 2FA check
+          if (role >= 1 && process.env.NODE_ENV === 'production') {
+            const is2FAVerified = request.cookies.get('kclmc_2fa_verified')?.value === 'true' || (baUser as any)?.twoFactorEnabled === 1;
+            if (!is2FAVerified) {
+              if (path.startsWith('/admin') || path === '/status' || path.startsWith('/status/')) {
+                return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(path)}&error=2fa_required`, request.url));
+              }
+              if (isAdminApi) {
+                return NextResponse.json({ error: 'Unauthorized: Two-Factor Authentication required' }, { status: 403 });
+              }
+            }
           }
 
           // Admin page clearance
@@ -141,8 +153,9 @@ export async function middleware(request: NextRequest) {
 
   // 3. Server-side middleware protection for Admin API endpoints
   const isAdminApi =
+    path.startsWith('/api/admin') ||
     path.startsWith('/api/reconcile') ||
-    path === '/api/roster' ||
+    path.startsWith('/api/roster') ||
     (path === '/api/telemetry' && request.method === 'GET');
 
   if (isAdminApi) {
