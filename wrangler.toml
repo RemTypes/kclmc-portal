@@ -1,6 +1,48 @@
+name = "kclmc-portal"
+main = ".open-next/worker.js"
+compatibility_date = "2026-06-12"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+binding = "ASSETS"
+directory = ".open-next/assets"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kclmc-production"
+database_id = "25583bc2-683b-49ac-a5c0-2419a66f651a"
+
+[[send_email]]
+name = "EMAIL"
+
 [observability.logs]
 enabled = false
 invocation_logs = true
 
 [vars]
+ROSTER_STORAGE_ENGINE = "d1"
+NEXT_PUBLIC_SUPABASE_URL = "https://bsvnyibipcwrcyzqilge.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg"
+SUPERADMIN_EMAIL = "admin@kclmc.org"
+COMMITTEE_EMAILS = "kclmc.committee@gmail.com,president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org,remy.preston@outlook.com,remy.preston@kcl.ac.uk"
+GMAIL_USER = "kclmc.committee@gmail.com"
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = "465"
+SMTP_FROM = "King's College London Mountaineering Club <kclmc.committee@gmail.com>"
+EMAIL_FROM = "portal@kclmc.org"
+BETTER_AUTH_URL = "https://kclmc.org"
+WHATSAPP_COMMUNITY_INVITE_URL = "https://chat.whatsapp.com/CPVH7dfM88QCGuFYyLcrDF?s=cl&p=i&mlu=0&ilr=4"
+
+[previews.vars]
+BETTER_AUTH_URL = "https://kclmc.org"
+COMMITTEE_EMAILS = "kclmc.committee@gmail.com,president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org,remy.preston@outlook.com,remy.preston@kcl.ac.uk"
+EMAIL_FROM = "portal@kclmc.org"
+GMAIL_USER = "kclmc.committee@gmail.com"
+NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg"
+NEXT_PUBLIC_SUPABASE_URL = "https://bsvnyibipcwrcyzqilge.supabase.co"
+ROSTER_STORAGE_ENGINE = "d1"
+SMTP_FROM = "King's College London Mountaineering Club <kclmc.committee@gmail.com>"
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = "465"
+SUPERADMIN_EMAIL = "admin@kclmc.org"
 WHATSAPP_COMMUNITY_INVITE_URL = "https://chat.whatsapp.com/CPVH7dfM88QCGuFYyLcrDF?s=cl&p=i&mlu=0&ilr=4"
