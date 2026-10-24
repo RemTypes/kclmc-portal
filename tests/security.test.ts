@@ -1145,7 +1145,7 @@ describe('Security Testing Suite', () => {
       const origSecret = process.env.BETTER_AUTH_SECRET;
       const origSupabase = process.env.SUPABASE_SERVICE_ROLE_KEY;
       try {
-        process.env.NODE_ENV = 'production';
+        (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
         delete process.env.BETTER_AUTH_SECRET;
         delete process.env.SUPABASE_SERVICE_ROLE_KEY;
         delete process.env.NEXTAUTH_SECRET;
@@ -1155,7 +1155,7 @@ describe('Security Testing Suite', () => {
         expect(() => verify2FAAttestation('test-user.1700000000000.abc123sig')).not.toThrow();
         expect(verify2FAAttestation('test-user.1700000000000.abc123sig')).toBe(false);
       } finally {
-        process.env.NODE_ENV = origNodeEnv;
+        (process.env as Record<string, string | undefined>).NODE_ENV = origNodeEnv;
         if (origSecret) process.env.BETTER_AUTH_SECRET = origSecret;
         if (origSupabase) process.env.SUPABASE_SERVICE_ROLE_KEY = origSupabase;
       }
