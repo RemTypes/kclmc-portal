@@ -214,20 +214,28 @@ export class AuthSessionService {
               if (prof?.role !== undefined) role = prof.role;
             } catch {}
 
-            const setCookie = baRes.headers.get('set-cookie');
-            if (setCookie) {
-              const [nv] = setCookie.split(';');
-              const [cName, cVal] = nv.split('=');
-              cookiesToSet.push({
-                name: cName.trim(),
-                value: cVal.trim(),
-                options: {
-                  path: '/',
-                  httpOnly: true,
-                  sameSite: 'lax',
-                  maxAge: 60 * 60 * 24 * 7,
-                },
-              });
+            const rawCookies = typeof (baRes.headers as any).getSetCookie === 'function'
+              ? (baRes.headers as any).getSetCookie()
+              : [baRes.headers.get('set-cookie')].filter(Boolean);
+
+            for (const headerStr of rawCookies) {
+              if (!headerStr) continue;
+              const [nv] = headerStr.split(';');
+              const eqIdx = nv.indexOf('=');
+              if (eqIdx !== -1) {
+                const cName = nv.slice(0, eqIdx).trim();
+                const cVal = nv.slice(eqIdx + 1).trim();
+                cookiesToSet.push({
+                  name: cName,
+                  value: cVal,
+                  options: {
+                    path: '/',
+                    httpOnly: true,
+                    sameSite: 'lax',
+                    maxAge: 60 * 60 * 24 * 7,
+                  },
+                });
+              }
             }
 
             authenticatedUser = {
