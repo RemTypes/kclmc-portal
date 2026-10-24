@@ -23,7 +23,7 @@ import {
   verify2FAChallenge,
 } from '@/lib/security/two-factor';
 import { setSessionCookies, applySessionCookies } from '@/lib/security/cookies';
-import { getAuthenticatedUserRole, sanitizeEmail, getSafeRedirectUrl, Role } from '@/lib/auth';
+import { getAuthenticatedUserRole, getUserRole, sanitizeEmail, getSafeRedirectUrl, Role } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/server';
 import { autoBumpUserPasswordInD1 } from '@/lib/security/password-hasher';
 
@@ -32,6 +32,7 @@ export interface ClimberSessionUser {
   email: string;
   role: Role;
   fullName?: string;
+  user_metadata?: any;
 }
 
 export type AuthOutcome =
@@ -184,52 +185,123 @@ export class AuthSessionService {
       }
     }
 
-    // 3. Authenticate with Supabase Auth Engine
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsvnyibipcwrcyzqilge.supabase.co';
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg';
-
+    // 3. Authenticate with Better Auth Engine on Cloudflare D1 first
     let cookiesToSet: { name: string; value: string; options: any }[] = [];
-    const serverSupabase = createServerClient(supabaseUrl, supabaseKey, {
-      cookies: {
-        getAll() {
-          return cookieHeader.split(';').map(c => {
-            const [name, ...rest] = c.trim().split('=');
-            return { name, value: rest.join('=') };
-          });
-        },
-        setAll(toSet) {
-          cookiesToSet = toSet;
-        },
-      },
-    });
+    let authenticatedUser: ClimberSessionUser | null = null;
+    let authenticatedSessionPayload: any = null;
 
-    const { data: authData, error: authError } = await serverSupabase.auth.signInWithPassword({
-      email: cleanEmail,
-      password,
-    });
-
-    if (authError || !authData?.user || !authData?.session) {
-      const failRecord = recordFailedAttempt(ip, cleanEmail, authError?.message || 'Invalid credentials');
-      return {
-        status: 'invalid_credentials',
-        error: authError?.message || 'Invalid email or password',
-        remainingAttempts: Math.max(0, 5 - failRecord.attemptCount),
-        requiresCaptcha: failRecord.requiresCaptcha,
-        isLocked: failRecord.isLocked,
-        backoffSeconds: failRecord.backoffSeconds,
-      };
-    }
-
-    const user = authData.user;
-    const session = authData.session;
-    const userRole = await getAuthenticatedUserRole(serverSupabase, user);
-
-    // JIT Password Auto-Bump to Cloudflare D1 (Zero Risk, Non-blocking)
     try {
-      await autoBumpUserPasswordInD1(user.id, cleanEmail, password, userRole);
-    } catch (bumpErr) {
-      console.warn('[Session] JIT password auto-bump non-fatal error:', bumpErr);
+      const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
+      const env = await getCloudflareEnv();
+      const db = (await getD1Database()) || env?.DB;
+
+      if (db) {
+        const { createBetterAuth } = await import('@/lib/auth/better-auth');
+        const auth = createBetterAuth({ ...env, DB: db });
+        const baRes = await auth.api.signInEmail({
+          body: { email: cleanEmail, password },
+          asResponse: true,
+        });
+
+        if (baRes.ok) {
+          const baData = await baRes.json().catch(() => ({}));
+          const u = baData.user;
+          if (u) {
+            let role = (u as any).role ?? getUserRole(cleanEmail);
+            try {
+              const prof = (await db.prepare('SELECT role FROM profiles WHERE id = ?').bind(u.id).first()) as any;
+              if (prof?.role !== undefined) role = prof.role;
+            } catch {}
+
+            const setCookie = baRes.headers.get('set-cookie');
+            if (setCookie) {
+              const [nv] = setCookie.split(';');
+              const [cName, cVal] = nv.split('=');
+              cookiesToSet.push({
+                name: cName.trim(),
+                value: cVal.trim(),
+                options: {
+                  path: '/',
+                  httpOnly: true,
+                  sameSite: 'lax',
+                  maxAge: 60 * 60 * 24 * 7,
+                },
+              });
+            }
+
+            authenticatedUser = {
+              id: u.id,
+              email: u.email,
+              role,
+              fullName: u.name,
+            };
+            authenticatedSessionPayload = baData;
+          }
+        }
+      }
+    } catch (baErr) {
+      console.warn('[Session] Better Auth login check non-fatal notice:', baErr);
     }
+
+    // 3.5. Fallback to Supabase Auth Engine if not authenticated via Better Auth
+    if (!authenticatedUser) {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsvnyibipcwrcyzqilge.supabase.co';
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg';
+
+      const serverSupabase = createServerClient(supabaseUrl, supabaseKey, {
+        cookies: {
+          getAll() {
+            return cookieHeader.split(';').map(c => {
+              const [name, ...rest] = c.trim().split('=');
+              return { name, value: rest.join('=') };
+            });
+          },
+          setAll(toSet) {
+            cookiesToSet = toSet;
+          },
+        },
+      });
+
+      const { data: authData, error: authError } = await serverSupabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+
+      if (authError || !authData?.user || !authData?.session) {
+        const failRecord = recordFailedAttempt(ip, cleanEmail, authError?.message || 'Invalid credentials');
+        return {
+          status: 'invalid_credentials',
+          error: authError?.message || 'Invalid email or password',
+          remainingAttempts: Math.max(0, 5 - failRecord.attemptCount),
+          requiresCaptcha: failRecord.requiresCaptcha,
+          isLocked: failRecord.isLocked,
+          backoffSeconds: failRecord.backoffSeconds,
+        };
+      }
+
+      const user = authData.user;
+      const session = authData.session;
+      const userRole = await getAuthenticatedUserRole(serverSupabase, user);
+
+      // JIT Password Auto-Bump to Cloudflare D1 (Zero Risk, Non-blocking)
+      try {
+        await autoBumpUserPasswordInD1(user.id, cleanEmail, password, userRole);
+      } catch (bumpErr) {
+        console.warn('[Session] JIT password auto-bump non-fatal error:', bumpErr);
+      }
+
+      authenticatedUser = {
+        id: user.id,
+        email: user.email || cleanEmail,
+        role: userRole,
+        user_metadata: user.user_metadata,
+      };
+      authenticatedSessionPayload = session;
+    }
+
+    const user = authenticatedUser;
+    const session = authenticatedSessionPayload;
+    const userRole = authenticatedUser.role;
 
     const safeDestination = (requestedNext && requestedNext !== '/login' && !requestedNext.startsWith('/login?') && !requestedNext.startsWith('/auth'))
       ? requestedNext

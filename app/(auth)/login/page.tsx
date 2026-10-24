@@ -17,7 +17,7 @@ function LoginForm() {
   const initialType = searchParams.get('type') === 'associate' ? 'associate' : 'kcl';
   const initialId = sanitizeStudentId(searchParams.get('id'));
 
-  const [view, setView] = useState<'sign_in' | 'two_factor' | 'two_factor_setup' | 'sign_up' | 'forgot_password'>(initialView);
+  const [view, setView] = useState<'sign_in' | 'two_factor' | 'two_factor_setup' | 'sign_up' | 'forgot_password' | 'magic_link'>(initialView);
   const [memberType, setMemberType] = useState<'kcl' | 'associate'>(initialType);
   
   // Form fields
@@ -28,6 +28,7 @@ function LoginForm() {
   const [university, setUniversity] = useState<string>(initialType === 'associate' ? 'Alumni / Associate / Guest' : DEFAULT_UNIVERSITY);
   const [customUniversity, setCustomUniversity] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
 
   // 2FA state
   const [challengeToken, setChallengeToken] = useState('');
@@ -461,6 +462,43 @@ function LoginForm() {
     }
   };
 
+  const handleMagicLinkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg('');
+
+    const cleanEmail = sanitizeEmail(email);
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setErrorMsg('Please enter a valid email address.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth/sign-in/magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          callbackURL: searchParams.get('next') ? next : '/membership',
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setErrorMsg(data.message || data.error || 'Failed to dispatch magic sign-in link.');
+        setLoading(false);
+        return;
+      }
+
+      setMagicLinkSent(true);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to dispatch magic sign-in link.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   let badgeText = 'Member Access // 2026/27';
   let titleText = 'KCLMC Member Portal';
   let descText = 'Sign in to access your verified climbing pass, meet signups & society perks.';
@@ -481,6 +519,10 @@ function LoginForm() {
     badgeText = 'Account Recovery';
     titleText = 'Reset Password';
     descText = 'Enter your email to receive a secure link to reset your account password.';
+  } else if (view === 'magic_link') {
+    badgeText = '1-Click Instant Sign-In';
+    titleText = 'Magic Link';
+    descText = 'Enter your email to receive a password-free sign-in link delivered straight to your inbox.';
   }
 
   return (
@@ -503,7 +545,7 @@ function LoginForm() {
         </div>
 
         {/* Auth Mode Switcher (Sign In vs Register) */}
-        {(view === 'sign_in' || view === 'sign_up' || view === 'forgot_password') && (
+        {(view === 'sign_in' || view === 'sign_up' || view === 'forgot_password' || view === 'magic_link') && (
           <div className="flex bg-[#041F1E] p-1 rounded-2xl border border-[#FFBD59]/30 mb-6">
             <button
               type="button"
@@ -513,7 +555,7 @@ function LoginForm() {
                 setWarningMsg('');
               }}
               className={`flex-1 py-2.5 text-xs font-heading font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
-                view === 'sign_in' || view === 'forgot_password'
+                view === 'sign_in' || view === 'forgot_password' || view === 'magic_link'
                   ? 'bg-[#FFBD59] text-[#052322] shadow'
                   : 'text-zinc-400 hover:text-white'
               }`}
@@ -810,6 +852,69 @@ function LoginForm() {
               </button>
             </div>
           </form>
+        ) : view === 'magic_link' ? (
+          magicLinkSent ? (
+            <div className="bg-[#041F1E] border border-[#FFBD59]/30 rounded-2xl p-6 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-[#FFBD59]/20 text-[#FFBD59] flex items-center justify-center mx-auto text-xl">
+                ✨
+              </div>
+              <h3 className="text-lg font-heading font-bold uppercase tracking-wide text-white">Check your email</h3>
+              <p className="text-xs text-zinc-300 font-sans leading-relaxed">
+                We sent a secure 1-click sign-in link to <strong className="text-[#FFBD59]">{email}</strong> via Cloudflare Email.
+              </p>
+              <p className="text-[11px] text-zinc-400 font-sans leading-relaxed">
+                Open your inbox and click the button to log into the portal instantly without entering a password.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setMagicLinkSent(false);
+                  setView('sign_in');
+                  setErrorMsg('');
+                }}
+                className="text-xs font-sans text-[#FFBD59] underline hover:text-[#FFE0A3] mt-2 block mx-auto cursor-pointer"
+              >
+                ← Back to Password Sign In
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleMagicLinkSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-heading font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
+                  Account Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="your.name@kcl.ac.uk"
+                  className="w-full bg-[#041F1E] border border-[#FFBD59]/30 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-[#FFBD59] focus:ring-1 focus:ring-[#FFBD59] text-sm font-sans transition-colors"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading || isLocked}
+                className="w-full py-3.5 mt-2 bg-[#FFBD59] text-[#052322] font-heading font-black uppercase tracking-wider text-sm rounded-xl hover:bg-[#FFE0A3] transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
+              >
+                {loading ? 'Sending link...' : 'Send 1-Click Sign-In Link ✨'}
+              </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setView('sign_in');
+                    setErrorMsg('');
+                  }}
+                  className="text-xs font-sans text-zinc-400 hover:text-[#FFBD59] transition-colors underline cursor-pointer"
+                >
+                  ← Back to Password Sign In
+                </button>
+              </div>
+            </form>
+          )
         ) : view === 'forgot_password' ? (
           resetEmailSent ? (
             <div className="bg-[#041F1E] border border-[#FFBD59]/30 rounded-2xl p-6 text-center space-y-4">
@@ -1153,6 +1258,23 @@ function LoginForm() {
                 ? 'Create Secure Account →'
                 : 'Sign In to Portal →'}
             </button>
+
+            {view === 'sign_in' && (
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setView('magic_link');
+                    setErrorMsg('');
+                    setMagicLinkSent(false);
+                  }}
+                  className="text-xs font-heading font-bold uppercase tracking-wider text-[#FFBD59] hover:underline cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <span>✨</span>
+                  <span>Or sign in with 1-Click Magic Link (no password)</span>
+                </button>
+              </div>
+            )}
 
             <div className="text-center pt-2">
               <button
