@@ -33,6 +33,7 @@ import { POST as authVerifyOtpPost } from '@/app/api/auth/verify-otp/route';
 import { POST as authLogoutPost } from '@/app/api/auth/logout/route';
 import { GET as authMeGet } from '@/app/api/auth/me/route';
 import { GET as membershipGet, POST as membershipPost } from '@/app/api/membership/route';
+import { GET as bmcInsuranceGet } from '@/app/api/admin/bmc-insurance/route';
 import { NextResponse } from 'next/server';
 
 describe('Security Testing Suite', () => {
@@ -1474,6 +1475,37 @@ describe('Security Testing Suite', () => {
       const data = await res.json();
       expect(data.success).toBe(true);
       expect(data.destination).toBe('/membership');
+    });
+
+    it('GET /api/admin/bmc-insurance enforces handler-level authentication and committee clearance', async () => {
+      // 1. Unauthenticated request -> 401
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: null,
+          }),
+        },
+      } as any);
+
+      const unauthReq = new Request('http://localhost:3000/api/admin/bmc-insurance');
+      const unauthRes = await bmcInsuranceGet(unauthReq);
+      expect(unauthRes.status).toBe(401);
+
+      // 2. Authenticated non-committee member (role 0) -> 403
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: 'u-climber', email: 'climber@kcl.ac.uk' } },
+            error: null,
+          }),
+        },
+      } as any);
+
+      const memberReq = new Request('http://localhost:3000/api/admin/bmc-insurance');
+      const memberRes = await bmcInsuranceGet(memberReq);
+      expect(memberRes.status).toBe(403);
     });
   });
 });
