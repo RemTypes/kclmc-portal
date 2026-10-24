@@ -467,6 +467,14 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized: Sign in required' }, { status: 401 });
+    }
+    if (user.role < 1) {
+      return NextResponse.json({ error: 'Forbidden: Committee clearance required' }, { status: 403 });
+    }
+
     const isGmail = Boolean(
       process.env.GMAIL_USER ||
       process.env.GMAIL_APP_PASS

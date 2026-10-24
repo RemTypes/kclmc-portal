@@ -21,6 +21,7 @@ import {
   getUserTOTPSecret,
   getUserHashedBackupCodes,
   verify2FAChallenge,
+  seal2FAAttestation,
 } from '@/lib/security/two-factor';
 import { setSessionCookies, applySessionCookies } from '@/lib/security/cookies';
 import { getAuthenticatedUserRole, getUserRole, sanitizeEmail, getSafeRedirectUrl, Role } from '@/lib/auth';
@@ -563,12 +564,13 @@ export class AuthSessionService {
         }
 
         if (outcome.user && outcome.user.role >= 1) {
-          response.cookies.set('kclmc_2fa_verified', 'true', {
+          const attestationToken = seal2FAAttestation(outcome.user.id);
+          response.cookies.set('kclmc_2fa_verified', attestationToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict',
             path: '/',
-            maxAge: 60 * 60 * 24 * 7,
+            maxAge: 60 * 60 * 24, // 24-hour attestation
           });
         }
 

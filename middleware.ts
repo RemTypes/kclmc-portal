@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getModuleByRoute } from './config/modules.config';
 import { getAuthenticatedUserRole, getUserRole } from './lib/auth';
+import { verify2FAAttestation } from './lib/security/two-factor';
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -61,7 +62,9 @@ export async function middleware(request: NextRequest) {
           const isAdminApi =
             path.startsWith('/api/admin') ||
             path.startsWith('/api/reconcile') ||
-            path.startsWith('/api/roster') ||
+            (path.startsWith('/api/roster') && !path.startsWith('/api/roster/link')) ||
+            (path.startsWith('/api/links') && request.method !== 'GET') ||
+            path.startsWith('/api/orders') ||
             (path === '/api/telemetry' && request.method === 'GET');
 
           if (isAdminApi && role < 1) {
@@ -70,7 +73,8 @@ export async function middleware(request: NextRequest) {
 
           // Mandatory Committee 2FA check
           if (role >= 1 && process.env.NODE_ENV === 'production') {
-            const is2FAVerified = request.cookies.get('kclmc_2fa_verified')?.value === 'true' || (baUser as any)?.twoFactorEnabled === 1;
+            const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
+            const is2FAVerified = verify2FAAttestation(attestationCookie, baUser.id);
             if (!is2FAVerified) {
               if (path.startsWith('/admin') || path === '/status' || path.startsWith('/status/')) {
                 return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(path)}&error=2fa_required`, request.url));
@@ -118,7 +122,14 @@ export async function middleware(request: NextRequest) {
       url.searchParams.set('next', path);
       return NextResponse.redirect(url);
     }
-    if (path.startsWith('/api/reconcile')) {
+    if (
+      path.startsWith('/api/admin') ||
+      path.startsWith('/api/reconcile') ||
+      (path.startsWith('/api/roster') && !path.startsWith('/api/roster/link')) ||
+      (path.startsWith('/api/links') && request.method !== 'GET') ||
+      path.startsWith('/api/orders') ||
+      (path === '/api/telemetry' && request.method === 'GET')
+    ) {
       return NextResponse.json({ error: 'Unauthorized: Committee access required' }, { status: 403 });
     }
     return supabaseResponse;
@@ -155,7 +166,9 @@ export async function middleware(request: NextRequest) {
   const isAdminApi =
     path.startsWith('/api/admin') ||
     path.startsWith('/api/reconcile') ||
-    path.startsWith('/api/roster') ||
+    (path.startsWith('/api/roster') && !path.startsWith('/api/roster/link')) ||
+    (path.startsWith('/api/links') && request.method !== 'GET') ||
+    path.startsWith('/api/orders') ||
     (path === '/api/telemetry' && request.method === 'GET');
 
   if (isAdminApi) {
@@ -165,6 +178,13 @@ export async function middleware(request: NextRequest) {
         { error: 'Unauthorized: Committee access required' },
         { status: 403 }
       );
+    }
+    if (process.env.NODE_ENV === 'production') {
+      const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
+      const is2FAVerified = verify2FAAttestation(attestationCookie, user?.id);
+      if (!is2FAVerified) {
+        return NextResponse.json({ error: 'Unauthorized: Two-Factor Authentication required' }, { status: 403 });
+      }
     }
   }
 
@@ -180,6 +200,14 @@ export async function middleware(request: NextRequest) {
     const role = await getAuthenticatedUserRole(supabase, user);
     if (role < 1) {
       return NextResponse.redirect(new URL(`/403?req=committee&from=${encodeURIComponent(path)}`, request.url));
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
+      const is2FAVerified = verify2FAAttestation(attestationCookie, user.id);
+      if (!is2FAVerified) {
+        return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(path)}&error=2fa_required`, request.url));
+      }
     }
 
     if (moduleDef && !moduleDef.enabled && role < 2) {

@@ -147,7 +147,7 @@ export async function POST(request: Request) {
     // Auto-bump the newly set password into Cloudflare D1
     if (data?.user?.id && data?.user?.email) {
       try {
-        await autoBumpUserPasswordInD1(data.user.id, data.user.email, password, 0);
+        await autoBumpUserPasswordInD1(data.user.id, data.user.email, password, 0, true);
       } catch (bumpErr) {
         console.warn('[RESET PASSWORD] D1 auto-bump notice:', bumpErr);
       }

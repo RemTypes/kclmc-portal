@@ -22,7 +22,7 @@ import { parseKclsuCsv, sanitizeCsvCell } from '@/lib/roster';
 import { getUserRole, getAuthenticatedUserRole, getSafeRedirectUrl, sanitizeStudentId, sanitizeEmail } from '@/lib/auth';
 import { validatePasswordStrength, COMMON_PASSWORDS_BLACKLIST, calculateEntropy } from '@/lib/security/password-validator';
 import { checkRateLimit, recordFailedAttempt, recordSuccessfulAttempt, verifyCaptchaToken, clearRateLimitStores, getSecurityAuditLogs } from '@/lib/security/rate-limiter';
-import { create2FAChallenge, create2FAEnrollmentChallenge, isUser2FAEnrolled, verify2FAChallenge, requiresMandatory2FA, generateBackupCodes, getOrCreateBackupCodes, getUserHashedBackupCodes, setUserHashedBackupCodes, calculateTOTP, verifyTOTP, setUserTOTPSecret, clear2FAStores } from '@/lib/security/two-factor';
+import { create2FAChallenge, create2FAEnrollmentChallenge, isUser2FAEnrolled, verify2FAChallenge, requiresMandatory2FA, generateBackupCodes, getOrCreateBackupCodes, getUserHashedBackupCodes, setUserHashedBackupCodes, calculateTOTP, verifyTOTP, setUserTOTPSecret, clear2FAStores, seal2FAAttestation, verify2FAAttestation } from '@/lib/security/two-factor';
 import { applySessionCookies, setSessionCookies, clearSessionCookies, getAuthCookiePrefix, SESSION_COOKIE_OPTIONS } from '@/lib/security/cookies';
 import { POST as authLoginPost } from '@/app/api/auth/login/route';
 import { POST as authSignupPost } from '@/app/api/auth/signup/route';
@@ -1109,6 +1109,34 @@ describe('Security Testing Suite', () => {
       expect(result.usedTOTP).toBe(true);
       expect(result.enrolledSecret).toBe(setupSecret);
       expect(result.sessionData).toEqual({ session: { token: 'jwt' } });
+    });
+
+    it('seals and verifies cryptographic 2FA attestation tokens tied to user ID', () => {
+      const userId = 'attestation-user-123';
+      const token = seal2FAAttestation(userId);
+      expect(token).toBeTruthy();
+      expect(token.split('.')).toHaveLength(3);
+
+      // Successfully verifies with matching user ID
+      expect(verify2FAAttestation(token, userId)).toBe(true);
+      expect(verify2FAAttestation(token)).toBe(true);
+
+      // Rejects forged / mismatched user ID
+      expect(verify2FAAttestation(token, 'different-user-456')).toBe(false);
+
+      // Rejects plain 'true' string (NEW-002 forge attempt)
+      expect(verify2FAAttestation('true', userId)).toBe(false);
+      expect(verify2FAAttestation('true')).toBe(false);
+
+      // Rejects tampered signature
+      const [u, t, sig] = token.split('.');
+      const tampered = `${u}.${t}.${sig.slice(0, -4)}0000`;
+      expect(verify2FAAttestation(tampered, userId)).toBe(false);
+
+      // Rejects null / empty / malformed tokens
+      expect(verify2FAAttestation(null)).toBe(false);
+      expect(verify2FAAttestation('')).toBe(false);
+      expect(verify2FAAttestation('malformed.token')).toBe(false);
     });
   });
 

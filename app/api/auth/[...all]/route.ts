@@ -12,6 +12,9 @@ async function handler(request: Request) {
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     "127.0.0.1";
 
+  const env = await getCloudflareEnv();
+  const db = (await getD1Database()) || env?.DB;
+
   if (request.method === "POST") {
     const rate = checkRateLimit(ip);
     if (!rate.allowed) {
@@ -29,13 +32,27 @@ async function handler(request: Request) {
       );
     }
 
-    // Block magic link 2FA bypass for committee accounts
+    // Block magic link 2FA bypass for committee accounts (static list + database profiles)
     if (url.pathname.endsWith("/sign-in/magic-link") || url.pathname.endsWith("/sign-in/magic-link/")) {
       try {
         const cloned = request.clone();
         const body = await cloned.json();
         const email = String(body?.email || '').trim().toLowerCase();
-        if (getUserRole(email) >= 1) {
+        let isCommittee = getUserRole(email) >= 1;
+
+        if (!isCommittee && db && email) {
+          try {
+            const profile = await db
+              .prepare('SELECT role FROM profiles WHERE LOWER(email) = LOWER(?)')
+              .bind(email)
+              .first();
+            if (profile && ((profile as any).role === 1 || (profile as any).role === 2)) {
+              isCommittee = true;
+            }
+          } catch {}
+        }
+
+        if (isCommittee) {
           return new Response(
             JSON.stringify({ error: "Magic link sign-in is disabled for Committee members. Please sign in with password and mandatory 2FA at /login." }),
             { status: 403, headers: { "Content-Type": "application/json" } }
@@ -44,9 +61,6 @@ async function handler(request: Request) {
       } catch {}
     }
   }
-
-  const env = await getCloudflareEnv();
-  const db = (await getD1Database()) || env?.DB;
 
   if (!db) {
     return new Response(
@@ -58,9 +72,23 @@ async function handler(request: Request) {
     );
   }
 
-  const origin = new URL(request.url).origin;
-  const auth = createBetterAuth({ ...env, DB: db, BETTER_AUTH_URL: origin });
-  return auth.handler(request);
+  try {
+    const origin = new URL(request.url).origin;
+    const auth = createBetterAuth({ ...env, DB: db, BETTER_AUTH_URL: origin });
+    return await auth.handler(request);
+  } catch (authErr: any) {
+    console.error("[BetterAuth] Handler unhandled exception:", authErr);
+    return new Response(
+      JSON.stringify({
+        error: "Authentication service temporarily unavailable",
+        message: authErr?.message || "Internal auth initialization failure",
+      }),
+      {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
 }
 
 export const GET = handler;

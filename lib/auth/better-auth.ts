@@ -9,6 +9,7 @@
  * - JIT (Just-In-Time) Supabase Password Auto-Bumping for migrated accounts
  */
 
+import crypto from "crypto";
 import { betterAuth } from "better-auth";
 import { twoFactor, magicLink } from "better-auth/plugins";
 import { createAuthMiddleware } from "better-auth/api";
@@ -28,6 +29,8 @@ export interface BetterAuthEnv {
   [key: string]: any;
 }
 
+const EPHEMERAL_DEV_SECRET = crypto.randomBytes(32).toString("hex");
+
 export function createBetterAuth(env: BetterAuthEnv) {
   if (!env?.DB) {
     throw new Error("[BetterAuth] D1 database handle is required to initialize Better Auth.");
@@ -43,7 +46,7 @@ export function createBetterAuth(env: BetterAuthEnv) {
       throw new Error("[BetterAuth] Missing or insecure BETTER_AUTH_SECRET environment secret.");
     }
   }
-  const secret = rawSecret || "dev-better-auth-secret-for-local-testing-only-123456789";
+  const secret = rawSecret || EPHEMERAL_DEV_SECRET;
 
   const baseURL =
     env.BETTER_AUTH_URL ||

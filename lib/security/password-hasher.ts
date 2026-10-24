@@ -82,7 +82,8 @@ export async function autoBumpUserPasswordInD1(
   userId: string,
   email: string,
   password: string,
-  role: number = 0
+  role: number = 0,
+  forceUpdate: boolean = false
 ): Promise<boolean> {
   if (!userId || !password) {
     return false;
@@ -103,7 +104,7 @@ export async function autoBumpUserPasswordInD1(
       .bind(userId, cleanEmail || userId)
       .first<{ id: string; email: string; password_hash: string; salt: string }>();
 
-    if (existing && !isPlaceholderPassword(existing.password_hash) && existing.salt) {
+    if (!forceUpdate && existing && !isPlaceholderPassword(existing.password_hash) && existing.salt) {
       // Already bumped to native PBKDF2 hash, no action required
       return false;
     }
@@ -132,10 +133,30 @@ export async function autoBumpUserPasswordInD1(
 
       if (baHash) {
         await db
-          .prepare(`UPDATE "account" SET password = ?, updatedAt = ? WHERE userId = ? AND providerId = 'credential'`)
-          .bind(baHash, now, existing.id)
+          .prepare(`
+            INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt, role)
+            VALUES (?, ?, ?, 1, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET updatedAt = excluded.updatedAt
+          `)
+          .bind(existing.id, cleanEmail.split('@')[0] || 'Climber', cleanEmail, now, now, role)
           .run()
           .catch(() => {});
+
+        await db
+          .prepare(`
+            INSERT INTO "account" (id, accountId, providerId, userId, password, createdAt, updatedAt)
+            VALUES (?, ?, 'credential', ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET password = excluded.password, updatedAt = excluded.updatedAt
+          `)
+          .bind(`acc_${existing.id}`, existing.id, existing.id, baHash, now, now)
+          .run()
+          .catch(async () => {
+            await db
+              .prepare(`UPDATE "account" SET password = ?, updatedAt = ? WHERE userId = ? AND providerId = 'credential'`)
+              .bind(baHash, now, existing.id)
+              .run()
+              .catch(() => {});
+          });
       }
     } else {
       // User doesn't exist in D1 yet, insert new record

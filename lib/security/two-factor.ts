@@ -50,12 +50,62 @@ function hashToken(val: string): string {
 
 function getTwoFactorSecretKey(): Buffer {
   const secret =
+    process.env.BETTER_AUTH_SECRET ||
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.NEXTAUTH_SECRET ||
     process.env.SUPABASE_JWT_SECRET ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
     'kclmc-secure-production-2fa-token-salt-2026';
   return crypto.createHash('sha256').update(`kclmc-2fa-seal:${secret}`).digest();
+}
+
+/**
+ * Seal a 2FA attestation token for a verified user session.
+ * Format: userId.timestamp.hmac(userId:timestamp)
+ * Valid for 24 hours.
+ */
+export function seal2FAAttestation(userId: string): string {
+  if (!userId) return '';
+  const timestamp = Date.now();
+  const payload = `${userId}:${timestamp}`;
+  const key = getTwoFactorSecretKey();
+  const signature = crypto.createHmac('sha256', key).update(payload).digest('hex');
+  return `${userId}.${timestamp}.${signature}`;
+}
+
+/**
+ * Verify a 2FA attestation token.
+ * Token must have valid signature, match expected userId (if provided), and be less than 24h old.
+ */
+export function verify2FAAttestation(token?: string | null, expectedUserId?: string): boolean {
+  if (!token) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  const [tokenUserId, timestampStr, signature] = parts;
+  if (!tokenUserId || !timestampStr || !signature) return false;
+  if (expectedUserId && tokenUserId !== expectedUserId) return false;
+
+  const timestamp = parseInt(timestampStr, 10);
+  if (isNaN(timestamp)) return false;
+
+  // Max 24 hour lifetime for 2FA verification attestation
+  const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+  if (Date.now() - timestamp > MAX_AGE_MS || timestamp > Date.now() + 60000) {
+    return false;
+  }
+
+  const payload = `${tokenUserId}:${timestampStr}`;
+  const key = getTwoFactorSecretKey();
+  const expectedSig = crypto.createHmac('sha256', key).update(payload).digest('hex');
+
+  try {
+    const a = Buffer.from(signature, 'hex');
+    const b = Buffer.from(expectedSig, 'hex');
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 /**

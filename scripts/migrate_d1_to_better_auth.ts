@@ -55,7 +55,14 @@ export async function migrateUsersToBetterAuth(db: any) {
           password = excluded.password,
           updatedAt = excluded.updatedAt
       `)
-      .bind(accountId, u.id, u.id, u.password_hash || 'MIGRATED_ACCOUNT', createdAt, updatedAt)
+      .bind(
+        accountId,
+        u.id,
+        u.id,
+        u.password_hash?.includes(':') ? u.password_hash : 'MIGRATED_ACCOUNT',
+        createdAt,
+        updatedAt
+      )
       .run();
 
     migratedCount++;
