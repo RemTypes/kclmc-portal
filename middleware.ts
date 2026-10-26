@@ -32,11 +32,15 @@ export async function middleware(request: NextRequest) {
   }
 
   // 1.5. Check Better Auth Edge Session on D1 first (sub-5ms)
+  let cfSecret: string | undefined = process.env.BETTER_AUTH_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
   const hasBetterAuthCookie = request.cookies.getAll().some(c => c.name.includes('better-auth.session_token'));
   if (hasBetterAuthCookie) {
     try {
       const { getCloudflareEnv, getD1Database } = await import('./lib/db/d1');
       const env = await getCloudflareEnv();
+      if (env) {
+        cfSecret = cfSecret || env.BETTER_AUTH_SECRET || env.SUPABASE_SERVICE_ROLE_KEY;
+      }
       const db = (await getD1Database()) || env?.DB;
       if (db) {
         const { createBetterAuth } = await import('./lib/auth/better-auth');
@@ -80,7 +84,6 @@ export async function middleware(request: NextRequest) {
           // Mandatory Committee 2FA check
           if (role >= 1 && process.env.NODE_ENV === 'production') {
             const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
-            const cfSecret = env?.BETTER_AUTH_SECRET || env?.SUPABASE_SERVICE_ROLE_KEY;
             const is2FAVerified = verify2FAAttestation(attestationCookie, baUser.id, cfSecret);
             if (!is2FAVerified) {
               if (path.startsWith('/admin') || path === '/status' || path.startsWith('/status/')) {
@@ -200,7 +203,7 @@ export async function middleware(request: NextRequest) {
     }
     if (process.env.NODE_ENV === 'production') {
       const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
-      const is2FAVerified = verify2FAAttestation(attestationCookie, user?.id);
+      const is2FAVerified = verify2FAAttestation(attestationCookie, user?.id, cfSecret);
       if (!is2FAVerified) {
         return NextResponse.json({ error: 'Unauthorized: Two-Factor Authentication required' }, { status: 403 });
       }
@@ -223,7 +226,7 @@ export async function middleware(request: NextRequest) {
 
     if (process.env.NODE_ENV === 'production') {
       const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
-      const is2FAVerified = verify2FAAttestation(attestationCookie, user.id);
+      const is2FAVerified = verify2FAAttestation(attestationCookie, user.id, cfSecret);
       if (!is2FAVerified) {
         return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(path)}&error=2fa_required`, request.url));
       }

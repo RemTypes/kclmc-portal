@@ -127,7 +127,7 @@ export class AuthSessionService {
   /**
    * Authenticates user credentials with integrated rate limiting, CAPTCHA, and 2FA gating.
    */
-  async authenticateCredentials(input: Request | LoginParams): Promise<AuthOutcome> {
+  async authenticateCredentials(input: Request | LoginParams, secretKeyOverride?: string): Promise<AuthOutcome> {
     let email: string = '';
     let password = '';
     let captchaToken: string | undefined;
@@ -193,10 +193,14 @@ export class AuthSessionService {
     let authenticatedUser: ClimberSessionUser | null = null;
     let authenticatedSessionPayload: any = null;
     let d1Database: any = null;
+    let cfSecret = secretKeyOverride;
 
     try {
       const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
       const env = await getCloudflareEnv();
+      if (!cfSecret) {
+        cfSecret = env?.BETTER_AUTH_SECRET || env?.SUPABASE_SERVICE_ROLE_KEY;
+      }
       const db = (await getD1Database()) || env?.DB;
       if (db) d1Database = db;
 
@@ -365,7 +369,8 @@ export class AuthSessionService {
           user.id,
           cleanEmail,
           userRole,
-          sessionPayload
+          sessionPayload,
+          cfSecret
         );
 
         return {
@@ -387,7 +392,8 @@ export class AuthSessionService {
         userRole,
         sessionPayload,
         userTotpSecret,
-        userBackupCodesList
+        userBackupCodesList,
+        cfSecret
       );
 
       return {
@@ -419,7 +425,7 @@ export class AuthSessionService {
   /**
    * Verifies second-factor challenge code (TOTP or single-use backup code).
    */
-  async verifyTwoFactor(input: Request | VerifyTwoFactorParams): Promise<AuthOutcome> {
+  async verifyTwoFactor(input: Request | VerifyTwoFactorParams, secretKeyOverride?: string): Promise<AuthOutcome> {
     let challengeToken: string = '';
     let code: string = '';
     let nextParam: string | undefined;
@@ -471,7 +477,16 @@ export class AuthSessionService {
       };
     }
 
-    const result = verify2FAChallenge(effectiveToken, code);
+    let cfSecret = secretKeyOverride;
+    try {
+      const { getCloudflareEnv } = await import('@/lib/db/d1');
+      const env = await getCloudflareEnv();
+      if (!cfSecret) {
+        cfSecret = env?.BETTER_AUTH_SECRET || env?.SUPABASE_SERVICE_ROLE_KEY;
+      }
+    } catch {}
+
+    const result = verify2FAChallenge(effectiveToken, code, cfSecret);
 
     if (!result.success || !result.sessionData) {
       recordFailedAttempt(ip, undefined, 'Invalid 2FA code');
@@ -621,6 +636,7 @@ export class AuthSessionService {
       },
       destination: safeDestination,
       sessionData: result.sessionData,
+      cookiesToSet: result.sessionData?.cookiesToSet,
       usedBackupCode: result.usedBackupCode,
     };
   }

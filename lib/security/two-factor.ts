@@ -136,9 +136,9 @@ export function verify2FAAttestation(token?: string | null, expectedUserId?: str
  * Statelessly seal a 2FA challenge using AES-256-GCM authenticated encryption.
  * Survives across Cloudflare Workers isolates, serverless cold starts, and multi-region routing.
  */
-export function sealChallenge(challenge: Pending2FAChallenge): string {
+export function sealChallenge(challenge: Pending2FAChallenge, secretKeyOverride?: string): string {
   try {
-    const key = getTwoFactorSecretKey();
+    const key = getTwoFactorSecretKey(secretKeyOverride);
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
     const plainText = JSON.stringify(challenge);
@@ -155,7 +155,7 @@ export function sealChallenge(challenge: Pending2FAChallenge): string {
 /**
  * Unseal and verify a sealed 2FA challenge token.
  */
-export function unsealChallenge(token: string): Pending2FAChallenge | null {
+export function unsealChallenge(token: string, secretKeyOverride?: string): Pending2FAChallenge | null {
   if (!token) return null;
   if (invalidatedChallenges.has(token)) {
     return null;
@@ -173,7 +173,7 @@ export function unsealChallenge(token: string): Pending2FAChallenge | null {
 
   try {
     const [ivB64, tagB64, cipherB64] = parts;
-    const key = getTwoFactorSecretKey();
+    const key = getTwoFactorSecretKey(secretKeyOverride);
     const iv = Buffer.from(ivB64, 'base64url');
     const tag = Buffer.from(tagB64, 'base64url');
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
@@ -212,7 +212,8 @@ export function create2FAEnrollmentChallenge(
   userId: string,
   email: string,
   role: number,
-  sessionData?: any
+  sessionData?: any,
+  secretKeyOverride?: string
 ): { challengeToken: string; secret: string; totpUri: string; backupCodes: string[]; expiresAt: number } {
   const secret = generateTOTPSecret();
   const totpUri = `otpauth://totp/KCLMC:${encodeURIComponent(email)}?secret=${secret}&issuer=KCLMC&period=30&digits=6`;
@@ -234,7 +235,7 @@ export function create2FAEnrollmentChallenge(
     hashedBackupCodes,
   };
 
-  const challengeToken = sealChallenge(rawChallenge);
+  const challengeToken = sealChallenge(rawChallenge, secretKeyOverride);
   rawChallenge.challengeToken = challengeToken;
 
   pendingChallenges.set(challengeToken, rawChallenge);
@@ -341,7 +342,8 @@ export function create2FAChallenge(
   role: number,
   sessionData?: any,
   totpSecret?: string,
-  userBackupCodesList?: string[]
+  userBackupCodesList?: string[],
+  secretKeyOverride?: string
 ): { challengeToken: string; otpCode: string; expiresAt: number } {
   // Generate 6-digit numeric OTP
   const otpCode = crypto.randomInt(100000, 999999).toString();
@@ -364,7 +366,7 @@ export function create2FAChallenge(
     hashedBackupCodes: resolvedBackupCodes,
   };
 
-  const challengeToken = sealChallenge(rawChallenge);
+  const challengeToken = sealChallenge(rawChallenge, secretKeyOverride);
   rawChallenge.challengeToken = challengeToken;
 
   pendingChallenges.set(challengeToken, rawChallenge);
@@ -439,13 +441,14 @@ export interface Verify2FAResult {
  */
 export function verify2FAChallenge(
   challengeToken: string,
-  code: string
+  code: string,
+  secretKeyOverride?: string
 ): Verify2FAResult {
   if (!challengeToken || !code) {
     return { success: false, error: 'Challenge token and verification code are required' };
   }
 
-  const challenge = unsealChallenge(challengeToken);
+  const challenge = unsealChallenge(challengeToken, secretKeyOverride);
   if (!challenge) {
     return { success: false, error: 'Invalid or expired 2FA session. Please log in again.' };
   }

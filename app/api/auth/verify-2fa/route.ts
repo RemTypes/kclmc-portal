@@ -7,8 +7,8 @@ import { getCloudflareEnv } from '@/lib/db/d1';
  * Thin HTTP adapter delegating two-factor authentication verification to the deep AuthSession module.
  */
 export async function POST(request: Request): Promise<NextResponse> {
-  const outcome = await authSession.verifyTwoFactor(request);
   const env = await getCloudflareEnv();
   const cfSecret = env?.BETTER_AUTH_SECRET || env?.SUPABASE_SERVICE_ROLE_KEY;
+  const outcome = await authSession.verifyTwoFactor(request, cfSecret);
   return authSession.toApiResponse(outcome, cfSecret);
 }

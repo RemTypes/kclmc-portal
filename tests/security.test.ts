@@ -1112,6 +1112,43 @@ describe('Security Testing Suite', () => {
       expect(result.sessionData).toEqual({ session: { token: 'jwt' } });
     });
 
+    it('seals and verifies 2FA challenges using secretKeyOverride across isolated worker contexts without process.env', () => {
+      const userId = 'cf-isolate-user-1';
+      const cfWorkerSecret = 'cf-env-secret-89a1f2b3c4d5e6f7';
+      const origSecret = process.env.BETTER_AUTH_SECRET;
+      const origSupabase = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      try {
+        delete process.env.BETTER_AUTH_SECRET;
+        delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+        const setup = create2FAEnrollmentChallenge(
+          userId,
+          'isolated@kclmc.org',
+          1,
+          { session: { token: 'isolated-jwt' } },
+          cfWorkerSecret
+        );
+
+        // Simulate new worker isolate without shared memory or process.env
+        clear2FAStores();
+
+        const totp = calculateTOTP(setup.secret);
+        const result = verify2FAChallenge(setup.challengeToken, totp, cfWorkerSecret);
+
+        expect(result.success).toBe(true);
+        expect(result.userId).toBe(userId);
+        expect(result.sessionData).toEqual({ session: { token: 'isolated-jwt' } });
+
+        // Fails if wrong secret is supplied
+        const wrongResult = verify2FAChallenge(setup.challengeToken, totp, 'wrong-secret-key-1234');
+        expect(wrongResult.success).toBe(false);
+        expect(wrongResult.error).toContain('Invalid or expired 2FA session');
+      } finally {
+        if (origSecret) process.env.BETTER_AUTH_SECRET = origSecret;
+        if (origSupabase) process.env.SUPABASE_SERVICE_ROLE_KEY = origSupabase;
+      }
+    });
+
     it('seals and verifies cryptographic 2FA attestation tokens tied to user ID', () => {
       const userId = 'attestation-user-123';
       const token = seal2FAAttestation(userId);
