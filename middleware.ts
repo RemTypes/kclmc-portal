@@ -80,7 +80,8 @@ export async function middleware(request: NextRequest) {
           // Mandatory Committee 2FA check
           if (role >= 1 && process.env.NODE_ENV === 'production') {
             const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
-            const is2FAVerified = verify2FAAttestation(attestationCookie, baUser.id);
+            const cfSecret = env?.BETTER_AUTH_SECRET || env?.SUPABASE_SERVICE_ROLE_KEY;
+            const is2FAVerified = verify2FAAttestation(attestationCookie, baUser.id, cfSecret);
             if (!is2FAVerified) {
               if (path.startsWith('/admin') || path === '/status' || path.startsWith('/status/')) {
                 return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(path)}&error=2fa_required`, request.url));

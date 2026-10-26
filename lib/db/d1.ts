@@ -83,6 +83,16 @@ export async function getCloudflareEnv(): Promise<Record<string, any>> {
       ctx = await getCloudflareContext();
     }
     if (ctx?.env) {
+      if (typeof globalThis !== 'undefined') {
+        (globalThis as any).__CF_ENV__ = ctx.env;
+      }
+      if (typeof process !== 'undefined' && process.env) {
+        for (const [k, v] of Object.entries(ctx.env)) {
+          if (typeof v === 'string' && !process.env[k]) {
+            (process.env as any)[k] = v;
+          }
+        }
+      }
       return ctx.env;
     }
   } catch {

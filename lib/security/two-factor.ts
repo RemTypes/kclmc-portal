@@ -56,10 +56,17 @@ function getEphemeral2FASecret(): string {
   return ephemeral2FASecret;
 }
 
-function getTwoFactorSecretKey(): Buffer {
+function getTwoFactorSecretKey(secretKeyOverride?: string): Buffer {
   const secret =
+    secretKeyOverride ||
     process.env.BETTER_AUTH_SECRET ||
+    (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET ||
+    (globalThis as any)?.env?.BETTER_AUTH_SECRET ||
+    (globalThis as any)?.BETTER_AUTH_SECRET ||
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY ||
+    (globalThis as any)?.env?.SUPABASE_SERVICE_ROLE_KEY ||
+    (globalThis as any)?.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.NEXTAUTH_SECRET ||
     process.env.SUPABASE_JWT_SECRET;
 
@@ -77,12 +84,12 @@ function getTwoFactorSecretKey(): Buffer {
  * Format: userId.timestamp.hmac(userId:timestamp)
  * Valid for 24 hours.
  */
-export function seal2FAAttestation(userId: string): string {
+export function seal2FAAttestation(userId: string, secretKeyOverride?: string): string {
   if (!userId) return '';
   const timestamp = Date.now();
   const payload = `${userId}:${timestamp}`;
   try {
-    const key = getTwoFactorSecretKey();
+    const key = getTwoFactorSecretKey(secretKeyOverride);
     const signature = crypto.createHmac('sha256', key).update(payload).digest('hex');
     return `${userId}.${timestamp}.${signature}`;
   } catch {
@@ -94,7 +101,7 @@ export function seal2FAAttestation(userId: string): string {
  * Verify a 2FA attestation token.
  * Token must have valid signature, match expected userId (if provided), and be less than 24h old.
  */
-export function verify2FAAttestation(token?: string | null, expectedUserId?: string): boolean {
+export function verify2FAAttestation(token?: string | null, expectedUserId?: string, secretKeyOverride?: string): boolean {
   if (!token) return false;
   const parts = token.split('.');
   if (parts.length !== 3) return false;
@@ -114,7 +121,7 @@ export function verify2FAAttestation(token?: string | null, expectedUserId?: str
   const payload = `${tokenUserId}:${timestampStr}`;
 
   try {
-    const key = getTwoFactorSecretKey();
+    const key = getTwoFactorSecretKey(secretKeyOverride);
     const expectedSig = crypto.createHmac('sha256', key).update(payload).digest('hex');
     const a = Buffer.from(signature, 'hex');
     const b = Buffer.from(expectedSig, 'hex');

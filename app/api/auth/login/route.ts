@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authSession } from '@/lib/auth/session';
+import { getCloudflareEnv } from '@/lib/db/d1';
 
 /**
  * POST /api/auth/login
@@ -7,5 +8,7 @@ import { authSession } from '@/lib/auth/session';
  */
 export async function POST(request: Request): Promise<NextResponse> {
   const outcome = await authSession.authenticateCredentials(request);
-  return authSession.toApiResponse(outcome);
+  const env = await getCloudflareEnv();
+  const cfSecret = env?.BETTER_AUTH_SECRET || env?.SUPABASE_SERVICE_ROLE_KEY;
+  return authSession.toApiResponse(outcome, cfSecret);
 }
