@@ -28,6 +28,7 @@ node_modules
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+worker-configuration.d.ts
 
 # Python / ML artifacts
 __pycache__/

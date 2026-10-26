@@ -233,7 +233,7 @@ export class AuthSessionService {
                     path: '/',
                     httpOnly: true,
                     secure: process.env.NODE_ENV !== 'development',
-                    sameSite: 'strict',
+                    sameSite: 'lax',
                     maxAge: 60 * 60 * 24 * 7,
                   },
                 });
@@ -568,7 +568,7 @@ export class AuthSessionService {
           response.cookies.set('kclmc_2fa_verified', attestationToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            sameSite: 'lax',
             path: '/',
             maxAge: 60 * 60 * 24, // 24-hour attestation
           });
@@ -578,7 +578,7 @@ export class AuthSessionService {
         response.cookies.set('kclmc_2fa_pending', '', {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: 'lax',
           path: '/',
           maxAge: 0,
         });

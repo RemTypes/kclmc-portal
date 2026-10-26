@@ -51,6 +51,10 @@ function LoginForm() {
   const [errorMsg, setErrorMsg] = useState(
     urlError === 'reset_link_expired'
       ? 'Your password reset link has expired or is invalid. Please request a new one below.'
+      : urlError === '2fa_required'
+      ? 'Two-Factor Authentication is required to access the Committee Admin Portal. Please sign in below.'
+      : urlError === 'session_expired'
+      ? 'Your session has expired. Please sign in again.'
       : urlError
       ? 'Authentication failed. Please try again.'
       : ''
@@ -80,6 +84,11 @@ function LoginForm() {
       dest = (userRole ?? 0) >= 1 ? '/admin' : '/membership';
     }
 
+    // Role clearance guard: regular members cannot access admin or status endpoints
+    if ((userRole ?? 0) < 1 && (dest.startsWith('/admin') || dest === '/status' || dest.startsWith('/status/'))) {
+      dest = '/membership';
+    }
+
     // Convert to fully qualified URL if relative
     const fullUrl = dest.startsWith('http') ? dest : new URL(dest, window.location.origin).href;
 
@@ -92,25 +101,37 @@ function LoginForm() {
     } catch {
       window.location.href = fullUrl;
     }
-
-    // Safety fallback: if document is still active after 400ms, force navigation
-    setTimeout(() => {
-      window.location.assign(fullUrl);
-    }, 400);
   };
 
   // Active session detection: auto-forward already-authenticated users to their destination
   useEffect(() => {
     let isMounted = true;
     async function checkActiveSession() {
+      // Never auto-forward if:
+      // 1. URL contains an error query param (e.g. ?error=2fa_required, ?error=session_expired)
+      // 2. Explicit switch account mode is requested (?switch=true or ?prompt=login)
+      if (searchParams.has('error') || searchParams.get('switch') === 'true' || searchParams.get('prompt') === 'login') {
+        return;
+      }
+
       try {
         const res = await fetch('/api/auth/me', { cache: 'no-store' });
         if (res.ok && isMounted) {
-          const data = await res.json();
-          if (data.authenticated && data.user) {
-            const defaultDest = (data.user.role ?? 0) >= 1 ? '/admin' : '/membership';
-            const dest = searchParams.get('next') ? next : defaultDest;
-            navigateToDestination(dest, data.user.role);
+          const data: any = await res.json();
+          if (data?.authenticated && data?.user) {
+            const role = data.user.role ?? 0;
+            const requestedDest = searchParams.get('next') ? next : '';
+            const isAdminTarget = requestedDest.startsWith('/admin') || requestedDest === '/status' || requestedDest.startsWith('/status/');
+
+            // Prevent redirect loop: If logged in as regular member and targeting admin, stay on login so user can sign in with committee account
+            if (role < 1 && isAdminTarget) {
+              setWarningMsg(`You are currently signed in as ${data.user.email} (regular member). Committee clearance is required for the Admin Portal.`);
+              return;
+            }
+
+            const defaultDest = role >= 1 ? '/admin' : '/membership';
+            const dest = requestedDest || defaultDest;
+            navigateToDestination(dest, role);
           }
         }
       } catch {
@@ -248,7 +269,7 @@ function LoginForm() {
           }),
         });
 
-        const data = await res.json();
+        const data: any = await res.json();
 
         if (!res.ok) {
           if (data.details && Array.isArray(data.details)) {
@@ -260,7 +281,7 @@ function LoginForm() {
           return;
         }
 
-        window.location.href = next;
+        await navigateToDestination(data.destination || next, data.user?.role ?? 0);
       } else {
         // Sign In submission through server-side rate-limited route with httpOnly cookies
         const res = await fetch('/api/auth/login', {
@@ -621,9 +642,24 @@ function LoginForm() {
 
         {/* Warning Banner */}
         {warningMsg && (
-          <div className="mb-4 p-3 bg-amber-950/70 border border-amber-500/50 rounded-xl text-amber-300 text-xs font-sans leading-relaxed flex items-center gap-2">
-            <span>⚠️</span>
-            <span>{warningMsg}</span>
+          <div className="mb-4 p-3 bg-amber-950/70 border border-amber-500/50 rounded-xl text-amber-300 text-xs font-sans leading-relaxed flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span>⚠️</span>
+              <span>{warningMsg}</span>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await fetch('/api/auth/logout', { method: 'POST' });
+                } catch {}
+                setWarningMsg('');
+                window.location.reload();
+              }}
+              className="shrink-0 px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 rounded text-[11px] font-mono font-bold transition-colors"
+            >
+              Sign Out
+            </button>
           </div>
         )}
 
