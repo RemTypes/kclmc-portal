@@ -682,7 +682,8 @@ export class AuthSessionService {
         }
 
         if (outcome.user && outcome.user.role >= 1) {
-          const attestationToken = seal2FAAttestation(outcome.user.id, secretKeyOverride);
+          const userIdentifier = outcome.user.email || outcome.user.id;
+          const attestationToken = seal2FAAttestation(userIdentifier, secretKeyOverride);
           response.cookies.set('kclmc_2fa_verified', attestationToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
