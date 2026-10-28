@@ -327,7 +327,11 @@ export class AuthSessionService {
       : (userRole >= 1 ? '/admin' : '/membership');
 
     // 4. Evaluate Mandatory 2FA Gate (Committee Members)
-    if (requiresMandatory2FA(cleanEmail, userRole)) {
+    // During migration window: bypass mandatory 2FA gate during login so committee members
+    // can authenticate immediately with credentials and re-enroll clean 2FA in D1.
+    // Can be re-enabled anytime via ENFORCE_MANDATORY_2FA=true.
+    const enforce2FAGate = process.env.ENFORCE_MANDATORY_2FA === 'true';
+    if (enforce2FAGate && requiresMandatory2FA(cleanEmail, userRole)) {
       let isEnrolled = isUser2FAEnrolled(user.id, user.user_metadata);
       let userTotpSecret = user.user_metadata?.totp_secret || getUserTOTPSecret(user.id);
       let userBackupCodesList = user.user_metadata?.backup_codes || getUserHashedBackupCodes(user.id);
