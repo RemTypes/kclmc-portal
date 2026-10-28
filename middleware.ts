@@ -93,7 +93,7 @@ export async function middleware(request: NextRequest) {
           // Mandatory Committee 2FA check
           if (role >= 1 && process.env.NODE_ENV === 'production') {
             const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
-            const is2FAVerified = verify2FAAttestation(attestationCookie, baUser.id, cfSecret);
+            const is2FAVerified = verify2FAAttestation(attestationCookie, baUser.id, cfSecret, baUser.email);
             if (!is2FAVerified) {
               if (path.startsWith('/admin') || path === '/status' || path.startsWith('/status/')) {
                 return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(path)}&error=2fa_required`, request.url));
@@ -212,7 +212,7 @@ export async function middleware(request: NextRequest) {
     }
     if (process.env.NODE_ENV === 'production') {
       const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
-      const is2FAVerified = verify2FAAttestation(attestationCookie, user?.id, cfSecret);
+      const is2FAVerified = verify2FAAttestation(attestationCookie, user?.id, cfSecret, user?.email);
       if (!is2FAVerified) {
         return NextResponse.json({ error: 'Unauthorized: Two-Factor Authentication required' }, { status: 403 });
       }
@@ -235,7 +235,7 @@ export async function middleware(request: NextRequest) {
 
     if (process.env.NODE_ENV === 'production') {
       const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
-      const is2FAVerified = verify2FAAttestation(attestationCookie, user.id, cfSecret);
+      const is2FAVerified = verify2FAAttestation(attestationCookie, user.id, cfSecret, user.email);
       if (!is2FAVerified) {
         return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(path)}&error=2fa_required`, request.url));
       }

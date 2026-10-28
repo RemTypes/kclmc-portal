@@ -335,6 +335,15 @@ export class AuthSessionService {
       // Check Cloudflare D1 twoFactor table for persistent cross-isolate 2FA credentials
       if (!isEnrolled && d1Database) {
         try {
+          // Self-heal D1 twoFactor schema if table does not exist
+          await d1Database.exec(`CREATE TABLE IF NOT EXISTS "twoFactor" (
+            id TEXT PRIMARY KEY,
+            secret TEXT NOT NULL,
+            backupCodes TEXT,
+            userId TEXT NOT NULL UNIQUE,
+            verified INTEGER DEFAULT 1
+          );`).catch(() => {});
+
           const d1Row = (await d1Database
             .prepare('SELECT secret, backupCodes FROM "twoFactor" WHERE userId = ?')
             .bind(user.id)
@@ -505,6 +514,15 @@ export class AuthSessionService {
         const env = await getCloudflareEnv();
         const db = (await getD1Database()) || env?.DB;
         if (db) {
+          // Self-heal D1 twoFactor schema if table does not exist
+          await db.exec(`CREATE TABLE IF NOT EXISTS "twoFactor" (
+            id TEXT PRIMARY KEY,
+            secret TEXT NOT NULL,
+            backupCodes TEXT,
+            userId TEXT NOT NULL UNIQUE,
+            verified INTEGER DEFAULT 1
+          );`).catch(() => {});
+
           const backupJson = JSON.stringify(result.hashedBackupCodes || []);
           const existing = (await db
             .prepare('SELECT id FROM "twoFactor" WHERE userId = ?')
@@ -535,7 +553,8 @@ export class AuthSessionService {
       }
 
       // Legacy fallback: Persist 2FA enrollment metadata to Supabase if configured
-      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY;
+      if (serviceKey) {
         try {
           const adminSupabase = createAdminClient();
           if (adminSupabase?.auth?.admin?.updateUserById) {
