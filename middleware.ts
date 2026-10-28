@@ -31,16 +31,25 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // 1.5. Check Better Auth Edge Session on D1 first (sub-5ms)
+  // 1.4. Resolve Cloudflare runtime environment bindings and secrets across all isolates
   let cfSecret: string | undefined = process.env.BETTER_AUTH_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  let cfEnv: Record<string, any> | undefined;
+  try {
+    const { getCloudflareEnv } = await import('./lib/db/d1');
+    cfEnv = await getCloudflareEnv();
+    if (cfEnv) {
+      cfSecret = cfSecret || cfEnv.BETTER_AUTH_SECRET || cfEnv.SUPABASE_SERVICE_ROLE_KEY;
+    }
+  } catch (envErr) {
+    console.warn('[Middleware] Cloudflare env resolution warning:', envErr);
+  }
+
+  // 1.5. Check Better Auth Edge Session on D1 first (sub-5ms)
   const hasBetterAuthCookie = request.cookies.getAll().some(c => c.name.includes('better-auth.session_token'));
   if (hasBetterAuthCookie) {
     try {
-      const { getCloudflareEnv, getD1Database } = await import('./lib/db/d1');
-      const env = await getCloudflareEnv();
-      if (env) {
-        cfSecret = cfSecret || env.BETTER_AUTH_SECRET || env.SUPABASE_SERVICE_ROLE_KEY;
-      }
+      const { getD1Database } = await import('./lib/db/d1');
+      const env = cfEnv;
       const db = (await getD1Database()) || env?.DB;
       if (db) {
         const { createBetterAuth } = await import('./lib/auth/better-auth');
