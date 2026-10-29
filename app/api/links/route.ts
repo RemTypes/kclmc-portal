@@ -1,20 +1,14 @@
 import { NextResponse } from 'next/server';
-import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
-import { getAuthenticatedUserRole } from '@/lib/auth';
+import { createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
+import { getAuthenticatedUser } from '@/lib/auth/server';
 import { supabaseMock } from '@/lib/supabase';
 import { PortalLink, sanitizeLinkUrl, resolveLinkId } from '@/lib/links';
 
 /**
- * Returns the best database client for committee operations.
- * If SUPABASE_SERVICE_ROLE_KEY is set, uses createAdminClient() to bypass RLS.
- * Otherwise, falls back to userClient so postgREST receives the committee member's
- * session JWT and satisfies public.get_user_role() >= 1 in RLS.
+ * Returns the database client for committee operations.
  */
 function getCommitteeDbClient(userClient?: any) {
-  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return createAdminClient();
-  }
-  return userClient || createAdminClient();
+  return createAdminClient();
 }
 
 /**
@@ -32,29 +26,26 @@ export async function GET(request: Request) {
     const isAdminScope = searchParams.get('scope') === 'admin' || searchParams.get('all') === 'true';
 
     let isCommittee = false;
-    let userClient: any = null;
+
+    try {
+      const user = await getAuthenticatedUser(request);
+      if (user && user.role >= 1) {
+        isCommittee = true;
+      }
+    } catch {
+      // Fall through as public visitor
+    }
+
+    // Reject non-committee requests for admin scope
+    if (isAdminScope && !isCommittee) {
+      return NextResponse.json(
+        { error: 'Forbidden: Committee access required to view inactive links' },
+        { status: 403 }
+      );
+    }
 
     if (isSupabaseConfigured()) {
-      try {
-        userClient = await createClient();
-        const { data: { user } } = await userClient.auth.getUser();
-        if (user) {
-          const role = await getAuthenticatedUserRole(userClient, user);
-          isCommittee = role >= 1;
-        }
-      } catch {
-        // Fall through as public visitor
-      }
-
-      // Reject non-committee requests for admin scope
-      if (isAdminScope && !isCommittee) {
-        return NextResponse.json(
-          { error: 'Forbidden: Committee access required to view inactive links' },
-          { status: 403 }
-        );
-      }
-
-      const db = getCommitteeDbClient(userClient);
+      const db = getCommitteeDbClient();
       let query = db
         .from('portal_links')
         .select('*')
@@ -95,25 +86,18 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    let userClient: any = null;
-
-    if (isSupabaseConfigured()) {
-      userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      if (!user) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Authentication required' },
-          { status: 401 }
-        );
-      }
-      const role = await getAuthenticatedUserRole(userClient, user);
-
-      if (role < 1) {
-        return NextResponse.json(
-          { error: 'Forbidden: Committee access required to manage links' },
-          { status: 403 }
-        );
-      }
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Authentication required' },
+        { status: 401 }
+      );
+    }
+    if (user.role < 1) {
+      return NextResponse.json(
+        { error: 'Forbidden: Committee access required to manage links' },
+        { status: 403 }
+      );
     }
 
     const body = await request.json().catch(() => ({}));
@@ -138,7 +122,7 @@ export async function POST(request: Request) {
     };
 
     if (isSupabaseConfigured()) {
-      const db = getCommitteeDbClient(userClient);
+      const db = getCommitteeDbClient();
       const { data, error } = await db
         .from('portal_links')
         .insert(newLink)
@@ -165,25 +149,18 @@ export async function POST(request: Request) {
  */
 export async function PATCH(request: Request) {
   try {
-    let userClient: any = null;
-
-    if (isSupabaseConfigured()) {
-      userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      if (!user) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Authentication required' },
-          { status: 401 }
-        );
-      }
-      const role = await getAuthenticatedUserRole(userClient, user);
-
-      if (role < 1) {
-        return NextResponse.json(
-          { error: 'Forbidden: Committee access required to update links' },
-          { status: 403 }
-        );
-      }
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Authentication required' },
+        { status: 401 }
+      );
+    }
+    if (user.role < 1) {
+      return NextResponse.json(
+        { error: 'Forbidden: Committee access required to update links' },
+        { status: 403 }
+      );
     }
 
     const body = await request.json().catch(() => ({}));
@@ -204,7 +181,7 @@ export async function PATCH(request: Request) {
     updates.updated_at = new Date().toISOString();
 
     if (isSupabaseConfigured()) {
-      const db = getCommitteeDbClient(userClient);
+      const db = getCommitteeDbClient();
       const { data, error } = await db
         .from('portal_links')
         .update(updates)
@@ -232,25 +209,18 @@ export async function PATCH(request: Request) {
  */
 export async function DELETE(request: Request) {
   try {
-    let userClient: any = null;
-
-    if (isSupabaseConfigured()) {
-      userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      if (!user) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Authentication required' },
-          { status: 401 }
-        );
-      }
-      const role = await getAuthenticatedUserRole(userClient, user);
-
-      if (role < 1) {
-        return NextResponse.json(
-          { error: 'Forbidden: Committee access required to delete links' },
-          { status: 403 }
-        );
-      }
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Authentication required' },
+        { status: 401 }
+      );
+    }
+    if (user.role < 1) {
+      return NextResponse.json(
+        { error: 'Forbidden: Committee access required to delete links' },
+        { status: 403 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -266,7 +236,7 @@ export async function DELETE(request: Request) {
     const id = resolveLinkId(String(rawId));
 
     if (isSupabaseConfigured()) {
-      const db = getCommitteeDbClient(userClient);
+      const db = getCommitteeDbClient();
       const { error } = await db
         .from('portal_links')
         .delete()

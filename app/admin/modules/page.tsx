@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { modulesConfig, ModuleDefinition } from '@/config/modules.config';
 import { ROLE_NAMES, Role } from '@/lib/auth';
+import AdminSuperAdmin2FAReset from '@/components/AdminSuperAdmin2FAReset';
 
 export default function AdminModulesPage() {
   const [modules, setModules] = useState<Record<string, ModuleDefinition>>(modulesConfig);
@@ -204,6 +205,9 @@ export default function AdminModulesPage() {
             </table>
           </div>
         </div>
+
+        {/* SuperAdmin 2FA Emergency Reset Hatch */}
+        {currentUser?.role >= 2 && <AdminSuperAdmin2FAReset />}
 
         {/* SuperAdmin Personal Email Whitelist Box */}
         <div className="bg-[#052322] border border-[#084746] rounded-2xl p-6 shadow-xl">

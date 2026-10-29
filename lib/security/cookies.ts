@@ -124,5 +124,21 @@ export function clearSessionCookies(
     httpOnly: false,
     maxAge: 0,
   });
+
+  response.cookies.set('kclmc_2fa_verified', '', {
+    ...SESSION_COOKIE_OPTIONS,
+    maxAge: 0,
+  });
+
+  response.cookies.set('better-auth.session_token', '', {
+    ...SESSION_COOKIE_OPTIONS,
+    maxAge: 0,
+  });
+
+  response.cookies.set('__Secure-better-auth.session_token', '', {
+    ...SESSION_COOKIE_OPTIONS,
+    secure: true,
+    maxAge: 0,
+  });
 }
 

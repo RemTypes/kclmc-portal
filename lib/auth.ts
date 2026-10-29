@@ -45,18 +45,36 @@ export async function getAuthenticatedUserRole(
   // 2. Query profiles table in Supabase if client & user ID exist
   if (supabase && typeof supabase.from === 'function' && user.id) {
     try {
-      const query = supabase.from('profiles').select('role').eq('id', user.id);
-      const res = typeof query?.maybeSingle === 'function'
-        ? await query.maybeSingle()
-        : (typeof query?.single === 'function' ? await query.single() : null);
+      const fromObj = supabase.from('profiles');
+      if (typeof fromObj?.select === 'function') {
+        const query = fromObj.select('role');
+        const eqQuery = typeof query?.eq === 'function' ? query.eq('id', user.id) : null;
+        const res = typeof eqQuery?.maybeSingle === 'function'
+          ? await eqQuery.maybeSingle()
+          : (typeof eqQuery?.single === 'function' ? await eqQuery.single() : null);
 
-      const profile = res?.data;
-      if (profile && (profile.role === 1 || profile.role === 2)) {
-        return profile.role as Role;
+        const profile = res?.data;
+        if (profile && (profile.role === 1 || profile.role === 2)) {
+          return profile.role as Role;
+        }
       }
     } catch (e) {
       console.warn('Failed to query user profile role:', e);
     }
+  }
+
+  // 3. Fallback to D1 database if bound and user ID exists
+  try {
+    const { getD1Database } = await import('@/lib/db/d1');
+    const d1 = await getD1Database();
+    if (d1 && user.id) {
+      const d1Profile = await d1.prepare('SELECT role FROM profiles WHERE id = ?').bind(user.id).first<{ role: number }>();
+      if (d1Profile && (d1Profile.role === 1 || d1Profile.role === 2)) {
+        return d1Profile.role as Role;
+      }
+    }
+  } catch {
+    // Non-blocking edge fallback
   }
 
   return 0;

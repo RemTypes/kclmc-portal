@@ -30,6 +30,8 @@ export async function GET() {
       }
     }
 
+    const { getCloudflareEnv } = await import('@/lib/db/d1');
+    const cfEnv = await getCloudflareEnv();
     const envValidation = validateProductionSecrets();
     const totalLatencyMs = Date.now() - start;
 
@@ -47,6 +49,10 @@ export async function GET() {
         edge_runtime: {
           status: 'operational',
           platform: 'Cloudflare Workers (OpenNext)',
+        },
+        email_service: {
+          has_binding: Boolean(cfEnv?.EMAIL),
+          is_send_fn: typeof cfEnv?.EMAIL?.send === 'function',
         },
         database_engine: {
           status: dbStatus === 'operational' ? 'operational' : 'degraded',

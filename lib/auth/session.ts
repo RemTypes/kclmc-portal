@@ -19,18 +19,24 @@ import {
   create2FAEnrollmentChallenge,
   isUser2FAEnrolled,
   getUserTOTPSecret,
+  setUserTOTPSecret,
   getUserHashedBackupCodes,
+  setUserHashedBackupCodes,
   verify2FAChallenge,
+  seal2FAAttestation,
+  verify2FAAttestation,
 } from '@/lib/security/two-factor';
 import { setSessionCookies, applySessionCookies } from '@/lib/security/cookies';
-import { getAuthenticatedUserRole, sanitizeEmail, getSafeRedirectUrl, Role } from '@/lib/auth';
+import { getAuthenticatedUserRole, getUserRole, sanitizeEmail, getSafeRedirectUrl, Role } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/server';
+import { autoBumpUserPasswordInD1 } from '@/lib/security/password-hasher';
 
 export interface ClimberSessionUser {
   id: string;
   email: string;
   role: Role;
   fullName?: string;
+  user_metadata?: any;
 }
 
 export type AuthOutcome =
@@ -122,7 +128,7 @@ export class AuthSessionService {
   /**
    * Authenticates user credentials with integrated rate limiting, CAPTCHA, and 2FA gating.
    */
-  async authenticateCredentials(input: Request | LoginParams): Promise<AuthOutcome> {
+  async authenticateCredentials(input: Request | LoginParams, secretKeyOverride?: string): Promise<AuthOutcome> {
     let email: string = '';
     let password = '';
     let captchaToken: string | undefined;
@@ -183,53 +189,200 @@ export class AuthSessionService {
       }
     }
 
-    // 3. Authenticate with Supabase Auth Engine
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsvnyibipcwrcyzqilge.supabase.co';
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg';
-
+    // 3. Authenticate with Better Auth Engine on Cloudflare D1 first
     let cookiesToSet: { name: string; value: string; options: any }[] = [];
-    const serverSupabase = createServerClient(supabaseUrl, supabaseKey, {
-      cookies: {
-        getAll() {
-          return cookieHeader.split(';').map(c => {
-            const [name, ...rest] = c.trim().split('=');
-            return { name, value: rest.join('=') };
-          });
-        },
-        setAll(toSet) {
-          cookiesToSet = toSet;
-        },
-      },
-    });
+    let authenticatedUser: ClimberSessionUser | null = null;
+    let authenticatedSessionPayload: any = null;
+    let d1Database: any = null;
+    let cfSecret = secretKeyOverride;
 
-    const { data: authData, error: authError } = await serverSupabase.auth.signInWithPassword({
-      email: cleanEmail,
-      password,
-    });
+    try {
+      const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
+      const env = await getCloudflareEnv();
+      if (!cfSecret) {
+        cfSecret = env?.BETTER_AUTH_SECRET || env?.SUPABASE_SERVICE_ROLE_KEY;
+      }
+      const db = (await getD1Database()) || env?.DB;
+      if (db) d1Database = db;
 
-    if (authError || !authData?.user || !authData?.session) {
-      const failRecord = recordFailedAttempt(ip, cleanEmail, authError?.message || 'Invalid credentials');
-      return {
-        status: 'invalid_credentials',
-        error: authError?.message || 'Invalid email or password',
-        remainingAttempts: Math.max(0, 5 - failRecord.attemptCount),
-        requiresCaptcha: failRecord.requiresCaptcha,
-        isLocked: failRecord.isLocked,
-        backoffSeconds: failRecord.backoffSeconds,
-      };
+      if (db) {
+        const { createBetterAuth } = await import('@/lib/auth/better-auth');
+        const reqOrigin = input instanceof Request ? new URL(input.url).origin : undefined;
+        const auth = createBetterAuth({ ...env, DB: db, ...(reqOrigin ? { BETTER_AUTH_URL: reqOrigin } : {}) });
+        const baRes = await auth.api.signInEmail({
+          body: { email: cleanEmail, password },
+          asResponse: true,
+        });
+
+        if (baRes.ok) {
+          const baData = await baRes.json().catch(() => ({}));
+          const u = baData.user;
+          if (u) {
+            let role = (u as any).role ?? getUserRole(cleanEmail);
+            try {
+              const prof = (await db.prepare('SELECT role FROM profiles WHERE id = ?').bind(u.id).first()) as any;
+              if (prof?.role !== undefined) role = prof.role;
+            } catch {}
+
+            const rawCookies = typeof (baRes.headers as any).getSetCookie === 'function'
+              ? (baRes.headers as any).getSetCookie()
+              : [baRes.headers.get('set-cookie')].filter(Boolean);
+
+            for (const headerStr of rawCookies) {
+              if (!headerStr) continue;
+              const [nv] = headerStr.split(';');
+              const eqIdx = nv.indexOf('=');
+              if (eqIdx !== -1) {
+                const cName = nv.slice(0, eqIdx).trim();
+                const cVal = nv.slice(eqIdx + 1).trim();
+                cookiesToSet.push({
+                  name: cName,
+                  value: cVal,
+                  options: {
+                    path: '/',
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV !== 'development',
+                    sameSite: 'strict',
+                    maxAge: 60 * 60 * 24 * 7,
+                  },
+                });
+              }
+            }
+
+            authenticatedUser = {
+              id: u.id,
+              email: u.email,
+              role,
+              fullName: u.name,
+            };
+            authenticatedSessionPayload = baData;
+          }
+        }
+      }
+    } catch (baErr) {
+      console.warn('[Session] Better Auth login check non-fatal notice:', baErr);
     }
 
-    const user = authData.user;
-    const session = authData.session;
-    const userRole = await getAuthenticatedUserRole(serverSupabase, user);
+    // 3.5. Fallback to Supabase Auth Engine if not authenticated via Better Auth
+    if (!authenticatedUser) {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsvnyibipcwrcyzqilge.supabase.co';
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg';
+
+      const serverSupabase = createServerClient(supabaseUrl, supabaseKey, {
+        cookies: {
+          getAll() {
+            return cookieHeader.split(';').map(c => {
+              const [name, ...rest] = c.trim().split('=');
+              return { name, value: rest.join('=') };
+            });
+          },
+          setAll(toSet) {
+            cookiesToSet = toSet;
+          },
+        },
+      });
+
+      const { data: authData, error: authError } = await serverSupabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+
+      if (authError || !authData?.user || !authData?.session) {
+        const failRecord = recordFailedAttempt(ip, cleanEmail, authError?.message || 'Invalid credentials');
+        return {
+          status: 'invalid_credentials',
+          error: authError?.message || 'Invalid email or password',
+          remainingAttempts: Math.max(0, 5 - failRecord.attemptCount),
+          requiresCaptcha: failRecord.requiresCaptcha,
+          isLocked: failRecord.isLocked,
+          backoffSeconds: failRecord.backoffSeconds,
+        };
+      }
+
+      const user = authData.user;
+      const session = authData.session;
+      const userRole = await getAuthenticatedUserRole(serverSupabase, user);
+
+      // JIT Password Auto-Bump to Cloudflare D1 (Zero Risk, Non-blocking)
+      try {
+        await autoBumpUserPasswordInD1(user.id, cleanEmail, password, userRole);
+      } catch (bumpErr) {
+        console.warn('[Session] JIT password auto-bump non-fatal error:', bumpErr);
+      }
+
+      authenticatedUser = {
+        id: user.id,
+        email: user.email || cleanEmail,
+        role: userRole,
+        user_metadata: user.user_metadata,
+      };
+      authenticatedSessionPayload = session;
+    }
+
+    const user = authenticatedUser;
+    const session = authenticatedSessionPayload;
+    const userRole = authenticatedUser.role;
 
     const safeDestination = (requestedNext && requestedNext !== '/login' && !requestedNext.startsWith('/login?') && !requestedNext.startsWith('/auth'))
       ? requestedNext
       : (userRole >= 1 ? '/admin' : '/membership');
 
     // 4. Evaluate Mandatory 2FA Gate (Committee Members)
-    if (requiresMandatory2FA(cleanEmail, userRole)) {
-      const isEnrolled = isUser2FAEnrolled(user.id, user.user_metadata);
+    // Strictly enforces 2FA at the Login Gate for all committee members (role >= 1).
+    // Unenrolled officers are returned requires_2fa_setup to scan QR code on login;
+    // Enrolled officers are returned requires_2fa_verify for TOTP or backup code.
+    // Can be disabled for emergency maintenance via ENFORCE_MANDATORY_2FA=false.
+    const enforce2FAGate = process.env.ENFORCE_MANDATORY_2FA !== 'false';
+    if (enforce2FAGate && requiresMandatory2FA(cleanEmail, userRole)) {
+      let isEnrolled = isUser2FAEnrolled(user.id, user.user_metadata);
+      let userTotpSecret = user.user_metadata?.totp_secret || getUserTOTPSecret(user.id);
+      let userBackupCodesList = user.user_metadata?.backup_codes || getUserHashedBackupCodes(user.id);
+
+      // Check Cloudflare D1 twoFactor table for persistent cross-isolate 2FA credentials
+      if (!isEnrolled) {
+        if (!d1Database) {
+          try {
+            const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
+            const env = await getCloudflareEnv();
+            d1Database = (await getD1Database()) || env?.DB;
+          } catch {}
+        }
+        if (d1Database) {
+          try {
+            // Self-heal D1 twoFactor schema if table does not exist
+            await d1Database.exec(`CREATE TABLE IF NOT EXISTS "twoFactor" (
+              id TEXT PRIMARY KEY,
+              secret TEXT NOT NULL,
+              backupCodes TEXT,
+              userId TEXT NOT NULL UNIQUE,
+              verified INTEGER DEFAULT 1
+            );`).catch(() => {});
+
+            const d1Row = (await d1Database
+              .prepare('SELECT secret, backupCodes FROM "twoFactor" WHERE userId = ?')
+              .bind(user.id)
+              .first()) as { secret?: string; backupCodes?: string } | null;
+
+            if (d1Row?.secret) {
+              isEnrolled = true;
+              userTotpSecret = d1Row.secret;
+              setUserTOTPSecret(user.id, d1Row.secret);
+              if (d1Row.backupCodes) {
+                try {
+                  const parsed = JSON.parse(d1Row.backupCodes);
+                  if (Array.isArray(parsed)) {
+                    userBackupCodesList = parsed;
+                    setUserHashedBackupCodes(user.id, parsed);
+                  }
+                } catch {}
+              }
+            }
+          } catch (d1TwoFactorErr) {
+            console.warn('[Session] D1 twoFactor lookup warning:', d1TwoFactorErr);
+          }
+        }
+      }
+
       const sessionPayload = {
         session,
         cookiesToSet: cookiesToSet.length > 0 ? cookiesToSet : undefined,
@@ -240,7 +393,8 @@ export class AuthSessionService {
           user.id,
           cleanEmail,
           userRole,
-          sessionPayload
+          sessionPayload,
+          cfSecret
         );
 
         return {
@@ -256,16 +410,14 @@ export class AuthSessionService {
       }
 
       // Existing 2FA enrollment: generate verification challenge
-      const userTotpSecret = user.user_metadata?.totp_secret || getUserTOTPSecret(user.id);
-      const userBackupCodesList = user.user_metadata?.backup_codes || getUserHashedBackupCodes(user.id);
-
       const challenge = create2FAChallenge(
         user.id,
         cleanEmail,
         userRole,
         sessionPayload,
         userTotpSecret,
-        userBackupCodesList
+        userBackupCodesList,
+        cfSecret
       );
 
       return {
@@ -297,7 +449,7 @@ export class AuthSessionService {
   /**
    * Verifies second-factor challenge code (TOTP or single-use backup code).
    */
-  async verifyTwoFactor(input: Request | VerifyTwoFactorParams): Promise<AuthOutcome> {
+  async verifyTwoFactor(input: Request | VerifyTwoFactorParams, secretKeyOverride?: string): Promise<AuthOutcome> {
     let challengeToken: string = '';
     let code: string = '';
     let nextParam: string | undefined;
@@ -349,7 +501,16 @@ export class AuthSessionService {
       };
     }
 
-    const result = verify2FAChallenge(effectiveToken, code);
+    let cfSecret = secretKeyOverride;
+    try {
+      const { getCloudflareEnv } = await import('@/lib/db/d1');
+      const env = await getCloudflareEnv();
+      if (!cfSecret) {
+        cfSecret = env?.BETTER_AUTH_SECRET || env?.SUPABASE_SERVICE_ROLE_KEY;
+      }
+    } catch {}
+
+    const result = verify2FAChallenge(effectiveToken, code, cfSecret);
 
     if (!result.success || !result.sessionData) {
       recordFailedAttempt(ip, undefined, 'Invalid 2FA code');
@@ -361,9 +522,64 @@ export class AuthSessionService {
 
     recordSuccessfulAttempt(ip, result.email);
 
-    // Persist 2FA enrollment metadata to Supabase if enrolled during this flow
+    // 1. Persist 2FA enrollment directly to Cloudflare D1
     if (result.enrolledSecret && result.userId) {
-      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      try {
+        const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
+        const env = await getCloudflareEnv();
+        const db = (await getD1Database()) || env?.DB;
+        if (db) {
+          // Self-heal D1 twoFactor schema if table does not exist
+          await db.exec(`CREATE TABLE IF NOT EXISTS "twoFactor" (
+            id TEXT PRIMARY KEY,
+            secret TEXT NOT NULL,
+            backupCodes TEXT,
+            userId TEXT NOT NULL UNIQUE,
+            verified INTEGER DEFAULT 1
+          );`).catch(() => {});
+
+          const backupJson = JSON.stringify(result.hashedBackupCodes || []);
+          const existing = (await db
+            .prepare('SELECT id FROM "twoFactor" WHERE userId = ?')
+            .bind(result.userId)
+            .first()) as { id?: string } | null;
+
+          if (existing?.id) {
+            const attestMatch = cookieHeader.match(/kclmc_2fa_verified=([^;]+)/);
+            const attestToken = attestMatch ? decodeURIComponent(attestMatch[1].trim()) : null;
+            const hasValidStepUp = verify2FAAttestation(attestToken, result.userId, cfSecret, result.email);
+            if (!hasValidStepUp) {
+              return {
+                status: 'error',
+                error: '2FA is already enrolled for this account. Verify your current 2FA first or request a SuperAdmin reset.',
+                statusCode: 403,
+              };
+            }
+            await db
+              .prepare('UPDATE "twoFactor" SET secret = ?, backupCodes = ?, verified = 1 WHERE userId = ?')
+              .bind(result.enrolledSecret, backupJson, result.userId)
+              .run();
+          } else {
+            const tfId = `tf_${crypto.randomUUID()}`;
+            await db
+              .prepare('INSERT INTO "twoFactor" (id, secret, backupCodes, userId, verified) VALUES (?, ?, ?, ?, 1)')
+              .bind(tfId, result.enrolledSecret, backupJson, result.userId)
+              .run();
+          }
+
+          await db
+            .prepare('UPDATE "user" SET "twoFactorEnabled" = 1 WHERE id = ?')
+            .bind(result.userId)
+            .run()
+            .catch(() => {});
+        }
+      } catch (d1Err) {
+        console.warn('[2FA] D1 twoFactor persistence error:', d1Err);
+      }
+
+      // Legacy fallback: Persist 2FA enrollment metadata to Supabase if configured
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY;
+      if (serviceKey) {
         try {
           const adminSupabase = createAdminClient();
           if (adminSupabase?.auth?.admin?.updateUserById) {
@@ -412,20 +628,37 @@ export class AuthSessionService {
       }
     }
 
-    // Persist remaining backup codes if a code was burned
-    if (result.usedBackupCode && result.userId && result.remainingBackupCodes && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    // Persist remaining backup codes if a code was burned (D1 + Supabase)
+    if (result.usedBackupCode && result.userId && result.remainingBackupCodes) {
       try {
-        const adminSupabase = createAdminClient();
-        if (adminSupabase?.auth?.admin?.updateUserById) {
-          await Promise.race([
-            adminSupabase.auth.admin.updateUserById(result.userId, {
-              user_metadata: { backup_codes: result.remainingBackupCodes },
-            }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000)),
-          ]).catch(() => {});
+        const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
+        const env = await getCloudflareEnv();
+        const db = (await getD1Database()) || env?.DB;
+        if (db) {
+          const backupJson = JSON.stringify(result.remainingBackupCodes);
+          await db
+            .prepare('UPDATE "twoFactor" SET backupCodes = ? WHERE userId = ?')
+            .bind(backupJson, result.userId)
+            .run();
         }
-      } catch {
-        // non-fatal
+      } catch (d1BurnErr) {
+        console.warn('[2FA] D1 backup code burn error:', d1BurnErr);
+      }
+
+      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        try {
+          const adminSupabase = createAdminClient();
+          if (adminSupabase?.auth?.admin?.updateUserById) {
+            await Promise.race([
+              adminSupabase.auth.admin.updateUserById(result.userId, {
+                user_metadata: { backup_codes: result.remainingBackupCodes },
+              }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000)),
+            ]).catch(() => {});
+          }
+        } catch {
+          // non-fatal
+        }
       }
     }
 
@@ -447,6 +680,7 @@ export class AuthSessionService {
       },
       destination: safeDestination,
       sessionData: result.sessionData,
+      cookiesToSet: result.sessionData?.cookiesToSet,
       usedBackupCode: result.usedBackupCode,
     };
   }
@@ -454,7 +688,7 @@ export class AuthSessionService {
   /**
    * Adapts an AuthOutcome into an RFC-compliant HTTP NextResponse.
    */
-  toApiResponse(outcome: AuthOutcome): NextResponse {
+  toApiResponse(outcome: AuthOutcome, secretKeyOverride?: string): NextResponse {
     switch (outcome.status) {
       case 'authenticated': {
         const response = NextResponse.json({
@@ -470,6 +704,18 @@ export class AuthSessionService {
           applySessionCookies(response, outcome.cookiesToSet);
         } else {
           setSessionCookies(response, outcome.sessionData);
+        }
+
+        if (outcome.user && outcome.user.role >= 1) {
+          const userIdentifier = outcome.user.email || outcome.user.id;
+          const attestationToken = seal2FAAttestation(userIdentifier, secretKeyOverride);
+          response.cookies.set('kclmc_2fa_verified', attestationToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/',
+            maxAge: 60 * 60 * 24, // 24-hour attestation
+          });
         }
 
         // Clear temporary challenge cookie

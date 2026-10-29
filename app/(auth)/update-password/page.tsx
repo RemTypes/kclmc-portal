@@ -1,20 +1,23 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { validatePasswordStrength, PasswordValidationResult } from '@/lib/security/password-validator';
 
 function UpdatePasswordForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const resetToken = searchParams.get('token') || searchParams.get('token_hash');
+
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [success, setSuccess] = useState(false);
-  const [checkingSession, setCheckingSession] = useState(true);
-  const [hasSession, setHasSession] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(!resetToken);
+  const [hasSession, setHasSession] = useState(Boolean(resetToken));
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -24,6 +27,12 @@ function UpdatePasswordForm() {
 
   useEffect(() => {
     let mounted = true;
+
+    if (resetToken) {
+      setHasSession(true);
+      setCheckingSession(false);
+      return;
+    }
 
     async function checkAuth() {
       // First, check server-side session via /api/auth/me (handles httpOnly cookies set by auth callback)
@@ -109,7 +118,11 @@ function UpdatePasswordForm() {
           'Content-Type': 'application/json',
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify({ password: newPassword, accessToken }),
+        body: JSON.stringify({
+          password: newPassword,
+          token: resetToken || undefined,
+          accessToken,
+        }),
       });
 
       const data = await res.json();

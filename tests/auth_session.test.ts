@@ -3,6 +3,7 @@ import { authSession, AuthOutcome } from '@/lib/auth/session';
 import { clearRateLimitStores } from '@/lib/security/rate-limiter';
 import {
   clear2FAStores,
+  create2FAChallenge,
   create2FAEnrollmentChallenge,
   calculateTOTP,
   generateBackupCodes,
@@ -116,6 +117,27 @@ describe('AuthSession Deep Module', () => {
       if (outcome.status === 'authenticated') {
         expect(outcome.user.email).toBe('president@kclmc.org');
         expect(outcome.user.role).toBe(1);
+        expect(outcome.destination).toBe('/admin');
+      }
+    });
+
+    it('authenticates successfully with single-use emergency backup code and sets usedBackupCode', async () => {
+      const backupCodes = generateBackupCodes('user-backup-test');
+      const testCode = backupCodes[0];
+      const challenge = create2FAChallenge('user-backup-test', 'president@kclmc.org', 1, {
+        session: { access_token: 'backup-tok' },
+      });
+
+      const outcome = await authSession.verifyTwoFactor({
+        challengeToken: challenge.challengeToken,
+        code: testCode,
+        ip: '10.0.0.6',
+      });
+
+      expect(outcome.status).toBe('authenticated');
+      if (outcome.status === 'authenticated') {
+        expect(outcome.usedBackupCode).toBe(true);
+        expect(outcome.user.email).toBe('president@kclmc.org');
         expect(outcome.destination).toBe('/admin');
       }
     });

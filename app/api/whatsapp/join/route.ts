@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { checkSafetyProfileCompleteness } from '@/lib/safety';
 import { findMemberByCardNumber } from '@/lib/roster';
+import { getAuthenticatedUser } from '@/lib/auth/server';
+import { memberRoster } from '@/lib/roster/service';
+
+export const dynamic = 'force-dynamic';
 
 /**
  * Protected WhatsApp Community Gateway Route
@@ -20,23 +24,10 @@ export async function GET(request: Request) {
     const requestUrl = new URL(request.url);
     const hostUrl = `${requestUrl.protocol}//${requestUrl.host}`;
 
-    if (!isSupabaseConfigured()) {
-      // Local development fallback without database
-      const fallbackUrl = process.env.WHATSAPP_COMMUNITY_INVITE_URL || 'https://chat.whatsapp.com/YOUR_COMMUNITY_INVITE_SECRET';
-      return NextResponse.redirect(fallbackUrl, {
-        status: 307,
-        headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-          'Pragma': 'no-cache',
-        },
-      });
-    }
-
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const user = await getAuthenticatedUser(request);
 
     // 1. Authentication Check
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.redirect(`${hostUrl}/login?next=/membership`, {
         status: 307,
         headers: { 'Cache-Control': 'no-store' },
@@ -44,11 +35,21 @@ export async function GET(request: Request) {
     }
 
     // 2. Profile & Safety Gate Check
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .maybeSingle();
+    const { getD1Database } = await import('@/lib/db/d1');
+    const d1 = await getD1Database();
+    let profile: any = null;
+    if (d1) {
+      try {
+        profile = await d1.prepare('SELECT * FROM profiles WHERE id = ?').bind(user.id).first();
+      } catch {}
+    }
+    if (!profile && isSupabaseConfigured()) {
+      try {
+        const supabase = await createClient();
+        const res = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+        profile = res.data;
+      } catch {}
+    }
 
     const safetyCheck = checkSafetyProfileCompleteness(profile);
     if (!safetyCheck.isComplete) {
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
     }
 
     // 3. Student ID & KCLSU Roster Verification Check
-    const activeStudentId = profile?.student_id || user.user_metadata?.student_id;
+    const activeStudentId = profile?.student_id;
     if (!activeStudentId) {
       return NextResponse.redirect(`${hostUrl}/membership?error=unlinked_student_id`, {
         status: 307,
@@ -67,16 +68,8 @@ export async function GET(request: Request) {
       });
     }
 
-    const cleanId = activeStudentId.trim().toUpperCase();
-    const admin = createAdminClient();
-    const { data: rosterRow } = await admin
-      .from('kclsu_roster')
-      .select('card_number')
-      .eq('card_number', cleanId)
-      .maybeSingle();
-
-    const isVerified = Boolean(rosterRow) || Boolean(findMemberByCardNumber(cleanId));
-    if (!isVerified) {
+    const passState = await memberRoster.resolveMemberPass(user as any);
+    if (!passState.membership || !passState.suRecord || passState.suRecord.suStatus === 'revoked') {
       return NextResponse.redirect(`${hostUrl}/membership?error=not_on_roster`, {
         status: 307,
         headers: { 'Cache-Control': 'no-store' },
