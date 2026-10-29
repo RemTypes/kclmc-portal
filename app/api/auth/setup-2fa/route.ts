@@ -7,6 +7,8 @@ import { create2FAEnrollmentChallenge, verify2FAAttestation } from '@/lib/securi
  * GET /api/auth/setup-2fa
  * Returns the current 2FA status for the logged-in user.
  */
+export async function GET(request: Request): Promise<NextResponse>;
+export async function GET(): Promise<NextResponse>;
 export async function GET(request?: Request): Promise<NextResponse> {
   const user = await getAuthenticatedUser(request);
   if (!user) {
@@ -59,6 +61,8 @@ export async function GET(request?: Request): Promise<NextResponse> {
  * Initiates self-service 2FA enrollment/re-enrollment for the authenticated committee user.
  * Generates a fresh RFC 6238 TOTP secret, QR code URI, emergency backup codes, and a sealed challenge token.
  */
+export async function POST(request: Request): Promise<NextResponse>;
+export async function POST(): Promise<NextResponse>;
 export async function POST(request?: Request): Promise<NextResponse> {
   const user = await getAuthenticatedUser(request);
   if (!user) {

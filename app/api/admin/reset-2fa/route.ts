@@ -8,6 +8,8 @@ import { createAdminClient } from '@/lib/supabase/server';
  * GET /api/admin/reset-2fa
  * Lists committee accounts and their D1 2FA enrollment status (SuperAdmin clearance required: role >= 2).
  */
+export async function GET(request: Request): Promise<NextResponse>;
+export async function GET(): Promise<NextResponse>;
 export async function GET(request?: Request): Promise<NextResponse> {
   const user = await getAuthenticatedUser(request);
   if (!user || user.role < 2) {
