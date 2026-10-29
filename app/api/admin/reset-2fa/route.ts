@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth/server';
 import { getCloudflareEnv, getD1Database } from '@/lib/db/d1';
 import { clear2FAStores } from '@/lib/security/two-factor';
+import { createAdminClient } from '@/lib/supabase/server';
 
 /**
  * GET /api/admin/reset-2fa
  * Lists committee accounts and their D1 2FA enrollment status (SuperAdmin clearance required: role >= 2).
  */
-export async function GET(): Promise<NextResponse> {
-  const user = await getAuthenticatedUser();
+export async function GET(request?: Request): Promise<NextResponse> {
+  const user = await getAuthenticatedUser(request);
   if (!user || user.role < 2) {
     return NextResponse.json({ error: 'Unauthorized: SuperAdmin clearance required' }, { status: 403 });
   }
@@ -37,18 +38,19 @@ export async function GET(): Promise<NextResponse> {
       success: true,
       users: usersResult.results || [],
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Error fetching committee accounts' }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: 'Error fetching committee accounts' }, { status: 500 });
   }
 }
 
 /**
  * POST /api/admin/reset-2fa
  * Resets 2FA credentials for a committee member (SuperAdmin clearance required: role >= 2).
- * Wipes the D1 "twoFactor" record and sets "twoFactorEnabled" = 0, prompting clean re-enrollment on next login.
+ * Wipes the D1 "twoFactor" record, sets "twoFactorEnabled" = 0, revokes active sessions,
+ * and clears legacy Supabase 2FA metadata, prompting clean re-enrollment on next login.
  */
 export async function POST(request: Request): Promise<NextResponse> {
-  const user = await getAuthenticatedUser();
+  const user = await getAuthenticatedUser(request);
   if (!user || user.role < 2) {
     return NextResponse.json({ error: 'Unauthorized: SuperAdmin clearance required' }, { status: 403 });
   }
@@ -100,14 +102,37 @@ export async function POST(request: Request): Promise<NextResponse> {
       .run()
       .catch(() => {});
 
-    // 3. Clear in-memory caches
+    // 3. Revoke active D1 sessions for the target user so compromised sessions cannot persist
+    await db
+      .prepare('DELETE FROM "session" WHERE userId = ?')
+      .bind(effectiveUserId)
+      .run()
+      .catch(() => {});
+
+    // 4. Clear legacy Supabase user_metadata 2FA fields if configured
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY || env?.SUPABASE_SERVICE_ROLE_KEY) {
+      try {
+        const adminSupabase = createAdminClient();
+        if (adminSupabase?.auth?.admin?.updateUserById) {
+          await adminSupabase.auth.admin.updateUserById(effectiveUserId, {
+            user_metadata: {
+              is_2fa_enrolled: false,
+              totp_secret: null,
+              backup_codes: [],
+            },
+          });
+        }
+      } catch {}
+    }
+
+    // 5. Clear in-memory caches
     clear2FAStores();
 
     return NextResponse.json({
       success: true,
       message: `Successfully reset 2FA credentials for user ${effectiveUserId}. They will be prompted to re-enroll on their next login.`,
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Error resetting 2FA credentials' }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: 'Error resetting 2FA credentials' }, { status: 500 });
   }
 }

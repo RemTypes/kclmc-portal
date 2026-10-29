@@ -34,7 +34,7 @@ export function applySessionCookies(
       ...options,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: options?.sameSite || 'lax',
+      sameSite: 'strict',
       path: options?.path || '/',
     });
   });

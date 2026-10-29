@@ -47,8 +47,13 @@ export function validateProductionSecrets(): EnvValidationResult {
 
   // 5. Better Auth Secret Verification
   const betterAuthSecret = process.env.BETTER_AUTH_SECRET || '';
+  const leakedBetterAuthSecrets = new Set([
+    'kclmc-secret-production-auth-key-2026-edge',
+    '1ee648c7f7b07ffcce236264aad790a17d390b39ba5f2c9df02a7d5919925278',
+    'kclmc-d1-auth-edge-seal:25583bc2-683b-49ac-a5c0-2419a66f651a',
+  ]);
   if (isProd) {
-    if (betterAuthSecret === 'kclmc-secret-production-auth-key-2026-edge') {
+    if (leakedBetterAuthSecrets.has(betterAuthSecret)) {
       errors.push('CRITICAL: BETTER_AUTH_SECRET is configured with the publicly leaked key in production!');
     } else if (!betterAuthSecret) {
       warnings.push('NOTICE: BETTER_AUTH_SECRET is not configured in process.env; ensure it is provisioned via Cloudflare Worker secrets binding.');

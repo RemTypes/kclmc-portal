@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth/server';
 import { getCloudflareEnv, getD1Database } from '@/lib/db/d1';
-import { create2FAEnrollmentChallenge } from '@/lib/security/two-factor';
+import { create2FAEnrollmentChallenge, verify2FAAttestation } from '@/lib/security/two-factor';
 
 /**
  * GET /api/auth/setup-2fa
  * Returns the current 2FA status for the logged-in user.
  */
-export async function GET(): Promise<NextResponse> {
-  const user = await getAuthenticatedUser();
+export async function GET(request?: Request): Promise<NextResponse> {
+  const user = await getAuthenticatedUser(request);
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -59,14 +59,40 @@ export async function GET(): Promise<NextResponse> {
  * Initiates self-service 2FA enrollment/re-enrollment for the authenticated committee user.
  * Generates a fresh RFC 6238 TOTP secret, QR code URI, emergency backup codes, and a sealed challenge token.
  */
-export async function POST(): Promise<NextResponse> {
-  const user = await getAuthenticatedUser();
+export async function POST(request?: Request): Promise<NextResponse> {
+  const user = await getAuthenticatedUser(request);
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized: Session required to re-enroll 2FA' }, { status: 401 });
+  }
+  if (user.role < 1) {
+    return NextResponse.json({ error: 'Forbidden: Committee clearance required to enroll 2FA' }, { status: 403 });
   }
 
   const env = await getCloudflareEnv();
   const cfSecret = env?.BETTER_AUTH_SECRET || env?.SUPABASE_SERVICE_ROLE_KEY;
+  const db = (await getD1Database()) || env?.DB;
+
+  if (db) {
+    try {
+      const existing = (await db
+        .prepare('SELECT id, verified FROM "twoFactor" WHERE userId = ?')
+        .bind(user.id)
+        .first()) as { id?: string; verified?: number } | null;
+
+      if (existing?.id) {
+        const cookieHeader = request?.headers?.get('cookie') || '';
+        const attestMatch = cookieHeader.match(/kclmc_2fa_verified=([^;]+)/);
+        const attestToken = attestMatch ? decodeURIComponent(attestMatch[1].trim()) : null;
+        const hasValidStepUp = verify2FAAttestation(attestToken, user.id, cfSecret, user.email);
+        if (!hasValidStepUp) {
+          return NextResponse.json(
+            { error: '2FA is already enrolled for this account. Verify your current 2FA first or request a SuperAdmin 2FA reset.' },
+            { status: 403 }
+          );
+        }
+      }
+    } catch {}
+  }
 
   const setup = create2FAEnrollmentChallenge(
     user.id,

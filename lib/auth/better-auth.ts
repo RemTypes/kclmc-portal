@@ -47,8 +47,17 @@ export function createBetterAuth(env: BetterAuthEnv) {
   });
 
   const rawSecret = env.BETTER_AUTH_SECRET || process.env.BETTER_AUTH_SECRET;
-  const deterministicFallbackSecret = "kclmc-d1-auth-edge-seal:25583bc2-683b-49ac-a5c0-2419a66f651a";
-  const secret = rawSecret || deterministicFallbackSecret;
+  const BANNED_SECRETS = new Set([
+    "kclmc-secret-production-auth-key-2026-edge",
+    "1ee648c7f7b07ffcce236264aad790a17d390b39ba5f2c9df02a7d5919925278",
+    "kclmc-d1-auth-edge-seal:25583bc2-683b-49ac-a5c0-2419a66f651a",
+  ]);
+  if (!rawSecret || BANNED_SECRETS.has(rawSecret)) {
+    if ((process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") && process.env.NEXT_PHASE !== "phase-production-build") {
+      throw new Error("[BetterAuth] Missing or insecure BETTER_AUTH_SECRET environment secret.");
+    }
+  }
+  const secret = rawSecret || getEphemeralDevSecret();
 
   const baseURL =
     env.BETTER_AUTH_URL ||
@@ -100,6 +109,11 @@ export function createBetterAuth(env: BetterAuthEnv) {
     advanced: {
       ipAddress: {
         ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"],
+      },
+      defaultCookieAttributes: {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
       },
     },
     plugins: [

@@ -1162,6 +1162,28 @@ describe('Security Testing Suite', () => {
       // Rejects forged / mismatched user ID
       expect(verify2FAAttestation(token, 'different-user-456')).toBe(false);
 
+      // Rejects mismatched UUID when expectedEmail is provided (NEW-010 regression check)
+      const foreignUuidToken = seal2FAAttestation('11111111-2222-3333-4444-555555555555');
+      expect(
+        verify2FAAttestation(
+          foreignUuidToken,
+          '99999999-8888-7777-6666-555555555555',
+          undefined,
+          'president@kclmc.org'
+        )
+      ).toBe(false);
+
+      // Accepts email-sealed token when expectedEmail matches (even with dots in email)
+      const emailToken = seal2FAAttestation('remy.preston@outlook.com');
+      expect(
+        verify2FAAttestation(
+          emailToken,
+          '99999999-8888-7777-6666-555555555555',
+          undefined,
+          'remy.preston@outlook.com'
+        )
+      ).toBe(true);
+
       // Rejects plain 'true' string (NEW-002 forge attempt)
       expect(verify2FAAttestation('true', userId)).toBe(false);
       expect(verify2FAAttestation('true')).toBe(false);

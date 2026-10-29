@@ -68,13 +68,27 @@ export async function POST(request: Request) {
 
           if (baRes.ok) {
             recordSuccessfulAttempt(ip);
-            const sessionCookie = baRes.headers.get('set-cookie');
+            const rawCookies = typeof (baRes.headers as any).getSetCookie === 'function'
+              ? (baRes.headers as any).getSetCookie()
+              : [baRes.headers.get('set-cookie')].filter(Boolean);
+            const parsedCookies: { name: string; value: string }[] = [];
+            for (const headerStr of rawCookies) {
+              if (!headerStr) continue;
+              const [nv] = headerStr.split(';');
+              const eqIdx = nv.indexOf('=');
+              if (eqIdx !== -1) {
+                parsedCookies.push({
+                  name: nv.slice(0, eqIdx).trim(),
+                  value: nv.slice(eqIdx + 1).trim(),
+                });
+              }
+            }
             const response = NextResponse.json({
               success: true,
               message: 'Your password has been reset successfully. You are now logged in.',
             });
-            if (sessionCookie) {
-              response.headers.set('set-cookie', sessionCookie);
+            if (parsedCookies.length > 0) {
+              applySessionCookies(response, parsedCookies);
             }
             return response;
           } else {

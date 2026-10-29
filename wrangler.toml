@@ -34,7 +34,6 @@ BETTER_AUTH_URL = "https://kclmc.org"
 WHATSAPP_COMMUNITY_INVITE_URL = "https://chat.whatsapp.com/CPVH7dfM88QCGuFYyLcrDF?s=cl&p=i&mlu=0&ilr=4"
 
 [previews.vars]
-BETTER_AUTH_SECRET = "1ee648c7f7b07ffcce236264aad790a17d390b39ba5f2c9df02a7d5919925278"
 BETTER_AUTH_URL = "https://epic-replace-supabase.kclmc.org"
 COMMITTEE_EMAILS = "kclmc.committee@gmail.com,president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org,remy.preston@outlook.com,remy.preston@kcl.ac.uk"
 EMAIL_FROM = "portal@kclmc.org"

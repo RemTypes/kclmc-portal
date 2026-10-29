@@ -56,25 +56,34 @@ function getEphemeral2FASecret(): string {
   return ephemeral2FASecret;
 }
 
+const BANNED_2FA_SECRETS = new Set([
+  'kclmc-secret-production-auth-key-2026-edge',
+  '1ee648c7f7b07ffcce236264aad790a17d390b39ba5f2c9df02a7d5919925278',
+  'kclmc-d1-auth-edge-seal:25583bc2-683b-49ac-a5c0-2419a66f651a',
+  'kclmc-2fa-edge-key:25583bc2-683b-49ac-a5c0-2419a66f651a:kclmc-production',
+]);
+
 function getTwoFactorSecretKey(secretKeyOverride?: string): Buffer {
-  const secret =
-    secretKeyOverride ||
-    process.env.BETTER_AUTH_SECRET ||
-    (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET ||
-    (globalThis as any)?.env?.BETTER_AUTH_SECRET ||
-    (globalThis as any)?.BETTER_AUTH_SECRET ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY ||
-    (globalThis as any)?.env?.SUPABASE_SERVICE_ROLE_KEY ||
-    (globalThis as any)?.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.SUPABASE_JWT_SECRET;
+  const candidates = [
+    secretKeyOverride,
+    process.env.BETTER_AUTH_SECRET,
+    (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
+    (globalThis as any)?.env?.BETTER_AUTH_SECRET,
+    (globalThis as any)?.BETTER_AUTH_SECRET,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY,
+    (globalThis as any)?.env?.SUPABASE_SERVICE_ROLE_KEY,
+    (globalThis as any)?.SUPABASE_SERVICE_ROLE_KEY,
+    process.env.NEXTAUTH_SECRET,
+    process.env.SUPABASE_JWT_SECRET,
+  ];
+  const secret = candidates.find(s => typeof s === 'string' && s.length > 0 && !BANNED_2FA_SECRETS.has(s));
 
   if (!secret) {
-    // Resilient cross-isolate fallback: derive a deterministic key from Cloudflare deployment constants.
-    // Ensures preview branches and isolate cold-starts never fragment in-memory or bounce users into redirect loops.
-    const edgeFallbackKey = `kclmc-2fa-edge-key:25583bc2-683b-49ac-a5c0-2419a66f651a:kclmc-production`;
-    return crypto.createHash('sha256').update(`kclmc-2fa-seal:${edgeFallbackKey}`).digest();
+    if (process.env.NODE_ENV === 'production' && process.env.NEXT_PHASE !== 'phase-production-build') {
+      throw new Error('[2FA] Missing mandatory server-side secret key for 2FA HMAC sealing in production.');
+    }
+    return crypto.createHash('sha256').update(`kclmc-2fa-seal:${getEphemeral2FASecret()}`).digest();
   }
   return crypto.createHash('sha256').update(`kclmc-2fa-seal:${secret}`).digest();
 }
@@ -135,37 +144,31 @@ export function verify2FAAttestation(
     return false;
   }
 
-  // Candidate secrets to verify against across isolates & edge middleware
-  const candidateSecrets: (string | undefined)[] = [
-    secretKeyOverride,
-    process.env.BETTER_AUTH_SECRET,
-    (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
-    (globalThis as any)?.env?.BETTER_AUTH_SECRET,
-    "1ee648c7f7b07ffcce236264aad790a17d390b39ba5f2c9df02a7d5919925278",
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY,
-    "kclmc-2fa-edge-key:25583bc2-683b-49ac-a5c0-2419a66f651a:kclmc-production",
-  ];
-
-  // Verify user ownership: matches expectedUserId OR expectedEmail
-  if (expectedUserId && tokenUserId !== expectedUserId) {
-    if (!expectedEmail || tokenUserId.toLowerCase() !== expectedEmail.toLowerCase()) {
-      // Allow seamless bridge if token was signed with a Supabase UUID for this authenticated user
-      if (expectedEmail && /^[0-9a-f-]{36}$/i.test(tokenUserId)) {
-        // Valid cross-isolate Supabase UUID token for authenticated committee member
-      } else {
-        return false;
-      }
-    }
-  } else if (!expectedUserId && expectedEmail) {
-    if (tokenUserId.toLowerCase() !== expectedEmail.toLowerCase() && !/^[0-9a-f-]{36}$/i.test(tokenUserId)) {
+  // Verify user ownership: must strictly match expectedUserId OR expectedEmail
+  if (expectedUserId || expectedEmail) {
+    const matchesId = Boolean(expectedUserId && tokenUserId === expectedUserId);
+    const matchesEmail = Boolean(expectedEmail && tokenUserId.toLowerCase() === expectedEmail.toLowerCase());
+    if (!matchesId && !matchesEmail) {
       return false;
     }
   }
 
+  // Candidate secrets to verify against across isolates & edge middleware (excluding banned public literals)
+  const rawCandidates = [
+    secretKeyOverride,
+    process.env.BETTER_AUTH_SECRET,
+    (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
+    (globalThis as any)?.env?.BETTER_AUTH_SECRET,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY,
+    process.env.NEXTAUTH_SECRET,
+    process.env.SUPABASE_JWT_SECRET,
+  ].filter((c): c is string => typeof c === 'string' && c.length > 0 && !BANNED_2FA_SECRETS.has(c));
+
+  const candidateSecrets: (string | undefined)[] = rawCandidates.length > 0 ? rawCandidates : [undefined];
+
   let signatureValid = false;
   for (const candidate of candidateSecrets) {
-    if (!candidate) continue;
     try {
       const key = getTwoFactorSecretKey(candidate);
       const expectedSig = crypto.createHmac('sha256', key).update(payload).digest('hex');
@@ -222,19 +225,23 @@ export function unsealChallenge(token: string, secretKeyOverride?: string): Pend
   }
 
   const [ivB64, tagB64, cipherB64] = parts;
-  const candidateSecrets: (string | undefined)[] = [
-    secretKeyOverride,
-    process.env.BETTER_AUTH_SECRET,
-    (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
-    (globalThis as any)?.env?.BETTER_AUTH_SECRET,
-    "1ee648c7f7b07ffcce236264aad790a17d390b39ba5f2c9df02a7d5919925278",
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY,
-    "kclmc-2fa-edge-key:25583bc2-683b-49ac-a5c0-2419a66f651a:kclmc-production",
-  ];
+  // When an explicit secretKeyOverride is provided, verify strictly against that override key
+  const rawCandidates = secretKeyOverride
+    ? (!BANNED_2FA_SECRETS.has(secretKeyOverride) ? [secretKeyOverride] : [])
+    : [
+        process.env.BETTER_AUTH_SECRET,
+        (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
+        (globalThis as any)?.env?.BETTER_AUTH_SECRET,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY,
+        process.env.NEXTAUTH_SECRET,
+        process.env.SUPABASE_JWT_SECRET,
+      ].filter((c): c is string => typeof c === 'string' && c.length > 0 && !BANNED_2FA_SECRETS.has(c));
+
+  const candidateSecrets: (string | undefined)[] =
+    secretKeyOverride ? rawCandidates : (rawCandidates.length > 0 ? rawCandidates : [undefined]);
 
   for (const candidate of candidateSecrets) {
-    if (!candidate) continue;
     try {
       const key = getTwoFactorSecretKey(candidate);
       const iv = Buffer.from(ivB64, 'base64url');

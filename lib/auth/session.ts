@@ -24,6 +24,7 @@ import {
   setUserHashedBackupCodes,
   verify2FAChallenge,
   seal2FAAttestation,
+  verify2FAAttestation,
 } from '@/lib/security/two-factor';
 import { setSessionCookies, applySessionCookies } from '@/lib/security/cookies';
 import { getAuthenticatedUserRole, getUserRole, sanitizeEmail, getSafeRedirectUrl, Role } from '@/lib/auth';
@@ -241,7 +242,7 @@ export class AuthSessionService {
                     path: '/',
                     httpOnly: true,
                     secure: process.env.NODE_ENV !== 'development',
-                    sameSite: 'lax',
+                    sameSite: 'strict',
                     maxAge: 60 * 60 * 24 * 7,
                   },
                 });
@@ -544,6 +545,16 @@ export class AuthSessionService {
             .first()) as { id?: string } | null;
 
           if (existing?.id) {
+            const attestMatch = cookieHeader.match(/kclmc_2fa_verified=([^;]+)/);
+            const attestToken = attestMatch ? decodeURIComponent(attestMatch[1].trim()) : null;
+            const hasValidStepUp = verify2FAAttestation(attestToken, result.userId, cfSecret, result.email);
+            if (!hasValidStepUp) {
+              return {
+                status: 'error',
+                error: '2FA is already enrolled for this account. Verify your current 2FA first or request a SuperAdmin reset.',
+                statusCode: 403,
+              };
+            }
             await db
               .prepare('UPDATE "twoFactor" SET secret = ?, backupCodes = ?, verified = 1 WHERE userId = ?')
               .bind(result.enrolledSecret, backupJson, result.userId)
@@ -701,7 +712,7 @@ export class AuthSessionService {
           response.cookies.set('kclmc_2fa_verified', attestationToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
+            sameSite: 'strict',
             path: '/',
             maxAge: 60 * 60 * 24, // 24-hour attestation
           });
@@ -711,7 +722,7 @@ export class AuthSessionService {
         response.cookies.set('kclmc_2fa_pending', '', {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
+          sameSite: 'strict',
           path: '/',
           maxAge: 0,
         });

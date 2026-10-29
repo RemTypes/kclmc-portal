@@ -30,9 +30,9 @@ export async function GET() {
       }
     }
 
-    const envValidation = validateProductionSecrets();
     const { getCloudflareEnv } = await import('@/lib/db/d1');
     const cfEnv = await getCloudflareEnv();
+    const envValidation = validateProductionSecrets();
     const totalLatencyMs = Date.now() - start;
 
     const isFullyOperational =
