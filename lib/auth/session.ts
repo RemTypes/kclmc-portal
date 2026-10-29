@@ -327,48 +327,58 @@ export class AuthSessionService {
       : (userRole >= 1 ? '/admin' : '/membership');
 
     // 4. Evaluate Mandatory 2FA Gate (Committee Members)
-    // During migration window: bypass mandatory 2FA gate during login so committee members
-    // can authenticate immediately with credentials and re-enroll clean 2FA in D1.
-    // Can be re-enabled anytime via ENFORCE_MANDATORY_2FA=true.
-    const enforce2FAGate = process.env.ENFORCE_MANDATORY_2FA === 'true';
+    // Strictly enforces 2FA at the Login Gate for all committee members (role >= 1).
+    // Unenrolled officers are returned requires_2fa_setup to scan QR code on login;
+    // Enrolled officers are returned requires_2fa_verify for TOTP or backup code.
+    // Can be disabled for emergency maintenance via ENFORCE_MANDATORY_2FA=false.
+    const enforce2FAGate = process.env.ENFORCE_MANDATORY_2FA !== 'false';
     if (enforce2FAGate && requiresMandatory2FA(cleanEmail, userRole)) {
       let isEnrolled = isUser2FAEnrolled(user.id, user.user_metadata);
       let userTotpSecret = user.user_metadata?.totp_secret || getUserTOTPSecret(user.id);
       let userBackupCodesList = user.user_metadata?.backup_codes || getUserHashedBackupCodes(user.id);
 
       // Check Cloudflare D1 twoFactor table for persistent cross-isolate 2FA credentials
-      if (!isEnrolled && d1Database) {
-        try {
-          // Self-heal D1 twoFactor schema if table does not exist
-          await d1Database.exec(`CREATE TABLE IF NOT EXISTS "twoFactor" (
-            id TEXT PRIMARY KEY,
-            secret TEXT NOT NULL,
-            backupCodes TEXT,
-            userId TEXT NOT NULL UNIQUE,
-            verified INTEGER DEFAULT 1
-          );`).catch(() => {});
+      if (!isEnrolled) {
+        if (!d1Database) {
+          try {
+            const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
+            const env = await getCloudflareEnv();
+            d1Database = (await getD1Database()) || env?.DB;
+          } catch {}
+        }
+        if (d1Database) {
+          try {
+            // Self-heal D1 twoFactor schema if table does not exist
+            await d1Database.exec(`CREATE TABLE IF NOT EXISTS "twoFactor" (
+              id TEXT PRIMARY KEY,
+              secret TEXT NOT NULL,
+              backupCodes TEXT,
+              userId TEXT NOT NULL UNIQUE,
+              verified INTEGER DEFAULT 1
+            );`).catch(() => {});
 
-          const d1Row = (await d1Database
-            .prepare('SELECT secret, backupCodes FROM "twoFactor" WHERE userId = ?')
-            .bind(user.id)
-            .first()) as { secret?: string; backupCodes?: string } | null;
+            const d1Row = (await d1Database
+              .prepare('SELECT secret, backupCodes FROM "twoFactor" WHERE userId = ?')
+              .bind(user.id)
+              .first()) as { secret?: string; backupCodes?: string } | null;
 
-          if (d1Row?.secret) {
-            isEnrolled = true;
-            userTotpSecret = d1Row.secret;
-            setUserTOTPSecret(user.id, d1Row.secret);
-            if (d1Row.backupCodes) {
-              try {
-                const parsed = JSON.parse(d1Row.backupCodes);
-                if (Array.isArray(parsed)) {
-                  userBackupCodesList = parsed;
-                  setUserHashedBackupCodes(user.id, parsed);
-                }
-              } catch {}
+            if (d1Row?.secret) {
+              isEnrolled = true;
+              userTotpSecret = d1Row.secret;
+              setUserTOTPSecret(user.id, d1Row.secret);
+              if (d1Row.backupCodes) {
+                try {
+                  const parsed = JSON.parse(d1Row.backupCodes);
+                  if (Array.isArray(parsed)) {
+                    userBackupCodesList = parsed;
+                    setUserHashedBackupCodes(user.id, parsed);
+                  }
+                } catch {}
+              }
             }
+          } catch (d1TwoFactorErr) {
+            console.warn('[Session] D1 twoFactor lookup warning:', d1TwoFactorErr);
           }
-        } catch (d1TwoFactorErr) {
-          console.warn('[Session] D1 twoFactor lookup warning:', d1TwoFactorErr);
         }
       }
 
