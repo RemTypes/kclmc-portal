@@ -43,6 +43,13 @@ export async function middleware(request: NextRequest) {
   } catch (envErr) {
     console.warn('[Middleware] Cloudflare env resolution warning:', envErr);
   }
+  const cfSecrets = [
+    cfSecret,
+    cfEnv?.BETTER_AUTH_SECRET,
+    cfEnv?.SUPABASE_SERVICE_ROLE_KEY,
+    process.env.BETTER_AUTH_SECRET,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+  ].filter((s): s is string => typeof s === 'string' && s.length > 0);
   const isEnforce2FA = (cfEnv?.ENFORCE_MANDATORY_2FA ?? process.env.ENFORCE_MANDATORY_2FA) !== 'false';
 
   // 1.5. Check Better Auth Edge Session on D1 first (sub-5ms)
@@ -54,7 +61,8 @@ export async function middleware(request: NextRequest) {
       const db = (await getD1Database()) || env?.DB;
       if (db) {
         const { createBetterAuth } = await import('./lib/auth/better-auth');
-        const auth = createBetterAuth({ ...env, DB: db });
+        const reqOrigin = request.nextUrl.origin;
+        const auth = createBetterAuth({ ...env, DB: db, ...(reqOrigin ? { BETTER_AUTH_URL: reqOrigin } : {}) });
         const session = await auth.api.getSession({ headers: request.headers });
 
         if (session?.user) {
@@ -94,7 +102,7 @@ export async function middleware(request: NextRequest) {
           // Mandatory Committee 2FA attestation check
           if (role >= 1 && process.env.NODE_ENV === 'production' && isEnforce2FA) {
             const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
-            const is2FAVerified = verify2FAAttestation(attestationCookie, baUser.id, cfSecret, baUser.email);
+            const is2FAVerified = verify2FAAttestation(attestationCookie, baUser.id, cfSecrets, baUser.email);
             if (!is2FAVerified) {
               if (path.startsWith('/admin') || path === '/status' || path.startsWith('/status/')) {
                 return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(path)}&error=2fa_required`, request.url));
@@ -213,7 +221,7 @@ export async function middleware(request: NextRequest) {
     }
     if (process.env.NODE_ENV === 'production' && isEnforce2FA) {
       const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
-      const is2FAVerified = verify2FAAttestation(attestationCookie, user?.id, cfSecret, user?.email);
+      const is2FAVerified = verify2FAAttestation(attestationCookie, user?.id, cfSecrets, user?.email);
       if (!is2FAVerified) {
         return NextResponse.json({ error: 'Unauthorized: Two-Factor Authentication required' }, { status: 403 });
       }
@@ -236,7 +244,7 @@ export async function middleware(request: NextRequest) {
 
     if (process.env.NODE_ENV === 'production' && isEnforce2FA) {
       const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
-      const is2FAVerified = verify2FAAttestation(attestationCookie, user.id, cfSecret, user.email);
+      const is2FAVerified = verify2FAAttestation(attestationCookie, user.id, cfSecrets, user.email);
       if (!is2FAVerified) {
         return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(path)}&error=2fa_required`, request.url));
       }

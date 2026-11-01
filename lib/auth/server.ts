@@ -23,7 +23,8 @@ export async function getAuthenticatedUser(request?: Request): Promise<Authentic
 
     if (db) {
       const { createBetterAuth } = await import('@/lib/auth/better-auth');
-      const auth = createBetterAuth({ ...env, DB: db });
+      const reqOrigin = request?.url ? new URL(request.url).origin : undefined;
+      const auth = createBetterAuth({ ...env, DB: db, ...(reqOrigin ? { BETTER_AUTH_URL: reqOrigin } : {}) });
 
       let headersObj: Headers;
       if (request?.headers) {

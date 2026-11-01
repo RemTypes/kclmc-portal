@@ -113,7 +113,7 @@ export function seal2FAAttestation(userId: string, secretKeyOverride?: string): 
 export function verify2FAAttestation(
   token?: string | null,
   expectedUserId?: string,
-  secretKeyOverride?: string,
+  secretKeyOverride?: string | string[],
   expectedEmail?: string
 ): boolean {
   if (!token) return false;
@@ -146,21 +146,29 @@ export function verify2FAAttestation(
 
   // Verify user ownership: must strictly match expectedUserId OR expectedEmail
   if (expectedUserId || expectedEmail) {
-    const matchesId = Boolean(expectedUserId && tokenUserId === expectedUserId);
-    const matchesEmail = Boolean(expectedEmail && tokenUserId.toLowerCase() === expectedEmail.toLowerCase());
+    const cleanTokenId = tokenUserId.toLowerCase();
+    const matchesId = Boolean(expectedUserId && cleanTokenId === expectedUserId.toLowerCase());
+    const matchesEmail = Boolean(expectedEmail && cleanTokenId === expectedEmail.toLowerCase());
     if (!matchesId && !matchesEmail) {
       return false;
     }
   }
 
+  const overrideCandidates = Array.isArray(secretKeyOverride)
+    ? secretKeyOverride
+    : [secretKeyOverride];
+
   // Candidate secrets to verify against across isolates & edge middleware (excluding banned public literals)
   const rawCandidates = [
-    secretKeyOverride,
+    ...overrideCandidates,
     process.env.BETTER_AUTH_SECRET,
     (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
     (globalThis as any)?.env?.BETTER_AUTH_SECRET,
+    (globalThis as any)?.BETTER_AUTH_SECRET,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
     (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY,
+    (globalThis as any)?.env?.SUPABASE_SERVICE_ROLE_KEY,
+    (globalThis as any)?.SUPABASE_SERVICE_ROLE_KEY,
     process.env.NEXTAUTH_SECRET,
     process.env.SUPABASE_JWT_SECRET,
   ].filter((c): c is string => typeof c === 'string' && c.length > 0 && !BANNED_2FA_SECRETS.has(c));
