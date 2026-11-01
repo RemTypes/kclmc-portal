@@ -195,10 +195,12 @@ export class AuthSessionService {
     let authenticatedSessionPayload: any = null;
     let d1Database: any = null;
     let cfSecret = secretKeyOverride;
+    let cfRuntimeEnv: any = null;
 
     try {
       const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
       const env = await getCloudflareEnv();
+      cfRuntimeEnv = env;
       if (!cfSecret) {
         cfSecret = env?.BETTER_AUTH_SECRET || env?.SUPABASE_SERVICE_ROLE_KEY;
       }
@@ -332,7 +334,7 @@ export class AuthSessionService {
     // Unenrolled officers are returned requires_2fa_setup to scan QR code on login;
     // Enrolled officers are returned requires_2fa_verify for TOTP or backup code.
     // Can be disabled for emergency maintenance via ENFORCE_MANDATORY_2FA=false.
-    const enforce2FAGate = process.env.ENFORCE_MANDATORY_2FA !== 'false';
+    const enforce2FAGate = (cfRuntimeEnv?.ENFORCE_MANDATORY_2FA ?? process.env.ENFORCE_MANDATORY_2FA) !== 'false';
     if (enforce2FAGate && requiresMandatory2FA(cleanEmail, userRole)) {
       let isEnrolled = isUser2FAEnrolled(user.id, user.user_metadata);
       let userTotpSecret = user.user_metadata?.totp_secret || getUserTOTPSecret(user.id);

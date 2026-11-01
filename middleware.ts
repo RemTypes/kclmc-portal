@@ -43,6 +43,7 @@ export async function middleware(request: NextRequest) {
   } catch (envErr) {
     console.warn('[Middleware] Cloudflare env resolution warning:', envErr);
   }
+  const isEnforce2FA = (cfEnv?.ENFORCE_MANDATORY_2FA ?? process.env.ENFORCE_MANDATORY_2FA) !== 'false';
 
   // 1.5. Check Better Auth Edge Session on D1 first (sub-5ms)
   const hasBetterAuthCookie = request.cookies.getAll().some(c => c.name.includes('better-auth.session_token'));
@@ -91,7 +92,7 @@ export async function middleware(request: NextRequest) {
           }
 
           // Mandatory Committee 2FA attestation check
-          if (role >= 1 && process.env.NODE_ENV === 'production' && process.env.ENFORCE_MANDATORY_2FA !== 'false') {
+          if (role >= 1 && process.env.NODE_ENV === 'production' && isEnforce2FA) {
             const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
             const is2FAVerified = verify2FAAttestation(attestationCookie, baUser.id, cfSecret, baUser.email);
             if (!is2FAVerified) {
@@ -210,7 +211,7 @@ export async function middleware(request: NextRequest) {
         { status: 403 }
       );
     }
-    if (process.env.NODE_ENV === 'production' && process.env.ENFORCE_MANDATORY_2FA !== 'false') {
+    if (process.env.NODE_ENV === 'production' && isEnforce2FA) {
       const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
       const is2FAVerified = verify2FAAttestation(attestationCookie, user?.id, cfSecret, user?.email);
       if (!is2FAVerified) {
@@ -233,7 +234,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL(`/403?req=committee&from=${encodeURIComponent(path)}`, request.url));
     }
 
-    if (process.env.NODE_ENV === 'production' && process.env.ENFORCE_MANDATORY_2FA !== 'false') {
+    if (process.env.NODE_ENV === 'production' && isEnforce2FA) {
       const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
       const is2FAVerified = verify2FAAttestation(attestationCookie, user.id, cfSecret, user.email);
       if (!is2FAVerified) {

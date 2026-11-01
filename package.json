@@ -51,5 +51,11 @@
     "typescript": "^7.0.2",
     "vitest": "^5.0.3",
     "wrangler": "^4.137.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.28.1": true,
+    "esbuild@0.25.4": true,
+    "workerd@1.20260921.1": true
   }
 }
