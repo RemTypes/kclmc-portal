@@ -32,21 +32,25 @@ export async function middleware(request: NextRequest) {
   }
 
   // 1.4. Resolve Cloudflare runtime environment bindings and secrets across all isolates
-  let cfSecret: string | undefined = process.env.BETTER_AUTH_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
   let cfEnv: Record<string, any> | undefined;
   try {
-    const { getCloudflareEnv } = await import('./lib/db/d1');
-    cfEnv = await getCloudflareEnv();
-    if (cfEnv) {
-      cfSecret = cfSecret || cfEnv.BETTER_AUTH_SECRET || cfEnv.SUPABASE_SERVICE_ROLE_KEY;
+    const cfSymbol = Symbol.for('__cloudflare-context__');
+    cfEnv = (globalThis as any)?.[cfSymbol]?.env;
+  } catch {}
+  if (!cfEnv) {
+    try {
+      const { getCloudflareEnv } = await import('./lib/db/d1');
+      cfEnv = await getCloudflareEnv();
+    } catch (envErr) {
+      console.warn('[Middleware] Cloudflare env resolution warning:', envErr);
     }
-  } catch (envErr) {
-    console.warn('[Middleware] Cloudflare env resolution warning:', envErr);
   }
+
   const cfSecrets = [
-    cfSecret,
     cfEnv?.BETTER_AUTH_SECRET,
     cfEnv?.SUPABASE_SERVICE_ROLE_KEY,
+    (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
+    (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY,
     process.env.BETTER_AUTH_SECRET,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
   ].filter((s): s is string => typeof s === 'string' && s.length > 0);

@@ -37,6 +37,15 @@ export async function getD1Database(): Promise<D1Database | null> {
     return dbOverride;
   }
 
+  // Check direct Cloudflare context symbol first (fast path across all OpenNext isolates including middleware)
+  try {
+    const cfSymbol = Symbol.for('__cloudflare-context__');
+    const symbolEnv = (globalThis as any)?.[cfSymbol]?.env;
+    if (symbolEnv?.DB) {
+      return symbolEnv.DB as D1Database;
+    }
+  } catch {}
+
   try {
     const { getCloudflareContext } = await import('@opennextjs/cloudflare');
     let ctx: any;
@@ -74,6 +83,25 @@ export async function getD1Database(): Promise<D1Database | null> {
  * Returns the Cloudflare Worker environment bindings (DB, EMAIL, etc.).
  */
 export async function getCloudflareEnv(): Promise<Record<string, any>> {
+  // Check direct Cloudflare context symbol first (fast path across all OpenNext isolates including middleware)
+  try {
+    const cfSymbol = Symbol.for('__cloudflare-context__');
+    const symbolEnv = (globalThis as any)?.[cfSymbol]?.env;
+    if (symbolEnv && typeof symbolEnv === 'object') {
+      if (typeof globalThis !== 'undefined') {
+        (globalThis as any).__CF_ENV__ = symbolEnv;
+      }
+      if (typeof process !== 'undefined' && process.env) {
+        for (const [k, v] of Object.entries(symbolEnv)) {
+          if (typeof v === 'string' && !process.env[k]) {
+            (process.env as any)[k] = v;
+          }
+        }
+      }
+      return symbolEnv;
+    }
+  } catch {}
+
   try {
     const { getCloudflareContext } = await import('@opennextjs/cloudflare');
     let ctx: any;

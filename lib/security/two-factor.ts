@@ -63,9 +63,21 @@ const BANNED_2FA_SECRETS = new Set([
   'kclmc-2fa-edge-key:25583bc2-683b-49ac-a5c0-2419a66f651a:kclmc-production',
 ]);
 
+function getDirectCloudflareEnv(): Record<string, any> | undefined {
+  try {
+    const cfSymbol = Symbol.for('__cloudflare-context__');
+    return (globalThis as any)?.[cfSymbol]?.env;
+  } catch {
+    return undefined;
+  }
+}
+
 function getTwoFactorSecretKey(secretKeyOverride?: string): Buffer {
+  const directEnv = getDirectCloudflareEnv();
   const candidates = [
     secretKeyOverride,
+    directEnv?.BETTER_AUTH_SECRET,
+    directEnv?.SUPABASE_SERVICE_ROLE_KEY,
     process.env.BETTER_AUTH_SECRET,
     (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
     (globalThis as any)?.env?.BETTER_AUTH_SECRET,
@@ -158,9 +170,12 @@ export function verify2FAAttestation(
     ? secretKeyOverride
     : [secretKeyOverride];
 
+  const directEnv = getDirectCloudflareEnv();
   // Candidate secrets to verify against across isolates & edge middleware (excluding banned public literals)
   const rawCandidates = [
     ...overrideCandidates,
+    directEnv?.BETTER_AUTH_SECRET,
+    directEnv?.SUPABASE_SERVICE_ROLE_KEY,
     process.env.BETTER_AUTH_SECRET,
     (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
     (globalThis as any)?.env?.BETTER_AUTH_SECRET,
@@ -233,10 +248,13 @@ export function unsealChallenge(token: string, secretKeyOverride?: string): Pend
   }
 
   const [ivB64, tagB64, cipherB64] = parts;
+  const directEnv = getDirectCloudflareEnv();
   // When an explicit secretKeyOverride is provided, verify strictly against that override key
   const rawCandidates = secretKeyOverride
     ? (!BANNED_2FA_SECRETS.has(secretKeyOverride) ? [secretKeyOverride] : [])
     : [
+        directEnv?.BETTER_AUTH_SECRET,
+        directEnv?.SUPABASE_SERVICE_ROLE_KEY,
         process.env.BETTER_AUTH_SECRET,
         (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
         (globalThis as any)?.env?.BETTER_AUTH_SECRET,
