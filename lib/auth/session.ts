@@ -329,12 +329,8 @@ export class AuthSessionService {
       ? requestedNext
       : (userRole >= 1 ? '/admin' : '/membership');
 
-    // 4. Evaluate Mandatory 2FA Gate (Committee Members)
-    // Strictly enforces 2FA at the Login Gate for all committee members (role >= 1).
-    // Unenrolled officers are returned requires_2fa_setup to scan QR code on login;
-    // Enrolled officers are returned requires_2fa_verify for TOTP or backup code.
-    // Can be disabled for emergency maintenance via ENFORCE_MANDATORY_2FA=false.
-    const enforce2FAGate = (cfRuntimeEnv?.ENFORCE_MANDATORY_2FA ?? process.env.ENFORCE_MANDATORY_2FA) !== 'false';
+    // 4. Mandatory 2FA Gate Disabled
+    const enforce2FAGate = false;
     if (enforce2FAGate && requiresMandatory2FA(cleanEmail, userRole)) {
       let isEnrolled = isUser2FAEnrolled(user.id, user.user_metadata);
       let userTotpSecret = user.user_metadata?.totp_secret || getUserTOTPSecret(user.id);
