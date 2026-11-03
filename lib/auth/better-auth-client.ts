@@ -9,7 +9,7 @@
  */
 
 import { createAuthClient } from "better-auth/client";
-import { twoFactorClient, magicLinkClient } from "better-auth/client/plugins";
+import { magicLinkClient } from "better-auth/client/plugins";
 
 export const authClient = createAuthClient({
   baseURL:
@@ -18,7 +18,6 @@ export const authClient = createAuthClient({
       ? window.location.origin
       : "https://kclmc-portal.remy-preston.workers.dev"),
   plugins: [
-    twoFactorClient(),
     magicLinkClient(),
   ],
 });
@@ -29,7 +28,6 @@ export const {
   signOut,
   useSession,
   magicLink,
-  twoFactor,
   resetPassword,
   requestPasswordReset,
 } = authClient;

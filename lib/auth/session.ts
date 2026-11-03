@@ -112,10 +112,10 @@ export interface VerifyTwoFactorParams {
 }
 
 export function extractClientIp(request: Request): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
   const cfIp = request.headers.get('cf-connecting-ip');
   if (cfIp) return cfIp.trim();
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) return forwarded.split(',')[0].trim();
   const realIp = request.headers.get('x-real-ip');
   if (realIp) return realIp.trim();
   return '127.0.0.1';
@@ -387,15 +387,6 @@ export class AuthSessionService {
 
       if (d1Database) {
         try {
-          // Self-heal D1 twoFactor schema if table does not exist
-          await d1Database.exec(`CREATE TABLE IF NOT EXISTS "twoFactor" (
-            id TEXT PRIMARY KEY,
-            secret TEXT NOT NULL,
-            backupCodes TEXT,
-            userId TEXT NOT NULL UNIQUE,
-            verified INTEGER DEFAULT 1
-          );`).catch(() => {});
-
           const d1Row = (await d1Database
             .prepare('SELECT secret, backupCodes, verified FROM "twoFactor" WHERE userId = ?')
             .bind(user.id)
@@ -571,15 +562,6 @@ export class AuthSessionService {
         const env = await getCloudflareEnv();
         const db = (await getD1Database()) || env?.DB;
         if (db) {
-          // Self-heal D1 twoFactor schema if table does not exist
-          await db.exec(`CREATE TABLE IF NOT EXISTS "twoFactor" (
-            id TEXT PRIMARY KEY,
-            secret TEXT NOT NULL,
-            backupCodes TEXT,
-            userId TEXT NOT NULL UNIQUE,
-            verified INTEGER DEFAULT 1
-          );`).catch(() => {});
-
           const backupJson = JSON.stringify(result.hashedBackupCodes || []);
           const existing = (await db
             .prepare('SELECT id FROM "twoFactor" WHERE userId = ?')

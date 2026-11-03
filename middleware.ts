@@ -145,6 +145,10 @@ export async function middleware(request: NextRequest) {
     ) {
       return NextResponse.json({ error: 'Unauthorized: Committee access required' }, { status: 403 });
     }
+
+    if (moduleDef && !moduleDef.enabled) {
+      return NextResponse.redirect(new URL('/dashboard?module_disabled=1', request.url));
+    }
     return supabaseResponse;
   }
 
@@ -163,7 +167,7 @@ export async function middleware(request: NextRequest) {
             ...options,
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            sameSite: 'lax',
           })
         );
       },

@@ -11,7 +11,7 @@
 
 import crypto from "crypto";
 import { betterAuth } from "better-auth";
-import { twoFactor, magicLink } from "better-auth/plugins";
+import { magicLink } from "better-auth/plugins";
 import { createAuthMiddleware } from "better-auth/api";
 import { hashPassword } from "better-auth/crypto";
 import { Kysely } from "kysely";
@@ -144,9 +144,6 @@ export function createBetterAuth(env: BetterAuthEnv) {
             text,
           });
         },
-      }),
-      twoFactor({
-        issuer: "KCLMC Portal",
       }),
     ],
     hooks: {
