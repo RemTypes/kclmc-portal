@@ -127,9 +127,9 @@ export async function getCloudflareEnv(): Promise<Record<string, any>> {
     // Not running inside Cloudflare Worker runtime
   }
 
-  const globalEnv = (globalThis as any)?.env;
+  const globalEnv = (globalThis as any)?.env || (globalThis as any)?.__CF_ENV__;
   if (globalEnv) return globalEnv;
 
-  return (globalThis as any) || {};
+  return {};
 }
 

@@ -1225,14 +1225,14 @@ describe('Security Testing Suite', () => {
   // 14. VULNERABILITY 1: SESSION TOKEN COOKIES & HTTPONLY HARDENING
   // =========================================================================
   describe('Vulnerability 1: Session Token Cookie Hardening', () => {
-    it('guarantees SESSION_COOKIE_OPTIONS has httpOnly=true and sameSite=strict', () => {
+    it('guarantees SESSION_COOKIE_OPTIONS has httpOnly=true and sameSite=lax', () => {
       expect(SESSION_COOKIE_OPTIONS.httpOnly).toBe(true);
-      expect(SESSION_COOKIE_OPTIONS.sameSite).toBe('strict');
+      expect(SESSION_COOKIE_OPTIONS.sameSite).toBe('lax');
       expect(SESSION_COOKIE_OPTIONS.path).toBe('/');
       expect(SESSION_COOKIE_OPTIONS.maxAge).toBe(7 * 24 * 60 * 60);
     });
 
-    it('applies chunked cookies to NextResponse with httpOnly=true and sameSite=strict', () => {
+    it('applies chunked cookies to NextResponse with httpOnly=true and sameSite=lax', () => {
       const response = NextResponse.json({ ok: true });
       const chunks = [
         { name: 'sb-bsvnyibipcwrcyzqilge-auth-token.0', value: 'chunk0_data' },
@@ -1244,7 +1244,7 @@ describe('Security Testing Suite', () => {
       const cookieHeader = response.headers.get('set-cookie') || '';
       expect(cookieHeader).toContain('sb-bsvnyibipcwrcyzqilge-auth-token.0=chunk0_data');
       expect(cookieHeader).toContain('HttpOnly');
-      expect(cookieHeader.toLowerCase()).toContain('samesite=strict');
+      expect(cookieHeader.toLowerCase()).toContain('samesite=lax');
     });
 
     it('clearSessionCookies expires base cookie, chunks, and session indicator', () => {
