@@ -19,7 +19,7 @@ function UpdatePasswordForm() {
   const [checkingSession, setCheckingSession] = useState(!resetToken);
   const [hasSession, setHasSession] = useState(Boolean(resetToken));
 
-  const supabase = useMemo(() => createClient(), []);
+  const authClient = useMemo(() => createClient(), []);
 
   const pwdValidation = useMemo<PasswordValidationResult>(() => {
     return validatePasswordStrength(newPassword);
@@ -52,21 +52,21 @@ function UpdatePasswordForm() {
 
       if (!isSupabaseConfigured()) {
         if (mounted) {
-          setErrorMsg('Supabase credentials are not connected yet.');
+          setErrorMsg('Authentication service is not connected yet.');
           setCheckingSession(false);
         }
         return;
       }
 
       // Check client-side session as fallback
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await authClient.auth.getSession();
       if (mounted) {
         if (session) {
           setHasSession(true);
           setCheckingSession(false);
         } else {
           // Listen in case session is being initialized from the recovery token
-          const { data: authListener } = supabase.auth.onAuthStateChange((event, s) => {
+          const { data: authListener } = authClient.auth.onAuthStateChange((event, s) => {
             if (s) {
               setHasSession(true);
               setCheckingSession(false);
@@ -89,7 +89,7 @@ function UpdatePasswordForm() {
     return () => {
       mounted = false;
     };
-  }, [supabase]);
+  }, [authClient]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,7 +108,7 @@ function UpdatePasswordForm() {
     setLoading(true);
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
+      const { data: sessionData } = await authClient.auth.getSession();
       const accessToken = sessionData?.session?.access_token;
 
       // Submit to server-side rate-limited password reset endpoint
@@ -130,7 +130,7 @@ function UpdatePasswordForm() {
       if (!res.ok) {
         // Fallback to client-side session update if server session cookies weren't detected
         if (sessionData?.session) {
-          const { error: clientErr } = await supabase.auth.updateUser({ password: newPassword });
+          const { error: clientErr } = await authClient.auth.updateUser({ password: newPassword });
           if (!clientErr) {
             setSuccess(true);
             setTimeout(() => {

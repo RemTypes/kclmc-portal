@@ -154,11 +154,11 @@ export default async function GuidesPage() {
 
   if (isSupabaseConfigured()) {
     try {
-      const supabase = await createClient();
+      const dbClient = await createClient();
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('timeout')), 3000)
       );
-      const fetchPromise = supabase
+      const fetchPromise = dbClient
         .from('guides')
         .select('*')
         .eq('is_published', true)

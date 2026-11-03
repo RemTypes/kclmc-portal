@@ -244,7 +244,7 @@ export default function AdminDashboard() {
             </div>
 
             <div className="mt-6 pt-4 border-t border-[#084746] flex items-center justify-between text-xs text-zinc-400 font-mono">
-              <span>All changes persist to Supabase DB</span>
+              <span>All changes persist to Cloudflare D1</span>
               <span className="text-[#FFBD59]">Cloudflare Edge Synced</span>
             </div>
           </div>

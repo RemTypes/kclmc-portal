@@ -23,7 +23,7 @@ const DEFAULT_SERVICES: ServiceHealth[] = [
     name: 'Database Engine & Connection Pooler',
     category: 'Storage & DB',
     status: 'operational',
-    description: 'Supabase PostgreSQL with Supavisor transaction pooling',
+    description: 'Cloudflare D1 serverless edge SQLite database',
     uptime: '99.95%',
   },
   {

@@ -125,7 +125,7 @@ export default function PrivacyPolicyPage() {
           </p>
           <ul className="text-xs text-zinc-300 space-y-2 list-disc list-inside">
             <li><strong>Cloudflare Inc.</strong> — Edge hosting, CDN, DNS routing, and DDoS security (UK/EU edge servers).</li>
-            <li><strong>Supabase Inc.</strong> — Encrypted PostgreSQL database and authentication engine (EU London/Ireland region, AES-256 encrypted at rest).</li>
+            <li><strong>Cloudflare D1 &amp; Better Auth</strong> — Encrypted serverless edge SQLite database and authentication engine (EU/UK region, AES-256 encrypted at rest).</li>
             <li><strong>Resend Inc.</strong> — Transactional email dispatch for password recovery and magic links (EU delivery zone).</li>
             <li><strong>King&apos;s College London Students&apos; Union (KCLSU)</strong> — Official student union roster reconciliation and membership verification.</li>
           </ul>

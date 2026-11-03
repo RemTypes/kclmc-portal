@@ -84,7 +84,7 @@ export default function AdminSuperAdmin2FAReset() {
       </div>
 
       <p className="text-xs text-zinc-300 mb-4 leading-relaxed">
-        If a committee member loses their phone or inherited a broken Supabase 2FA record during migration, enter their email below to wipe their D1 <code className="text-[#FFBD59] font-mono">twoFactor</code> record and prompt a clean guided setup on their next login.
+        If a committee member loses their phone or inherited a broken legacy 2FA record during migration, enter their email below to wipe their D1 <code className="text-[#FFBD59] font-mono">twoFactor</code> record and prompt a clean guided setup on their next login.
       </p>
 
       {message && (

@@ -215,7 +215,7 @@ export default function AdminModulesPage() {
             SuperAdmin Whitelist Configuration
           </h3>
           <p className="text-xs text-zinc-300 mb-4 leading-relaxed">
-            The telemetry and admin access clearance is checked against your Supabase profile role and email whitelists configured in <code className="text-[#FFBD59] font-mono">.env.local</code>:
+            The telemetry and admin access clearance is checked against your Cloudflare D1 profile role and email whitelists configured in <code className="text-[#FFBD59] font-mono">.env.local</code>:
           </p>
 
           <div className="bg-[#041F1E] border border-[#084746] rounded-xl p-4 font-mono text-xs mb-4 text-[#FFBD59] space-y-1">
@@ -225,7 +225,7 @@ export default function AdminModulesPage() {
           </div>
 
           <p className="text-xs text-zinc-400 font-mono">
-            Officers in this list or with role &gt;= 1 in Supabase profiles automatically receive Tier 1 Committee clearance.
+            Officers in this list or with role &gt;= 1 in Cloudflare D1 profiles automatically receive Tier 1 Committee clearance.
           </p>
         </div>
       </div>
