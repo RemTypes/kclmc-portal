@@ -88,7 +88,7 @@ All commit messages and PR titles must strictly follow the repository's **Conven
 
 ## 4. Mandatory Pre-PR Verification Gate
 Before pushing any branch or opening a PR, the agent MUST run and pass the full verification suite:
-1. **Automated Tests**: `npm test` (all tests passing, 233+ tests).
+1. **Automated Tests**: `npm test` (all tests passing, 328+ tests across 22 suites).
 2. **TypeScript Compilation**: `npx tsc --noEmit` (0 errors).
 3. **Edge Worker Build**: `npm run build:worker` (OpenNext Cloudflare worker compiles cleanly to `.open-next/worker.js`).
 
