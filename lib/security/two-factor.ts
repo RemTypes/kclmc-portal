@@ -426,8 +426,8 @@ export function getUserTOTPSecret(userId: string): string | undefined {
  * Admins (Role 2) and Committee (Role 1) are strictly required to use 2FA.
  */
 export function requiresMandatory2FA(email: string, role?: number): boolean {
-  if (!email) return false;
-  const effectiveRole = role !== undefined ? role : getUserRole(email);
+  if (!email) return (role ?? 0) >= 1;
+  const effectiveRole = Math.max(role ?? 0, getUserRole(email));
   return effectiveRole >= 1;
 }
 

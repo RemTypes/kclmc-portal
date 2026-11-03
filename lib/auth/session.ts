@@ -220,11 +220,33 @@ export class AuthSessionService {
           const baData = await baRes.json().catch(() => ({}));
           const u = baData.user;
           if (u) {
-            let role = (u as any).role ?? getUserRole(cleanEmail);
+            const emailRole = getUserRole(cleanEmail);
+            let role: Role = 0;
+            let prof: any = null;
             try {
-              const prof = (await db.prepare('SELECT role FROM profiles WHERE id = ?').bind(u.id).first()) as any;
-              if (prof?.role !== undefined) role = prof.role;
+              prof = (await db.prepare('SELECT role FROM profiles WHERE id = ?').bind(u.id).first()) as any;
             } catch {}
+
+            if (emailRole >= 1) {
+              role = emailRole;
+            } else if (prof?.role === 1 || prof?.role === 2) {
+              role = prof.role as Role;
+            }
+
+            if ((u as any).role !== role) {
+              await db
+                .prepare('UPDATE "user" SET role = ? WHERE id = ?')
+                .bind(role, u.id)
+                .run()
+                .catch(() => {});
+            }
+            if (prof && prof.role !== role) {
+              await db
+                .prepare('UPDATE profiles SET role = ? WHERE id = ?')
+                .bind(role, u.id)
+                .run()
+                .catch(() => {});
+            }
 
             const rawCookies = typeof (baRes.headers as any).getSetCookie === 'function'
               ? (baRes.headers as any).getSetCookie()
@@ -236,7 +258,13 @@ export class AuthSessionService {
               const eqIdx = nv.indexOf('=');
               if (eqIdx !== -1) {
                 const cName = nv.slice(0, eqIdx).trim();
-                const cVal = nv.slice(eqIdx + 1).trim();
+                const rawVal = nv.slice(eqIdx + 1).trim();
+                let cVal = rawVal;
+                try {
+                  if (rawVal.includes('%')) {
+                    cVal = decodeURIComponent(rawVal);
+                  }
+                } catch {}
                 cookiesToSet.push({
                   name: cName,
                   value: cVal,
@@ -329,55 +357,71 @@ export class AuthSessionService {
       ? requestedNext
       : (userRole >= 1 ? '/admin' : '/membership');
 
-    // 4. Mandatory 2FA Gate Disabled
-    const enforce2FAGate = false;
+    // 4. Evaluate Mandatory 2FA Gate (Committee Members)
+    // Strictly enforces 2FA at the Login Gate for all committee members (role >= 1).
+    // Can be toggled for emergency maintenance via ENFORCE_MANDATORY_2FA=false.
+    const enforce2FAGate = (cfRuntimeEnv?.ENFORCE_MANDATORY_2FA ?? process.env.ENFORCE_MANDATORY_2FA) !== 'false';
     if (enforce2FAGate && requiresMandatory2FA(cleanEmail, userRole)) {
-      let isEnrolled = isUser2FAEnrolled(user.id, user.user_metadata);
-      let userTotpSecret = user.user_metadata?.totp_secret || getUserTOTPSecret(user.id);
-      let userBackupCodesList = user.user_metadata?.backup_codes || getUserHashedBackupCodes(user.id);
+      // In D1 native auth, legacy Supabase user_metadata is ignored so committee
+      // members cleanly re-enroll their 2FA in D1 rather than inheriting broken secrets.
+      let isEnrolled = false;
+      let userTotpSecret: string | undefined;
+      let userBackupCodesList: string[] | undefined;
 
-      // Check Cloudflare D1 twoFactor table for persistent cross-isolate 2FA credentials
-      if (!isEnrolled) {
-        if (!d1Database) {
-          try {
-            const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
-            const env = await getCloudflareEnv();
-            d1Database = (await getD1Database()) || env?.DB;
-          } catch {}
-        }
-        if (d1Database) {
-          try {
-            // Self-heal D1 twoFactor schema if table does not exist
-            await d1Database.exec(`CREATE TABLE IF NOT EXISTS "twoFactor" (
-              id TEXT PRIMARY KEY,
-              secret TEXT NOT NULL,
-              backupCodes TEXT,
-              userId TEXT NOT NULL UNIQUE,
-              verified INTEGER DEFAULT 1
-            );`).catch(() => {});
+      // In-memory store fallback (used in unit tests)
+      const memSecret = getUserTOTPSecret(user.id);
+      if (memSecret) {
+        isEnrolled = true;
+        userTotpSecret = memSecret;
+        userBackupCodesList = getUserHashedBackupCodes(user.id);
+      }
 
-            const d1Row = (await d1Database
-              .prepare('SELECT secret, backupCodes FROM "twoFactor" WHERE userId = ?')
-              .bind(user.id)
-              .first()) as { secret?: string; backupCodes?: string } | null;
+      // Authoritative source of truth: Cloudflare D1 twoFactor table
+      if (!d1Database) {
+        try {
+          const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
+          const env = await getCloudflareEnv();
+          d1Database = (await getD1Database()) || env?.DB;
+        } catch {}
+      }
 
-            if (d1Row?.secret) {
-              isEnrolled = true;
-              userTotpSecret = d1Row.secret;
-              setUserTOTPSecret(user.id, d1Row.secret);
-              if (d1Row.backupCodes) {
-                try {
-                  const parsed = JSON.parse(d1Row.backupCodes);
-                  if (Array.isArray(parsed)) {
-                    userBackupCodesList = parsed;
-                    setUserHashedBackupCodes(user.id, parsed);
-                  }
-                } catch {}
-              }
+      if (d1Database) {
+        try {
+          // Self-heal D1 twoFactor schema if table does not exist
+          await d1Database.exec(`CREATE TABLE IF NOT EXISTS "twoFactor" (
+            id TEXT PRIMARY KEY,
+            secret TEXT NOT NULL,
+            backupCodes TEXT,
+            userId TEXT NOT NULL UNIQUE,
+            verified INTEGER DEFAULT 1
+          );`).catch(() => {});
+
+          const d1Row = (await d1Database
+            .prepare('SELECT secret, backupCodes, verified FROM "twoFactor" WHERE userId = ?')
+            .bind(user.id)
+            .first()) as { secret?: string; backupCodes?: string; verified?: number } | null;
+
+          if (d1Row?.secret && (d1Row.verified === 1 || d1Row.verified === null)) {
+            isEnrolled = true;
+            userTotpSecret = d1Row.secret;
+            setUserTOTPSecret(user.id, d1Row.secret);
+            if (d1Row.backupCodes) {
+              try {
+                const parsed = JSON.parse(d1Row.backupCodes);
+                if (Array.isArray(parsed)) {
+                  userBackupCodesList = parsed;
+                  setUserHashedBackupCodes(user.id, parsed);
+                }
+              } catch {}
             }
-          } catch (d1TwoFactorErr) {
-            console.warn('[Session] D1 twoFactor lookup warning:', d1TwoFactorErr);
+          } else {
+            // No valid verified row in D1 twoFactor -> require fresh setup
+            isEnrolled = false;
+            userTotpSecret = undefined;
+            userBackupCodesList = undefined;
           }
+        } catch (d1TwoFactorErr) {
+          console.warn('[Session] D1 twoFactor lookup warning:', d1TwoFactorErr);
         }
       }
 

@@ -90,4 +90,30 @@ describe('SuperAdmin 2FA Reset Hatch API (/api/admin/reset-2fa)', () => {
     expect(data.success).toBe(true);
     expect(data.message).toContain('Successfully reset 2FA credentials');
   });
+
+  it('allows Tier 2 SuperAdmin on POST to reset all committee 2FA with resetAll: true', async () => {
+    vi.spyOn(serverAuth, 'getAuthenticatedUser').mockResolvedValue({
+      id: 'superadmin-id',
+      email: 'admin@kclmc.org',
+      role: 2,
+    });
+
+    const mockDb: any = {
+      exec: vi.fn().mockResolvedValue({ success: true }),
+    };
+    vi.spyOn(d1Module, 'getD1Database').mockResolvedValue(mockDb);
+
+    const req = new Request('http://localhost:3000/api/admin/reset-2fa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resetAll: true }),
+    });
+
+    const res = await reset2FAPost(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.message).toContain('All committee 2FA records have been wiped');
+    expect(mockDb.exec).toHaveBeenCalled();
+  });
 });

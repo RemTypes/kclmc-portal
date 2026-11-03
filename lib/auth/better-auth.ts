@@ -20,6 +20,7 @@ import type { D1Database } from "@/lib/db/d1";
 import { sendEmail } from "@/lib/email/service";
 import { renderPasswordResetEmail, renderMagicLinkEmail } from "@/lib/email/templates/auth-emails";
 import { verifySupabaseLegacyPassword } from "@/lib/auth/legacy-bridge";
+import { getUserRole } from "@/lib/auth";
 
 export interface BetterAuthEnv {
   DB: D1Database;
@@ -88,6 +89,20 @@ export function createBetterAuth(env: BetterAuthEnv) {
           required: false,
           defaultValue: 0,
           input: false,
+        },
+      },
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user) => {
+            return {
+              data: {
+                ...user,
+                role: getUserRole(user.email),
+              },
+            };
+          },
         },
       },
     },

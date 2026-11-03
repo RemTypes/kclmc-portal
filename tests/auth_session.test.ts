@@ -8,7 +8,9 @@ import {
   calculateTOTP,
   generateBackupCodes,
   setUserHashedBackupCodes,
+  requiresMandatory2FA,
 } from '@/lib/security/two-factor';
+import { POST as betterAuthCatchAllPost } from '@/app/api/auth/[...all]/route';
 
 describe('AuthSession Deep Module', () => {
   beforeEach(() => {
@@ -186,6 +188,53 @@ describe('AuthSession Deep Module', () => {
       const res = authSession.toApiResponse(outcome);
       expect(res.status).toBe(429);
       expect(res.headers.get('Retry-After')).toBe('900');
+    });
+
+    it('prevents double URL-encoding (%3D -> %253D) on signed Better Auth session_token cookies (NEW-015)', () => {
+      const outcome: AuthOutcome = {
+        status: 'authenticated',
+        user: { id: 'u-ba-1', email: 'president@kclmc.org', role: 1 },
+        destination: '/admin',
+        sessionData: {
+          cookiesToSet: [
+            {
+              name: 'better-auth.session_token',
+              value: 'tok123.abcdef1234567890abcdef1234567890abcdef12345%3D',
+            },
+          ],
+        },
+      };
+
+      const res = authSession.toApiResponse(outcome);
+      const cookieHeader = res.headers.get('set-cookie') || '';
+      expect(cookieHeader).toContain('better-auth.session_token=tok123.abcdef1234567890abcdef1234567890abcdef12345%3D');
+      expect(cookieHeader).not.toContain('%253D');
+    });
+  });
+
+  describe('Security Regression Guards (NEW-016 & NEW-017)', () => {
+    it('blocks direct POST /api/auth/sign-up/email bypass with 403 (NEW-016)', async () => {
+      const req = new Request('http://localhost:3000/api/auth/sign-up/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'president@kclmc.org',
+          password: 'short',
+          name: 'Attacker',
+        }),
+      });
+
+      const res = await betterAuthCatchAllPost(req);
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toContain('/api/auth/signup');
+    });
+
+    it('enforces mandatory 2FA for committee emails even when D1 profiles.role is 0 (NEW-017)', () => {
+      expect(requiresMandatory2FA('president@kclmc.org', 0)).toBe(true);
+      expect(requiresMandatory2FA('admin@kclmc.org', 0)).toBe(true);
+      expect(requiresMandatory2FA('climber@kcl.ac.uk', 0)).toBe(false);
+      expect(requiresMandatory2FA('promoted.officer@kcl.ac.uk', 1)).toBe(true);
     });
   });
 });

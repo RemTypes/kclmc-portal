@@ -41,6 +41,34 @@ export default function AdminSuperAdmin2FAReset() {
     }
   };
 
+  const handleResetAll = async () => {
+    if (!confirm('DANGER: Are you sure you want to wipe ALL committee 2FA keys across the club? Every single officer and admin will be guided to re-setup 2FA upon their next login.')) {
+      return;
+    }
+
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch('/api/admin/reset-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resetAll: true }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage({ text: data.error || 'Failed to wipe 2FA keys.', type: 'error' });
+      } else {
+        setMessage({ text: data.message || 'All committee 2FA keys wiped successfully.', type: 'success' });
+      }
+    } catch (err: any) {
+      setMessage({ text: err.message || 'Network error.', type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="bg-[#052322] border border-red-900/60 rounded-2xl p-6 shadow-xl mb-12">
       <div className="flex items-center justify-between mb-4 border-b border-[#084746] pb-3">
@@ -56,7 +84,7 @@ export default function AdminSuperAdmin2FAReset() {
       </div>
 
       <p className="text-xs text-zinc-300 mb-4 leading-relaxed">
-        If a committee member loses their phone, authenticator app, and all 8 emergency backup codes, enter their King&apos;s or club email below. This permanently wipes their D1 <code className="text-[#FFBD59] font-mono">twoFactor</code> record and prompts a clean guided setup on their next login.
+        If a committee member loses their phone or inherited a broken Supabase 2FA record during migration, enter their email below to wipe their D1 <code className="text-[#FFBD59] font-mono">twoFactor</code> record and prompt a clean guided setup on their next login.
       </p>
 
       {message && (
@@ -71,7 +99,7 @@ export default function AdminSuperAdmin2FAReset() {
         </div>
       )}
 
-      <form onSubmit={handleReset} className="flex flex-col sm:flex-row gap-3">
+      <form onSubmit={handleReset} className="flex flex-col sm:flex-row gap-3 mb-4">
         <input
           type="text"
           value={targetIdentifier}
@@ -87,6 +115,20 @@ export default function AdminSuperAdmin2FAReset() {
           {loading ? 'Resetting...' : 'Reset Officer 2FA →'}
         </button>
       </form>
+
+      <div className="pt-3 border-t border-[#084746]/60 flex items-center justify-between">
+        <p className="text-[11px] text-zinc-400 font-sans">
+          Post-migration cleanup: wipe all legacy/corrupted 2FA records across the club.
+        </p>
+        <button
+          type="button"
+          onClick={handleResetAll}
+          disabled={loading}
+          className="px-3.5 py-1.5 bg-[#041F1E] hover:bg-red-950/60 text-red-400 hover:text-red-300 border border-red-900/50 rounded-lg text-[11px] font-mono font-bold uppercase transition-colors disabled:opacity-50 cursor-pointer whitespace-nowrap"
+        >
+          Wipe All Committee 2FA Keys ⚠️
+        </button>
+      </div>
     </div>
   );
 }

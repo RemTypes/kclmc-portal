@@ -2,7 +2,6 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getModuleByRoute } from './config/modules.config';
 import { getAuthenticatedUserRole, getUserRole } from './lib/auth';
-import { verify2FAAttestation } from './lib/security/two-factor';
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -45,17 +44,6 @@ export async function middleware(request: NextRequest) {
       console.warn('[Middleware] Cloudflare env resolution warning:', envErr);
     }
   }
-
-  const cfSecrets = [
-    cfEnv?.BETTER_AUTH_SECRET,
-    cfEnv?.SUPABASE_SERVICE_ROLE_KEY,
-    (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
-    (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY,
-    process.env.BETTER_AUTH_SECRET,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-  ].filter((s): s is string => typeof s === 'string' && s.length > 0);
-  // Mandatory 2FA Gate Disabled
-  const isEnforce2FA = false;
 
   // 1.5. Check Better Auth Edge Session on D1 first (sub-5ms)
   const hasBetterAuthCookie = request.cookies.getAll().some(c => c.name.includes('better-auth.session_token'));
@@ -102,20 +90,6 @@ export async function middleware(request: NextRequest) {
 
           if (isAdminApi && role < 1) {
             return NextResponse.json({ error: 'Unauthorized: Committee access required' }, { status: 403 });
-          }
-
-          // Mandatory Committee 2FA attestation check
-          if (role >= 1 && process.env.NODE_ENV === 'production' && isEnforce2FA) {
-            const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
-            const is2FAVerified = verify2FAAttestation(attestationCookie, baUser.id, cfSecrets, baUser.email);
-            if (!is2FAVerified) {
-              if (path.startsWith('/admin') || path === '/status' || path.startsWith('/status/')) {
-                return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(path)}&error=2fa_required`, request.url));
-              }
-              if (isAdminApi) {
-                return NextResponse.json({ error: 'Unauthorized: Two-Factor Authentication required' }, { status: 403 });
-              }
-            }
           }
 
           // Admin page clearance
@@ -224,13 +198,6 @@ export async function middleware(request: NextRequest) {
         { status: 403 }
       );
     }
-    if (process.env.NODE_ENV === 'production' && isEnforce2FA) {
-      const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
-      const is2FAVerified = verify2FAAttestation(attestationCookie, user?.id, cfSecrets, user?.email);
-      if (!is2FAVerified) {
-        return NextResponse.json({ error: 'Unauthorized: Two-Factor Authentication required' }, { status: 403 });
-      }
-    }
   }
 
   // 4. Server-side middleware protection for /admin and /status pages (Committee clearance required)
@@ -245,14 +212,6 @@ export async function middleware(request: NextRequest) {
     const role = await getAuthenticatedUserRole(supabase, user);
     if (role < 1) {
       return NextResponse.redirect(new URL(`/403?req=committee&from=${encodeURIComponent(path)}`, request.url));
-    }
-
-    if (process.env.NODE_ENV === 'production' && isEnforce2FA) {
-      const attestationCookie = request.cookies.get('kclmc_2fa_verified')?.value;
-      const is2FAVerified = verify2FAAttestation(attestationCookie, user.id, cfSecrets, user.email);
-      if (!is2FAVerified) {
-        return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(path)}&error=2fa_required`, request.url));
-      }
     }
 
     if (moduleDef && !moduleDef.enabled && role < 2) {
