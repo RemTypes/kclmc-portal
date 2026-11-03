@@ -1,21 +1,21 @@
 import { NextResponse } from 'next/server';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server';
-import { getUserRole, getAuthenticatedUserRole } from '@/lib/auth';
+import { getAuthenticatedUser } from '@/lib/auth/server';
 
 let fallbackTelemetry: any[] = [];
 
-export async function GET() {
+export async function GET(request: Request): Promise<NextResponse>;
+export async function GET(): Promise<NextResponse>;
+export async function GET(request?: Request): Promise<NextResponse> {
   try {
-    const userClient = await createClient();
-    const { data: { user } } = await userClient.auth.getUser();
-    const role = await getAuthenticatedUserRole(userClient, user);
-
-    if (role < 1) {
+    const user = await getAuthenticatedUser(request);
+    if (!user || user.role < 1) {
       return NextResponse.json({ error: 'Unauthorized: Committee access required' }, { status: 403 });
     }
 
     if (isSupabaseConfigured()) {
-      const { data, error } = await userClient
+      const supabase = await createClient();
+      const { data, error } = await supabase
         .from('telemetry_events')
         .select('*')
         .order('created_at', { ascending: false })

@@ -26,7 +26,7 @@ This manual provides incoming committee officers with a zero-friction guide to m
 
 ## 2. Tech Stack & Architecture Overview
 
-The platform is designed to be **serverless, resilient, self-healing, and low-cost** (operating entirely within free/community tiers of Cloudflare and Supabase).
+The platform is designed to be **serverless, resilient, self-healing, and low-cost** (operating natively on Cloudflare Workers and Cloudflare D1 Edge SQLite).
 
 ```
 +---------------------------------------------------------------------------------------------------+
@@ -44,11 +44,11 @@ The platform is designed to be **serverless, resilient, self-healing, and low-co
                          |                                                 |
                          v                                                 v
 +-------------------------------------------------+   +---------------------------------------------+
-|             SUPABASE LIVE BACKEND               |   |            LOCAL IN-MEMORY FALLBACK         |
-|  - PostgreSQL 15 database                       |   |  - Zero-downtime offline mode               |
-|  - Row Level Security (RLS) policies            |   |  - INITIAL_KCLSU_ROSTER static dataset      |
-|  - Supabase Auth (GoTrue magic links & pass)    |   |  - Active whenever Supabase is offline,     |
-|  - PostgREST parameterized queries              |   |    unreachable, or unconfigured             |
+|       CLOUDFLARE D1 EDGE SQLITE (PRIMARY)       |   |            LOCAL IN-MEMORY FALLBACK         |
+|  - Database: kclmc-production (d1/schema.sql)   |   |  - Zero-downtime offline mode               |
+|  - Better Auth (Kysely D1) + Custom TOTP 2FA    |   |  - INITIAL_KCLSU_ROSTER static dataset      |
+|  - PBKDF2 JIT password bumping                  |   |  - Active in local tests or if external     |
+|  - Parameterized SQLite & chunked db.batch()    |   |    bindings are unconfigured                |
 +-------------------------------------------------+   +---------------------------------------------+
 ```
 
@@ -56,9 +56,9 @@ The platform is designed to be **serverless, resilient, self-healing, and low-co
 - **Framework**: [Next.js 16 (App Router)](https://nextjs.org/) with React 19.
 - **Styling**: [Tailwind CSS v3](https://tailwindcss.com/) with custom KCLMC color palette (`#052322` Alpine Forest, `#FFBD59` Summit Gold, `#084746` Deep Pine).
 - **TypeScript**: Strict mode with complete type coverage across models and routes.
-- **Testing**: [Vitest](https://vitest.dev/) suite with unit, integration, and static analysis security scans.
-- **Hosting / Edge Runtime**: [Cloudflare Pages & Workers](https://workers.cloudflare.com/) deployed via `@opennextjs/cloudflare` and `wrangler`.
-- **Database / Auth**: [Supabase](https://supabase.com/) (Managed PostgreSQL with Row Level Security and SSR Cookie Auth).
+- **Testing**: [Vitest](https://vitest.dev/) suite with 22 test files (328 unit, integration, and security tests).
+- **Hosting / Edge Runtime**: [Cloudflare Workers](https://workers.cloudflare.com/) deployed via `@opennextjs/cloudflare` and `wrangler`.
+- **Database / Auth**: [Cloudflare D1 (SQLite)](https://developers.cloudflare.com/d1/) + [Better Auth](https://www.better-auth.com/) with mandatory RFC 6238 Committee 2FA (`lib/security/two-factor.ts`).
 - **Email Infrastructure**: [Purelymail](https://purelymail.com/) custom domain MX routing, SPF, DKIM, and DMARC.
 
 ---
@@ -119,59 +119,68 @@ kclmc-platform/
 │   └── PassCard.tsx                  # Merch/Event ticket pass component
 ├── config/                           # Modular system configurations
 │   └── modules.config.ts             # Feature flags & architecture docs
+├── d1/                               # Cloudflare D1 SQLite Schema & Seeds
+│   └── schema.sql                    # Unified Edge SQLite schema & default portal_links
 ├── docs/                             # Official Committee Documentation
+│   ├── ARCHITECTURE.md               # System design & module interfaces
 │   ├── COMMITTEE_HANDOVER_MANUAL.md  # This document
+│   ├── DATABASE_PRUNING_PLAN.md      # Database lifecycle & index optimization plan
 │   └── LEGAL_COMPLIANCE_AND_RISK_AUDIT.md # ICO exemption & risk audit
-├── lib/                              # Core Utilities & Services
+├── lib/                              # Core Utilities & Deep Modules
+│   ├── auth/                         # Better Auth D1 engine, server resolver & AuthSession
+│   ├── db/d1.ts                      # Cloudflare D1 binding & context resolver
+│   ├── roster/                       # D1RosterAdapter, MemberRosterService & seams
+│   ├── security/                     # Rate limiter, PBKDF2 hasher, cookies & TOTP 2FA
 │   ├── auth.ts                       # RBAC hierarchy & committee email resolver
 │   ├── roster.ts                     # Roster parser, Soc-to-Rec logic, CSV sanitization
-│   ├── security.ts                   # Input validation & sanitization helpers
-│   ├── store.ts                      # In-memory mock store
-│   └── supabase/                     # Supabase SSR client factories
-│       ├── client.ts                 # Browser client (anon key only)
-│       └── server.ts                 # Server client (cookies + admin service role)
+│   └── safety.ts                     # Duty-of-care completeness gatekeeper
 ├── scripts/                          # Operational Automation Scripts
-│   ├── backup_database.ts            # UK GDPR Art. 32 automated JSON backup
+│   ├── backup_database.ts            # UK GDPR Art. 32 automated JSON backup (D1 + Supabase)
+│   ├── check_frontend_copy.ts        # Frontend copy & hygiene auditor
+│   ├── migrate_supabase_to_d1.ts     # Incremental Supabase -> D1 synchronization script
 │   └── verify_email_system.ts        # Purelymail DNS, SPF, DKIM, TLS inspector
-├── supabase/                         # Database Migration & Schema SQL
-│   ├── consolidated_setup.sql        # Full idempotent database migration
-│   └── migrations/                   # Individual migration steps (001-004)
-├── tests/                            # Automated Vitest Testing Suite
+├── tests/                            # Automated Vitest Testing Suite (22 suites / 328 tests)
+│   ├── d1_adapter.test.ts            # D1 batching, Survivor Rule & profile join tests
 │   ├── roster.test.ts                # CSV parsing & Soc-to-Rec upgrade tests
-│   ├── security.test.ts              # SQLi, XSS, Secret Scan & RBAC tests
-│   └── verify_pass.test.ts           # Pass verification route tests
+│   ├── security.test.ts              # OWASP Top 10, Rate Limiting, Turnstile & RBAC tests
+│   ├── two_factor_enforcement.test.ts# Cross-isolate 2FA & rate-limit isolation tests
+│   └── verify_pass.test.ts           # Pass verification & PII masking route tests
 ├── package.json                      # NPM dependencies & operational scripts
 ├── sample.env                        # Template environment configuration
-└── wrangler.json                     # Cloudflare Worker deployment manifest
+└── wrangler.jsonc                    # Authoritative Cloudflare Worker & D1 deployment manifest
 ```
 
 ---
 
-## 4. Database Schema & Row-Level Security (RLS)
+## 4. Database Schema & Edge Access Control
 
-All tables live in the `public` schema in Supabase. The complete, idempotent database setup script is located in `supabase/consolidated_setup.sql`.
+All production tables reside in **Cloudflare D1 (`kclmc-production`, DB ID: `25583bc2-683b-49ac-a5c0-2419a66f651a`)**. The authoritative, idempotent SQLite schema is located in [`d1/schema.sql`](../d1/schema.sql).
 
 ### Core Tables
 
 | Table Name | Primary Key | Purpose | Key Columns |
 | :--- | :--- | :--- | :--- |
-| `profiles` | `id (uuid -> auth.users)` | User profile data | `full_name`, `student_id`, `role (0,1,2)`, `emergency_contact_name`, `emergency_contact_phone`, `medical_notes` |
-| `kclsu_roster` | `id (bigint generated)` | Ingested official KCLSU purchases | `card_number (e.g. K25008223)`, `full_name`, `tier ('social'\|'recreational')`, `product_name`, `transaction_id`, `purchase_date`, `user_id` |
-| `memberships` | `id (uuid)` | Legacy / platform passes | `membership_number`, `tier`, `valid_from`, `valid_until`, `is_active`, `payment_reference` |
-| `trips` | `id (uuid)` | Club meets & calendar | `title`, `trip_type ('trad'\|'sport'\|'bouldering'\|'winter'\|'social')`, `date_start`, `date_end`, `location`, `price_pence`, `max_capacity`, `status` |
-| `trip_registrations`| `id (uuid)` | Member registrations for trips | `trip_id`, `user_id`, `payment_status ('pending'\|'paid'\|'refunded')`, `emergency_contact_name`, `emergency_contact_phone` |
-| `guides` | `id (uuid)` | Indoor gyms & crags | `title`, `category ('indoor'\|'crag')`, `location`, `grade_range`, `discount_info`, `website_url`, `map_url`, `topo_url`, `sort_order`, `is_published` |
-| `shop_items` | `id (uuid)` | Apparel & stash products | `title`, `category`, `price_pence`, `sizes`, `is_active` |
-| `merch_orders` | `id (uuid)` | Stash orders | `order_code`, `customer_name`, `customer_email`, `items (jsonb)`, `status ('pending'\|'paid'\|'fulfilled'\|'cancelled')`, `total_pence`, `brand ('KCL'\|'LUBE')` |
-| `telemetry_events` | `id (uuid)` | Observability logs | `event_type`, `payload (jsonb)`, `session_id`, `created_at` |
+| `"user"` | `id (text)` | Better Auth core user identity | `name`, `email (unique)`, `emailVerified`, `twoFactorEnabled`, `role (0,1,2)` |
+| `"account"` | `id (text)` | Better Auth credentials & password hashes | `userId`, `providerId ('credential')`, `password (PBKDF2 or MIGRATED_ACCOUNT)` |
+| `"session"` | `id (text)` | Better Auth active edge sessions | `userId`, `token (unique)`, `expiresAt`, `ipAddress`, `userAgent` |
+| `"twoFactor"` | `id (text)` | Committee TOTP secrets & backup codes | `userId`, `secret`, `backupCodes (JSON)`, `verified` |
+| `profiles` | `id (text -> user.id)` | Member safety & profile data | `full_name`, `student_id`, `role (0,1,2)`, `phone`, `emergency_contact_name`, `emergency_contact_phone`, `medical_notes` |
+| `kclsu_roster` | `id (text)` | Ingested official KCLSU purchases | `card_number (unique, e.g. K25008223)`, `full_name`, `tier ('social'\|'recreational')`, `product_name`, `transaction_id`, `purchase_date`, `user_id`, `su_status` |
+| `portal_links` | `id (text)` | Bio links directory (`/links`) | `title`, `url`, `subtitle`, `icon`, `sort_order`, `is_active`, `is_highlighted` |
+| `bmc_dispatches` | `id (text)` | BMC liability insurance log | `card_number`, `email`, `full_name`, `sent_at`, `academic_year` |
+| `trips` | `id (text)` | Club meets & calendar | `title`, `trip_type`, `date_start`, `date_end`, `location`, `price_pence`, `max_capacity`, `status` |
+| `trip_registrations`| `id (text)` | Member registrations for trips | `trip_id`, `user_id`, `status ('confirmed'\|'waitlist'\|'cancelled')`, `emergency_contact_override` |
+| `guides` | `id (text)` | Indoor gyms & crags | `title`, `category ('indoor'\|'crag')`, `location`, `grade_range`, `discount_info`, `website_url`, `sort_order`, `is_published` |
+| `merch_orders` | `id (text)` | Stash orders & QR collection | `order_code (unique)`, `customer_name`, `customer_email`, `items (JSON)`, `status ('pending'\|'paid'\|'fulfilled'\|'collected'\|'cancelled'\|'refunded')`, `total_pence`, `brand ('KCL'\|'LUBE')` |
+| `telemetry_events` | `id (text)` | Observability logs | `event_type`, `payload (JSON)`, `session_id`, `user_id`, `created_at` |
 
-### Row Level Security (RLS) Policy Architecture
-Every single table has RLS explicitly enabled:
-1. `profiles`: Users can select and update their own profile (cannot escalate their own `role`). Committee members (`get_user_role() >= 1`) can select all profiles. SuperAdmin (`get_user_role() = 2`) can update any profile.
-2. `kclsu_roster`: Anyone can SELECT by `card_number` for pass verification. Users can link their own authenticated user ID to their `card_number`. Committee members have full INSERT/UPDATE/DELETE rights.
-3. `memberships`: Users can read their own pass. Committee can view and manage all.
-4. `trips` & `guides` & `shop_items`: Public read for published items (`is_published = true` or `status != 'draft'`). Write restricted strictly to committee.
-5. `merch_orders`: Public read strictly by matching `order_code`. Listing all orders and status updates restricted to committee.
+### Server-Side Access Control & Defense-in-Depth
+Because Cloudflare D1 is bound strictly to the server-side Worker environment (`env.DB`) and never exposed directly to browser clients, access control is enforced at both the **Edge Middleware (`middleware.ts`)** and **API Route Handler** layers:
+1. `profiles`: Authenticated users can read and update their own profile via `/api/membership` (cannot escalate their own `role`). Committee members (`role >= 1`) can view member safety contacts via `/api/roster`.
+2. `kclsu_roster`: Public verification at `/api/verify/[membershipId]` is IP rate-limited and returns only masked student IDs (`***789`) without transaction IDs. Authenticated members link their own student ID via `/api/roster/link`. Committee members (`role >= 1`) have full reconciliation rights at `/api/roster`.
+3. `portal_links` & `guides`: Public read for active/published items (`is_active = 1`). Creation, editing, and reordering restricted strictly to committee (`role >= 1`).
+4. `merch_orders`: Public read strictly by matching `order_code`. Listing all orders and QR fulfillment status updates require `role >= 1`.
+5. `/admin/ml`: Demand elasticity and sizing optimization dashboards require SuperAdmin clearance (`role >= 2`) enforced in `app/admin/ml/layout.tsx`.
 
 ---
 
@@ -298,29 +307,29 @@ The following table documents all external canonical links used across the platf
 
 ## 8. Environment Variables & Secrets Reference
 
-Configuration templates are defined in `sample.env`.
+Configuration templates are defined in [`sample.env`](../sample.env) and [`wrangler.jsonc`](../wrangler.jsonc).
 
 ```bash
 # ------------------------------------------------------------------------------
-# 1. Supabase Public Client Credentials (Safe for browser / client components)
+# 1. Cloudflare D1 & Better Auth Core Configuration
 # ------------------------------------------------------------------------------
-NEXT_PUBLIC_SUPABASE_URL=https://bsvnyibipcwrcyzqilge.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg
+ROSTER_STORAGE_ENGINE=d1
+CLOUDFLARE_D1_DATABASE_ID=25583bc2-683b-49ac-a5c0-2419a66f651a
+BETTER_AUTH_URL=https://kclmc.org
+BETTER_AUTH_SECRET=your-64-char-hex-secret-key-here
+ENFORCE_MANDATORY_2FA=true
+TWO_FACTOR_ENCRYPTION_KEY=your-64-char-hex-secret-key-here
 
 # ------------------------------------------------------------------------------
-# 2. Supabase Server & Admin Credentials (CONFIDENTIAL - Server side only)
-# ------------------------------------------------------------------------------
-SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key-here
-
-# ------------------------------------------------------------------------------
-# 3. Role-Based Access Control (RBAC) Whitelists
+# 2. Role-Based Access Control (RBAC) Whitelists
 # ------------------------------------------------------------------------------
 SUPERADMIN_EMAIL=admin@kclmc.org
 COMMITTEE_EMAILS=kclmc.committee@gmail.com,president@kclmc.org,treasurer@kclmc.org,gear@kclmc.org,trips@kclmc.org,social@kclmc.org,portal@kclmc.org
 
 # ------------------------------------------------------------------------------
-# 4. Email Delivery & SMTP Configuration (Purelymail)
+# 3. Email Delivery & SMTP Configuration (Purelymail)
 # ------------------------------------------------------------------------------
+EMAIL_FROM=KCL Mountaineering <committee@kclmc.org>
 SMTP_HOST=smtp.purelymail.com
 SMTP_PORT=465
 SMTP_USER=committee@kclmc.org
@@ -329,13 +338,13 @@ SMTP_FROM=King's College London Mountaineering Club <committee@kclmc.org>
 ```
 
 > [!CAUTION]
-> **Secret Key Isolation**: Never commit `SUPABASE_SERVICE_ROLE_KEY` or `SMTP_PASS` into git. Never import `@/lib/supabase/server` inside any file with `'use client'`. The automated test `tests/security.test.ts` scans all source code and will fail `npm test` if any private secret or forbidden import is detected.
+> **Secret Key Isolation**: Never commit `BETTER_AUTH_SECRET`, `TWO_FACTOR_ENCRYPTION_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, or `SMTP_PASS` into git. The automated test `tests/security.test.ts` scans all source code and will fail `npm test` if any private secret or forbidden import is detected.
 
 ---
 
 ## 9. Deployment & Cloudflare / Wrangler Setup
 
-The platform uses `@opennextjs/cloudflare` to transform Next.js 16 into a Cloudflare Workers bundle.
+The platform uses `@opennextjs/cloudflare` to transform Next.js 16 into a Cloudflare Workers bundle configured via [`wrangler.jsonc`](../wrangler.jsonc).
 
 ### Local Development
 ```bash
@@ -345,7 +354,7 @@ npm install
 # 2. Run local dev server (port 3000)
 npm run dev
 
-# 3. Run all tests
+# 3. Run all tests (22 suites / 328 tests)
 npm test
 ```
 
@@ -354,34 +363,31 @@ npm test
 # Build standard Next.js application
 npm run build
 
-# Build OpenNext Cloudflare bundle
+# Build OpenNext Cloudflare bundle (.open-next/worker.js)
 npm run build:worker
 
-# Deploy to Cloudflare Pages/Workers
+# Deploy to Cloudflare Workers
 npm run deploy:cloudflare
 ```
 
 ### Cloudflare Environment Setup
-In the Cloudflare Dashboard:
-1. Navigate to **Workers & Pages** -> select the `kclmc-platform` project.
-2. Go to **Settings** -> **Variables and Secrets**.
-3. Add the production values for:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY` (Store as Secret)
-   - `SUPERADMIN_EMAIL`
-   - `COMMITTEE_EMAILS`
-4. Trigger a new deployment for the changes to take effect.
+In the Cloudflare Dashboard (or via Wrangler CLI):
+1. Navigate to **Workers & Pages** -> select the `kclmc-portal` Worker.
+2. Verify D1 Database binding `DB` points to `kclmc-production` (`25583bc2-683b-49ac-a5c0-2419a66f651a`).
+3. Set production secrets via CLI or Dashboard:
+   ```bash
+   npx wrangler secret put BETTER_AUTH_SECRET
+   npx wrangler secret put SMTP_PASS
+   ```
+4. Trigger a new deployment for changes to take effect.
 
 ---
 
-## 10. Operational Keep-Alive & GDPR Backup Jobs
+## 10. Operational Health & GDPR Backup Jobs
 
-### 1. Supabase Inactivity Keep-Alive
-Supabase free-tier projects automatically pause after 7 consecutive days of database inactivity.
-- An endpoint is provided at `/api/health`.
-- This performs a lightweight query against `shop_items` and resets the 7-day timer.
-- **Setup**: Configure an external uptime monitor (e.g. [UptimeRobot](https://uptimerobot.com/) or [Cron-Job.org](https://cron-job.org/)) to send a `GET` request to `https://kclmc.org/api/health` once every 24 hours.
+### 1. System Health Check (`/api/health`)
+- An endpoint is provided at `/api/health` (restricted to committee officers).
+- Verifies Cloudflare D1 connectivity, database latency, and system environment readiness.
 
 ### 2. GDPR Data Redundancy Backup Script
 Under Article 32 of UK GDPR, the club must maintain off-site data availability.
@@ -389,7 +395,7 @@ Under Article 32 of UK GDPR, the club must maintain off-site data availability.
   ```bash
   npm run backup
   ```
-- This exports all database tables (`kclsu_roster`, `profiles`, `trips`, `guides`, `shop_items`, `merch_orders`) into a timestamped JSON file in `backups/`.
+- This exports all Cloudflare D1 production tables (`kclsu_roster`, `profiles`, `users`, `portal_links`, `guides`) and legacy snapshots into timestamped JSON files in `backups/`.
 - The `backups/` directory is explicitly excluded by `.gitignore` to prevent confidential student data from entering version control.
 
 ### 3. Email Infrastructure Verification
@@ -405,36 +411,31 @@ Under Article 32 of UK GDPR, the club must maintain off-site data availability.
 
 ### Handover Checklist (Outgoing -> Incoming Committee)
 
-- [ ] **1. Cloudflare Account Access**:
+- [ ] **1. Cloudflare Account & D1 Access**:
   - Transfer or invite the incoming Platform Lead / President as an Administrator in Cloudflare (`dash.cloudflare.com`).
-  - Verify nameservers for `kclmc.org` remain active.
-- [ ] **2. Supabase Dashboard Access**:
-  - Invite incoming committee leads to the Supabase Organization (`app.supabase.com`).
-  - Check that the Project is active and not paused.
-- [ ] **3. Purelymail & Email Routing**:
+  - Verify nameservers for `kclmc.org` and D1 database `kclmc-production` remain active.
+- [ ] **2. Purelymail & Email Routing**:
   - Provide master credentials for Purelymail management console.
   - Update forwarding addresses or aliases for `president@kclmc.org`, `treasurer@kclmc.org`, `gear@kclmc.org`, `trips@kclmc.org`.
-- [ ] **4. GitHub Repositories**:
-  - Add incoming leads as Administrators to `RemTypes/kclmc-platform` and `RemTypes/kclmc-portal`.
-  - Check that `origin` and `portal` remotes are in sync.
-- [ ] **5. Update Committee Whitelist**:
-  - Edit `COMMITTEE_EMAILS` in Cloudflare settings to reflect the new officers' email addresses.
-- [ ] **6. New Academic Season Roster Setup**:
+- [ ] **3. GitHub Repositories**:
+  - Add incoming leads as Administrators to `RemTypes/kclmc-portal`.
+- [ ] **4. Update Committee Whitelist**:
+  - Edit `COMMITTEE_EMAILS` in `wrangler.jsonc` / Cloudflare settings to reflect the new officers' email addresses, and set `role = 1` in D1 `"user"` and `profiles`.
+- [ ] **5. New Academic Season Roster Setup**:
   - Log in to KCLSU eXpression / MSL union portal.
   - Download the Welcome Week climbing membership CSV.
-  - Upload to `kclmc.org/admin/reconcile` to seed the new year's members.
-- [ ] **7. Run Full Test Suite**:
-  - Run `npm test` and `npm run test:security` to ensure 100% clean passes before start of term.
+  - Upload to `kclmc.org/admin/reconcile` to seed the new year's members into Cloudflare D1.
+- [ ] **6. Run Full Verification Gate**:
+  - Run `npm test`, `npx tsc --noEmit`, `npm run check:frontend-copy`, and `npm run build:worker` to ensure 100% clean passes before start of term.
 
 ### Troubleshooting Playbook
 
 | Symptom | Cause | Remedy |
 | :--- | :--- | :--- |
-| **Pass lookup shows "Database not configured" or local preview** | `NEXT_PUBLIC_SUPABASE_URL` is missing or pointing to placeholder | Check `.env.local` or Cloudflare dashboard variables. Ensure valid HTTPS Supabase URL is set. |
-| **Pass shows "No official KCLMC membership found"** | Member hasn't been uploaded via KCLSU CSV or entered wrong K-number | Have member verify their K-number from their student ID card. Check `/admin/reconcile` to verify the KCLSU CSV report was uploaded. |
-| **Pass says "Student ID already linked to another account"** | Student registered with a personal email and is trying to link from a different account | Search student ID in Supabase `profiles` or `kclsu_roster`. Clear the conflicting `user_id` or contact `kclmc.committee@gmail.com`. |
-| **Supabase database paused** | Free-tier 7-day inactivity pause triggered | Log into `supabase.com`, click **Restore Project**. Verify the uptime keep-alive ping to `https://kclmc.org/api/health` is firing daily. |
-| **Committee user gets redirected to 403 Forbidden on /admin** | Their email is not in the `COMMITTEE_EMAILS` whitelist | Add their email to `COMMITTEE_EMAILS` in Cloudflare Variables and trigger a redeploy, or update their `role` to `1` in `public.profiles`. |
+| **Pass shows "No official KCLMC membership found"** | Member hasn't been uploaded via KCLSU CSV or entered wrong K-number | Have member verify their K-number from their student ID card. Check `/admin/reconcile` to verify the KCLSU CSV report was uploaded to D1. |
+| **Pass says "Student ID already linked to another account"** | Student registered with a personal email and is trying to link from a different account | Search student ID in D1 `profiles` or `kclsu_roster`. Clear the conflicting `user_id` or merge duplicate student profiles (see `docs/DATABASE_PRUNING_PLAN.md`). |
+| **Committee officer locked out or needs 2FA reset** | Officer changed phone or lost authenticator app | A SuperAdmin (`role = 2`) can reset the officer's 2FA via the **SuperAdmin 2FA Reset** card on `/admin` (`/api/admin/reset-2fa`), allowing fresh QR enrollment on next login. |
+| **Committee user gets redirected to 403 Forbidden on /admin** | Their email is not in the `COMMITTEE_EMAILS` whitelist or D1 role is 0 | Add their email to `COMMITTEE_EMAILS` in `wrangler.jsonc` or update their `role` to `1` in D1 `"user"` and `profiles`. |
 | **QR code scanner doesn't open camera on phone** | Camera permissions blocked or site accessed via insecure HTTP | Ensure accessing via `https://kclmc.org/admin/scan` (cameras require HTTPS context). Allow browser camera permissions in phone settings. |
 
 ---

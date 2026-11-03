@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import AdminTwoFactorCard from '@/components/AdminTwoFactorCard';
 
 interface DashboardStats {
   rosterTotal: number;
@@ -243,13 +244,16 @@ export default function AdminDashboard() {
             </div>
 
             <div className="mt-6 pt-4 border-t border-[#084746] flex items-center justify-between text-xs text-zinc-400 font-mono">
-              <span>All changes persist to Supabase DB</span>
+              <span>All changes persist to Cloudflare D1</span>
               <span className="text-[#FFBD59]">Cloudflare Edge Synced</span>
             </div>
           </div>
 
           {/* CMS & Security */}
           <div className="space-y-6 flex flex-col justify-between">
+            {/* Committee 2FA Self-Service Re-enrollment */}
+            <AdminTwoFactorCard />
+
             <div className="bg-[#052322] p-6 rounded-2xl border border-[#084746] shadow-2xl">
               <div className="flex items-center justify-between mb-5 border-b border-[#084746] pb-3">
                 <h2 className="text-lg font-bold font-heading uppercase text-white flex items-center gap-2">

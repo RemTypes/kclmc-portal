@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 export const SESSION_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict' as const,
+  sameSite: 'lax' as const,
   path: '/',
   maxAge: 7 * 24 * 60 * 60, // 7 days
 };
@@ -23,18 +23,24 @@ export function getAuthCookiePrefix(): string {
 }
 
 /**
- * Apply Supabase session cookies ensuring strict httpOnly, Secure, and SameSite=Strict flags.
+ * Apply Supabase session cookies ensuring strict httpOnly, Secure, and SameSite=Lax flags.
  */
 export function applySessionCookies(
   response: NextResponse,
   cookiesToSet: Array<{ name: string; value: string; options?: any }>
 ): void {
   cookiesToSet.forEach(({ name, value, options }) => {
-    response.cookies.set(name, value, {
+    let cleanValue = value;
+    try {
+      if (typeof cleanValue === 'string' && cleanValue.includes('%')) {
+        cleanValue = decodeURIComponent(cleanValue);
+      }
+    } catch {}
+    response.cookies.set(name, cleanValue, {
       ...options,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: 'lax',
       path: options?.path || '/',
     });
   });
@@ -122,6 +128,22 @@ export function clearSessionCookies(
   response.cookies.set('kclmc_session', '', {
     ...SESSION_COOKIE_OPTIONS,
     httpOnly: false,
+    maxAge: 0,
+  });
+
+  response.cookies.set('kclmc_2fa_verified', '', {
+    ...SESSION_COOKIE_OPTIONS,
+    maxAge: 0,
+  });
+
+  response.cookies.set('better-auth.session_token', '', {
+    ...SESSION_COOKIE_OPTIONS,
+    maxAge: 0,
+  });
+
+  response.cookies.set('__Secure-better-auth.session_token', '', {
+    ...SESSION_COOKIE_OPTIONS,
+    secure: true,
     maxAge: 0,
   });
 }

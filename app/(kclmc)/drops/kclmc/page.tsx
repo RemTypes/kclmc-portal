@@ -60,8 +60,8 @@ export default function DropsKclmc() {
         return;
       }
       try {
-        const supabase = createClient();
-        const { data, error } = await supabase
+        const dbClient = createClient();
+        const { data, error } = await dbClient
           .from('shop_items')
           .select('*')
           .eq('brand', 'KCL')

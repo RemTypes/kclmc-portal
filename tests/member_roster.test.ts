@@ -30,7 +30,7 @@ describe('MemberRoster Deep Module', () => {
       expect(result.suRecord?.name).toBe('Alex Honnold');
       expect(result.suRecord?.tier).toBe('social');
       expect(result.membership).toBeDefined();
-      expect(result.membership?.is_active).toBe(true);
+      expect(result.membership?.is_active).toBe(false);
       expect(result.membership?.tier).toBe('social');
 
       // Safety check initially incomplete because phone & emergency contact are not set
@@ -40,11 +40,12 @@ describe('MemberRoster Deep Module', () => {
 
     it('passes safety gate once phone and emergency contacts are provided', async () => {
       const userId = 'user-alex-2';
-      await rosterService.resolveMemberPass({
+      const initial = await rosterService.resolveMemberPass({
         id: userId,
         email: 'alex@kcl.ac.uk',
         user_metadata: { student_id: 'K26122068' },
       });
+      expect(initial.membership?.is_active).toBe(false);
 
       const updateResult = await rosterService.updateSafetyNotes(userId, {
         phone: '07123456789',
@@ -55,6 +56,13 @@ describe('MemberRoster Deep Module', () => {
       expect(updateResult.success).toBe(true);
       expect(updateResult.safetyCheck.isComplete).toBe(true);
       expect(updateResult.safetyCheck.missingFields).toHaveLength(0);
+
+      const activePass = await rosterService.resolveMemberPass({
+        id: userId,
+        email: 'alex@kcl.ac.uk',
+        user_metadata: { student_id: 'K26122068' },
+      });
+      expect(activePass.membership?.is_active).toBe(true);
     });
   });
 

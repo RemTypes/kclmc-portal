@@ -1,22 +1,25 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { validatePasswordStrength, PasswordValidationResult } from '@/lib/security/password-validator';
 
 function UpdatePasswordForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const resetToken = searchParams.get('token') || searchParams.get('token_hash');
+
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [success, setSuccess] = useState(false);
-  const [checkingSession, setCheckingSession] = useState(true);
-  const [hasSession, setHasSession] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(!resetToken);
+  const [hasSession, setHasSession] = useState(Boolean(resetToken));
 
-  const supabase = useMemo(() => createClient(), []);
+  const authClient = useMemo(() => createClient(), []);
 
   const pwdValidation = useMemo<PasswordValidationResult>(() => {
     return validatePasswordStrength(newPassword);
@@ -24,6 +27,12 @@ function UpdatePasswordForm() {
 
   useEffect(() => {
     let mounted = true;
+
+    if (resetToken) {
+      setHasSession(true);
+      setCheckingSession(false);
+      return;
+    }
 
     async function checkAuth() {
       // First, check server-side session via /api/auth/me (handles httpOnly cookies set by auth callback)
@@ -43,21 +52,21 @@ function UpdatePasswordForm() {
 
       if (!isSupabaseConfigured()) {
         if (mounted) {
-          setErrorMsg('Supabase credentials are not connected yet.');
+          setErrorMsg('Authentication service is not connected yet.');
           setCheckingSession(false);
         }
         return;
       }
 
       // Check client-side session as fallback
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await authClient.auth.getSession();
       if (mounted) {
         if (session) {
           setHasSession(true);
           setCheckingSession(false);
         } else {
           // Listen in case session is being initialized from the recovery token
-          const { data: authListener } = supabase.auth.onAuthStateChange((event, s) => {
+          const { data: authListener } = authClient.auth.onAuthStateChange((event, s) => {
             if (s) {
               setHasSession(true);
               setCheckingSession(false);
@@ -80,7 +89,7 @@ function UpdatePasswordForm() {
     return () => {
       mounted = false;
     };
-  }, [supabase]);
+  }, [authClient]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,7 +108,7 @@ function UpdatePasswordForm() {
     setLoading(true);
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
+      const { data: sessionData } = await authClient.auth.getSession();
       const accessToken = sessionData?.session?.access_token;
 
       // Submit to server-side rate-limited password reset endpoint
@@ -109,7 +118,11 @@ function UpdatePasswordForm() {
           'Content-Type': 'application/json',
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify({ password: newPassword, accessToken }),
+        body: JSON.stringify({
+          password: newPassword,
+          token: resetToken || undefined,
+          accessToken,
+        }),
       });
 
       const data = await res.json();
@@ -117,7 +130,7 @@ function UpdatePasswordForm() {
       if (!res.ok) {
         // Fallback to client-side session update if server session cookies weren't detected
         if (sessionData?.session) {
-          const { error: clientErr } = await supabase.auth.updateUser({ password: newPassword });
+          const { error: clientErr } = await authClient.auth.updateUser({ password: newPassword });
           if (!clientErr) {
             setSuccess(true);
             setTimeout(() => {

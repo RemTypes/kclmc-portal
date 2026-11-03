@@ -1,25 +1,21 @@
 import { NextResponse } from 'next/server';
-import { createClient, isSupabaseConfigured } from '@/lib/supabase/server';
-import { getAuthenticatedUserRole } from '@/lib/auth';
+import { getAuthenticatedUser } from '@/lib/auth/server';
 import { memberRoster } from '@/lib/roster/service';
 
 /**
  * GET /api/roster
  * Fetches the entire KCLSU membership roster joined with safety contacts (Role >= 1).
  */
-export async function GET() {
+export async function GET(request: Request): Promise<NextResponse>;
+export async function GET(): Promise<NextResponse>;
+export async function GET(request?: Request): Promise<NextResponse> {
   try {
-    if (isSupabaseConfigured()) {
-      const userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      const role = await getAuthenticatedUserRole(userClient, user);
-
-      if (role < 1) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Committee access required to view membership roster' },
-          { status: 403 }
-        );
-      }
+    const user = await getAuthenticatedUser(request);
+    if (!user || user.role < 1) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Committee access required to view membership roster' },
+        { status: 403 }
+      );
     }
 
     const data = await memberRoster.listRoster();
@@ -35,17 +31,12 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    if (isSupabaseConfigured()) {
-      const userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      const role = await getAuthenticatedUserRole(userClient, user);
-
-      if (role < 1) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Committee access required to synchronize roster' },
-          { status: 403 }
-        );
-      }
+    const user = await getAuthenticatedUser(request);
+    if (!user || user.role < 1) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Committee access required to synchronize roster' },
+        { status: 403 }
+      );
     }
 
     const body = await request.json().catch(() => ({}));
@@ -99,17 +90,12 @@ export async function POST(request: Request) {
  */
 export async function PATCH(request: Request) {
   try {
-    if (isSupabaseConfigured()) {
-      const userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      const role = await getAuthenticatedUserRole(userClient, user);
-
-      if (role < 1) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Committee access required to edit member roster' },
-          { status: 403 }
-        );
-      }
+    const user = await getAuthenticatedUser(request);
+    if (!user || user.role < 1) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Committee access required to edit member roster' },
+        { status: 403 }
+      );
     }
 
     const body = await request.json().catch(() => ({}));
@@ -173,17 +159,12 @@ export async function PATCH(request: Request) {
  */
 export async function DELETE(request: Request) {
   try {
-    if (isSupabaseConfigured()) {
-      const userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      const role = await getAuthenticatedUserRole(userClient, user);
-
-      if (role < 1) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Committee access required to delete roster member' },
-          { status: 403 }
-        );
-      }
+    const user = await getAuthenticatedUser(request);
+    if (!user || user.role < 1) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Committee access required to delete roster member' },
+        { status: 403 }
+      );
     }
 
     const { searchParams } = new URL(request.url);

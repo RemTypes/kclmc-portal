@@ -1,10 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { POST } from '@/app/api/roster/link/route';
 import * as supabaseServer from '@/lib/supabase/server';
 
 describe('Production Roster Linking Endpoint (/api/roster/link)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://test.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'test-anon-key');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('rejects unauthenticated requests with 401 and JSON content-type', async () => {
@@ -53,7 +59,7 @@ describe('Production Roster Linking Endpoint (/api/roster/link)', () => {
   it('successfully links Catherine Destivelle (K23158797) using authenticated client', async () => {
     const testUserId = '2b856ff0-eab9-4bfe-8800-ac6242ba9157';
 
-    vi.spyOn(supabaseServer, 'createClient').mockResolvedValue({
+    const mockClient = {
       auth: {
         getUser: vi.fn().mockResolvedValue({
           data: { user: { id: testUserId, email: 'k23158797@kcl.ac.uk' } },
@@ -84,10 +90,22 @@ describe('Production Roster Linking Endpoint (/api/roster/link)', () => {
           }
           return { data: null, error: null };
         }),
-        update: vi.fn().mockReturnThis(),
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: { id: testUserId, student_id: 'K23158797', full_name: 'Catherine Destivelle' },
+                error: null,
+              }),
+            }),
+          }),
+        }),
         insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       })),
-    } as any);
+    };
+
+    vi.spyOn(supabaseServer, 'createClient').mockResolvedValue(mockClient as any);
+    vi.spyOn(supabaseServer, 'createAdminClient').mockReturnValue(mockClient as any);
 
     const req = new Request('http://localhost:3000/api/roster/link', {
       method: 'POST',
@@ -107,7 +125,7 @@ describe('Production Roster Linking Endpoint (/api/roster/link)', () => {
   });
 
   it('rejects attempt to link an ID already bound to another user with 409', async () => {
-    vi.spyOn(supabaseServer, 'createClient').mockResolvedValue({
+    const mockClient = {
       auth: {
         getUser: vi.fn().mockResolvedValue({
           data: { user: { id: 'attacker-id', email: 'attacker@kcl.ac.uk' } },
@@ -125,7 +143,10 @@ describe('Production Roster Linking Endpoint (/api/roster/link)', () => {
           error: null,
         }),
       }),
-    } as any);
+    };
+
+    vi.spyOn(supabaseServer, 'createClient').mockResolvedValue(mockClient as any);
+    vi.spyOn(supabaseServer, 'createAdminClient').mockReturnValue(mockClient as any);
 
     const req = new Request('http://localhost:3000/api/roster/link', {
       method: 'POST',

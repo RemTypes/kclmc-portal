@@ -1,20 +1,16 @@
 import { NextResponse } from 'next/server';
-import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
-import { getAuthenticatedUserRole } from '@/lib/auth';
+import { createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
+import { getAuthenticatedUser } from '@/lib/auth/server';
 import { store } from '@/lib/store';
 
 export async function POST(request: Request) {
   try {
-    if (isSupabaseConfigured()) {
-      const userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      const role = await getAuthenticatedUserRole(userClient, user);
-      if (role < 1) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Committee access required to reconcile transactions' },
-          { status: 403 }
-        );
-      }
+    const user = await getAuthenticatedUser(request);
+    if (!user || user.role < 1) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Committee access required to reconcile transactions' },
+        { status: user ? 403 : 401 }
+      );
     }
 
     const data = await request.json(); // Array of parsed CSV rows

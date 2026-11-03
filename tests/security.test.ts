@@ -22,17 +22,17 @@ import { parseKclsuCsv, sanitizeCsvCell } from '@/lib/roster';
 import { getUserRole, getAuthenticatedUserRole, getSafeRedirectUrl, sanitizeStudentId, sanitizeEmail } from '@/lib/auth';
 import { validatePasswordStrength, COMMON_PASSWORDS_BLACKLIST, calculateEntropy } from '@/lib/security/password-validator';
 import { checkRateLimit, recordFailedAttempt, recordSuccessfulAttempt, verifyCaptchaToken, clearRateLimitStores, getSecurityAuditLogs } from '@/lib/security/rate-limiter';
-import { create2FAChallenge, create2FAEnrollmentChallenge, isUser2FAEnrolled, verify2FAChallenge, requiresMandatory2FA, generateBackupCodes, getOrCreateBackupCodes, getUserHashedBackupCodes, setUserHashedBackupCodes, calculateTOTP, verifyTOTP, setUserTOTPSecret, clear2FAStores } from '@/lib/security/two-factor';
+import { create2FAChallenge, create2FAEnrollmentChallenge, isUser2FAEnrolled, verify2FAChallenge, requiresMandatory2FA, generateBackupCodes, getOrCreateBackupCodes, getUserHashedBackupCodes, setUserHashedBackupCodes, calculateTOTP, verifyTOTP, setUserTOTPSecret, clear2FAStores, seal2FAAttestation, verify2FAAttestation } from '@/lib/security/two-factor';
 import { applySessionCookies, setSessionCookies, clearSessionCookies, getAuthCookiePrefix, SESSION_COOKIE_OPTIONS } from '@/lib/security/cookies';
 import { POST as authLoginPost } from '@/app/api/auth/login/route';
 import { POST as authSignupPost } from '@/app/api/auth/signup/route';
 import { POST as authForgotPost } from '@/app/api/auth/forgot-password/route';
 import { POST as authResetPost } from '@/app/api/auth/reset-password/route';
 import { POST as authVerify2FAPost } from '@/app/api/auth/verify-2fa/route';
-import { POST as authVerifyOtpPost } from '@/app/api/auth/verify-otp/route';
 import { POST as authLogoutPost } from '@/app/api/auth/logout/route';
 import { GET as authMeGet } from '@/app/api/auth/me/route';
 import { GET as membershipGet, POST as membershipPost } from '@/app/api/membership/route';
+import { GET as bmcInsuranceGet } from '@/app/api/admin/bmc-insurance/route';
 import { NextResponse } from 'next/server';
 
 describe('Security Testing Suite', () => {
@@ -440,6 +440,11 @@ describe('Security Testing Suite', () => {
 
     it('safely skips invalid order codes with SQL injection in CSV data', async () => {
       vi.mocked(isSupabaseConfigured).mockReturnValue(false);
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'comm-1', email: 'kclmc.committee@gmail.com' } } }),
+        },
+      } as any);
 
       const rows = [
         { orderCode: "KCL-1234' OR '1'='1", Amount: '20.00' },
@@ -1105,20 +1110,128 @@ describe('Security Testing Suite', () => {
       expect(result.enrolledSecret).toBe(setupSecret);
       expect(result.sessionData).toEqual({ session: { token: 'jwt' } });
     });
+
+    it('seals and verifies 2FA challenges using secretKeyOverride across isolated worker contexts without process.env', () => {
+      const userId = 'cf-isolate-user-1';
+      const cfWorkerSecret = 'cf-env-secret-89a1f2b3c4d5e6f7';
+      const origSecret = process.env.BETTER_AUTH_SECRET;
+      const origSupabase = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      try {
+        delete process.env.BETTER_AUTH_SECRET;
+        delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+        const setup = create2FAEnrollmentChallenge(
+          userId,
+          'isolated@kclmc.org',
+          1,
+          { session: { token: 'isolated-jwt' } },
+          cfWorkerSecret
+        );
+
+        // Simulate new worker isolate without shared memory or process.env
+        clear2FAStores();
+
+        const totp = calculateTOTP(setup.secret);
+        const result = verify2FAChallenge(setup.challengeToken, totp, cfWorkerSecret);
+
+        expect(result.success).toBe(true);
+        expect(result.userId).toBe(userId);
+        expect(result.sessionData).toEqual({ session: { token: 'isolated-jwt' } });
+
+        // Fails if wrong secret is supplied
+        const wrongResult = verify2FAChallenge(setup.challengeToken, totp, 'wrong-secret-key-1234');
+        expect(wrongResult.success).toBe(false);
+        expect(wrongResult.error).toContain('Invalid or expired 2FA session');
+      } finally {
+        if (origSecret) process.env.BETTER_AUTH_SECRET = origSecret;
+        if (origSupabase) process.env.SUPABASE_SERVICE_ROLE_KEY = origSupabase;
+      }
+    });
+
+    it('seals and verifies cryptographic 2FA attestation tokens tied to user ID', () => {
+      const userId = 'attestation-user-123';
+      const token = seal2FAAttestation(userId);
+      expect(token).toBeTruthy();
+      expect(token.split('.')).toHaveLength(3);
+
+      // Successfully verifies with matching user ID
+      expect(verify2FAAttestation(token, userId)).toBe(true);
+      expect(verify2FAAttestation(token)).toBe(true);
+
+      // Rejects forged / mismatched user ID
+      expect(verify2FAAttestation(token, 'different-user-456')).toBe(false);
+
+      // Rejects mismatched UUID when expectedEmail is provided (NEW-010 regression check)
+      const foreignUuidToken = seal2FAAttestation('11111111-2222-3333-4444-555555555555');
+      expect(
+        verify2FAAttestation(
+          foreignUuidToken,
+          '99999999-8888-7777-6666-555555555555',
+          undefined,
+          'president@kclmc.org'
+        )
+      ).toBe(false);
+
+      // Accepts email-sealed token when expectedEmail matches (even with dots in email)
+      const emailToken = seal2FAAttestation('remy.preston@outlook.com');
+      expect(
+        verify2FAAttestation(
+          emailToken,
+          '99999999-8888-7777-6666-555555555555',
+          undefined,
+          'remy.preston@outlook.com'
+        )
+      ).toBe(true);
+
+      // Rejects plain 'true' string (NEW-002 forge attempt)
+      expect(verify2FAAttestation('true', userId)).toBe(false);
+      expect(verify2FAAttestation('true')).toBe(false);
+
+      // Rejects tampered signature
+      const [u, t, sig] = token.split('.');
+      const tampered = `${u}.${t}.${sig.slice(0, -4)}0000`;
+      expect(verify2FAAttestation(tampered, userId)).toBe(false);
+
+      // Rejects null / empty / malformed tokens
+      expect(verify2FAAttestation(null)).toBe(false);
+      expect(verify2FAAttestation('')).toBe(false);
+      expect(verify2FAAttestation('malformed.token')).toBe(false);
+    });
+
+    it('fails closed and returns false in verify2FAAttestation without throwing if secret is missing in production', () => {
+      const origNodeEnv = process.env.NODE_ENV;
+      const origSecret = process.env.BETTER_AUTH_SECRET;
+      const origSupabase = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      try {
+        (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
+        delete process.env.BETTER_AUTH_SECRET;
+        delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+        delete process.env.NEXTAUTH_SECRET;
+        delete process.env.SUPABASE_JWT_SECRET;
+
+        // Must fail closed (return false) rather than throwing unhandled exception
+        expect(() => verify2FAAttestation('test-user.1700000000000.abc123sig')).not.toThrow();
+        expect(verify2FAAttestation('test-user.1700000000000.abc123sig')).toBe(false);
+      } finally {
+        (process.env as Record<string, string | undefined>).NODE_ENV = origNodeEnv;
+        if (origSecret) process.env.BETTER_AUTH_SECRET = origSecret;
+        if (origSupabase) process.env.SUPABASE_SERVICE_ROLE_KEY = origSupabase;
+      }
+    });
   });
 
   // =========================================================================
   // 14. VULNERABILITY 1: SESSION TOKEN COOKIES & HTTPONLY HARDENING
   // =========================================================================
   describe('Vulnerability 1: Session Token Cookie Hardening', () => {
-    it('guarantees SESSION_COOKIE_OPTIONS has httpOnly=true and sameSite=strict', () => {
+    it('guarantees SESSION_COOKIE_OPTIONS has httpOnly=true and sameSite=lax', () => {
       expect(SESSION_COOKIE_OPTIONS.httpOnly).toBe(true);
-      expect(SESSION_COOKIE_OPTIONS.sameSite).toBe('strict');
+      expect(SESSION_COOKIE_OPTIONS.sameSite).toBe('lax');
       expect(SESSION_COOKIE_OPTIONS.path).toBe('/');
       expect(SESSION_COOKIE_OPTIONS.maxAge).toBe(7 * 24 * 60 * 60);
     });
 
-    it('applies chunked cookies to NextResponse with httpOnly=true and sameSite=strict', () => {
+    it('applies chunked cookies to NextResponse with httpOnly=true and sameSite=lax', () => {
       const response = NextResponse.json({ ok: true });
       const chunks = [
         { name: 'sb-bsvnyibipcwrcyzqilge-auth-token.0', value: 'chunk0_data' },
@@ -1130,7 +1243,7 @@ describe('Security Testing Suite', () => {
       const cookieHeader = response.headers.get('set-cookie') || '';
       expect(cookieHeader).toContain('sb-bsvnyibipcwrcyzqilge-auth-token.0=chunk0_data');
       expect(cookieHeader).toContain('HttpOnly');
-      expect(cookieHeader.toLowerCase()).toContain('samesite=strict');
+      expect(cookieHeader.toLowerCase()).toContain('samesite=lax');
     });
 
     it('clearSessionCookies expires base cookie, chunks, and session indicator', () => {
@@ -1217,7 +1330,7 @@ describe('Security Testing Suite', () => {
       expect(data.error.toLowerCase()).toContain('at least 12 characters');
     });
 
-    it('POST /api/auth/verify-2fa and /api/auth/verify-otp require challenge token and code', async () => {
+    it('POST /api/auth/verify-2fa requires challenge token and code', async () => {
       const req1 = new Request('http://localhost:3000/api/auth/verify-2fa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1225,14 +1338,6 @@ describe('Security Testing Suite', () => {
       });
       const res1 = await authVerify2FAPost(req1);
       expect(res1.status).toBe(400);
-
-      const req2 = new Request('http://localhost:3000/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challengeToken: 'test-tok', code: '123456' }),
-      });
-      const res2 = await authVerifyOtpPost(req2);
-      expect(res2.status).toBe(400);
     });
 
     it('POST /api/auth/verify-2fa completes first-time 2FA enrollment and issues session cookies', async () => {
@@ -1441,6 +1546,37 @@ describe('Security Testing Suite', () => {
       const data = await res.json();
       expect(data.success).toBe(true);
       expect(data.destination).toBe('/membership');
+    });
+
+    it('GET /api/admin/bmc-insurance enforces handler-level authentication and committee clearance', async () => {
+      // 1. Unauthenticated request -> 401
+      vi.mocked(isSupabaseConfigured).mockReturnValue(true);
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: null,
+          }),
+        },
+      } as any);
+
+      const unauthReq = new Request('http://localhost:3000/api/admin/bmc-insurance');
+      const unauthRes = await bmcInsuranceGet(unauthReq);
+      expect(unauthRes.status).toBe(401);
+
+      // 2. Authenticated non-committee member (role 0) -> 403
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: 'u-climber', email: 'climber@kcl.ac.uk' } },
+            error: null,
+          }),
+        },
+      } as any);
+
+      const memberReq = new Request('http://localhost:3000/api/admin/bmc-insurance');
+      const memberRes = await bmcInsuranceGet(memberReq);
+      expect(memberRes.status).toBe(403);
     });
   });
 });

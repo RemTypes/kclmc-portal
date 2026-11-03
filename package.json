@@ -9,6 +9,7 @@
     "build:worker": "opennextjs-cloudflare build",
     "deploy:cloudflare": "opennextjs-cloudflare build && wrangler deploy",
     "backup": "tsx scripts/backup_database.ts",
+    "check:frontend-copy": "tsx scripts/check_frontend_copy.ts",
     "test": "vitest run",
     "test:security": "vitest run tests/security.test.ts",
     "test:watch": "vitest",
@@ -24,16 +25,14 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.0",
-    "@types/qrcode.react": "^1.0.5",
+    "better-auth": "^1.7.12",
     "canvas-confetti": "^1.9.4",
-    "clsx": "^2.1.1",
-    "framer-motion": "^13.2.0",
-    "lucide-react": "^1.45.0",
+    "kysely": "^0.29.7",
+    "kysely-d1": "^0.4.0",
     "next": "^16.3.5",
     "qrcode.react": "^4.2.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "tailwind-merge": "^3.7.0"
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.20.6",
@@ -42,11 +41,18 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.6.0",
+    "playwright": "^1.64.1",
     "postcss": "^8.5.28",
     "tailwindcss": "^3.4.19",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3",
     "wrangler": "^4.137.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.28.1": true,
+    "esbuild@0.25.4": true,
+    "workerd@1.20260921.1": true
   }
 }

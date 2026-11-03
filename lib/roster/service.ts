@@ -20,10 +20,12 @@ import {
   generateNextAssociateId,
 } from '@/lib/roster';
 import { checkSafetyProfileCompleteness, SafetyCompletenessResult } from '@/lib/safety';
-import { sanitizeUniversity, isAssociateId, sanitizeEmail } from '@/lib/auth';
+import { sanitizeUniversity, isAssociateId, sanitizeEmail, getUserRole } from '@/lib/auth';
 import type { Profile, Membership, SuProcessingStatus } from '@/types/database';
 import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
 import { trackServerEvent } from '@/lib/telemetry-server';
+import { D1RosterAdapter } from './d1-adapter';
+import { D1Database, getD1Database } from '@/lib/db/d1';
 
 export interface RosterMemberDirectoryItem {
   cardNumber: string;
@@ -929,13 +931,99 @@ export class InMemoryRosterAdapter implements RosterStorageAdapter {
  * Deep MemberRosterService
  */
 export class MemberRosterService {
-  constructor(private storage: RosterStorageAdapter = new PostgresRosterAdapter()) {}
+  private explicitAdapter = false;
+  private cachedD1Adapter: D1RosterAdapter | null = null;
+  private cachedD1Db: D1Database | null = null;
+
+  constructor(private storage: RosterStorageAdapter = new PostgresRosterAdapter()) {
+    if (arguments.length > 0 && storage !== undefined) {
+      this.explicitAdapter = true;
+    }
+  }
 
   /**
    * Sets the active storage adapter (useful for testing or swapping to in-memory mode)
    */
   setStorageAdapter(adapter: RosterStorageAdapter): void {
     this.storage = adapter;
+    this.explicitAdapter = true;
+  }
+
+  /**
+   * Dynamically resolves the active storage adapter.
+   * If an adapter was explicitly injected (e.g. in test suites), it is returned.
+   * Otherwise, if Cloudflare D1 is available (Edge worker isolate with env.DB), D1RosterAdapter is used.
+   * Defaults to PostgresRosterAdapter (Supabase) if D1 is not bound.
+   *
+   * Failsafe Tier 1: Instant Environment Kill-Switch (ROSTER_STORAGE_ENGINE)
+   * If ROSTER_STORAGE_ENGINE is set to 'supabase' or 'postgres', bypasses D1 and uses Supabase.
+   */
+  async getStorage(): Promise<RosterStorageAdapter> {
+    if (this.explicitAdapter) {
+      return this.storage;
+    }
+
+    // Failsafe Tier 1: Instant Environment Kill-Switch
+    let engine = process.env.ROSTER_STORAGE_ENGINE;
+    if (!engine) {
+      try {
+        const { getCloudflareContext } = await import('@opennextjs/cloudflare');
+        const ctx = await getCloudflareContext();
+        engine = (ctx as any)?.env?.ROSTER_STORAGE_ENGINE;
+      } catch {}
+    }
+
+    if (engine && (engine.toLowerCase() === 'supabase' || engine.toLowerCase() === 'postgres')) {
+      return this.storage;
+    }
+
+    try {
+      const d1 = await getD1Database();
+      if (d1) {
+        if (!this.cachedD1Adapter || this.cachedD1Db !== d1) {
+          this.cachedD1Db = d1;
+          this.cachedD1Adapter = new D1RosterAdapter(d1);
+        }
+        return this.cachedD1Adapter;
+      }
+    } catch (e) {
+      console.warn('[MemberRosterService] Failed to resolve D1 database, falling back to default storage:', e);
+    }
+
+    return this.storage;
+  }
+
+  /**
+   * Failsafe Tier 3: Circuit Breaker
+   * Executes an operation against the primary resolved storage (e.g. D1).
+   * If D1 throws an unhandled edge exception or lock error, catches it,
+   * logs structured monitoring telemetry, and seamlessly falls back to PostgresRosterAdapter (Supabase).
+   */
+  private async executeWithCircuitBreaker<T>(
+    operationName: string,
+    action: (storage: RosterStorageAdapter) => Promise<T>
+  ): Promise<T> {
+    const primaryStorage = await this.getStorage();
+    try {
+      return await action(primaryStorage);
+    } catch (primaryError: any) {
+      if (primaryStorage instanceof D1RosterAdapter && this.storage && this.storage !== primaryStorage) {
+        console.warn(
+          `[CircuitBreaker] Primary D1 operation "${operationName}" failed. Seamlessly failing over to Supabase:`,
+          primaryError?.message || primaryError
+        );
+        try {
+          return await action(this.storage);
+        } catch (fallbackError: any) {
+          console.error(
+            `[CircuitBreaker] Secondary Supabase fallback for "${operationName}" also failed:`,
+            fallbackError?.message || fallbackError
+          );
+          throw primaryError;
+        }
+      }
+      throw primaryError;
+    }
   }
 
   /**
@@ -954,81 +1042,87 @@ export class MemberRosterService {
       };
     }
 
-    let profile = await this.storage.findProfile(user.id);
+    return this.executeWithCircuitBreaker('resolveMemberPass', async (storage) => {
+      let profile = await storage.findProfile(user.id);
 
-    // Auto-heal profile or create initial row if missing
-    if (profile) {
+      // Auto-heal profile or create initial row if missing
       const metaStudentId = user.user_metadata?.student_id;
-      const metaUni = user.user_metadata?.university;
-      if ((!profile.student_id && metaStudentId) || (!profile.university && metaUni)) {
-        const updates: Partial<Profile> = {};
-        if (!profile.student_id && metaStudentId) updates.student_id = metaStudentId;
-        if (!profile.university && metaUni) updates.university = metaUni;
-        const healed = await this.storage.upsertProfile(user.id, updates);
-        if (healed) profile = healed;
+      const existingOwner = metaStudentId ? await storage.findProfileByStudentId(metaStudentId) : null;
+      const canClaimMetaId = Boolean(metaStudentId && (!existingOwner || existingOwner.id === user.id));
+
+      if (profile) {
+        const metaUni = user.user_metadata?.university;
+        if ((!profile.student_id && canClaimMetaId) || (!profile.university && metaUni)) {
+          const updates: Partial<Profile> = {};
+          if (!profile.student_id && canClaimMetaId) updates.student_id = metaStudentId;
+          if (!profile.university && metaUni) updates.university = metaUni;
+          const healed = await storage.upsertProfile(user.id, updates);
+          if (healed) profile = healed;
+        }
+      } else {
+        profile = await storage.upsertProfile(user.id, {
+          full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Climber',
+          student_id: canClaimMetaId ? metaStudentId : null,
+          university: user.user_metadata?.university || "King's College London",
+          role: 0,
+        });
       }
-    } else {
-      profile = await this.storage.upsertProfile(user.id, {
-        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Climber',
-        student_id: user.user_metadata?.student_id || null,
-        university: user.user_metadata?.university || "King's College London",
-        role: 0,
-      });
-    }
 
-    // Determine active student ID
-    let activeStudentId = profile?.student_id || user.user_metadata?.student_id || null;
-    if (!activeStudentId) {
-      const linkedRecord = await this.storage.findRosterRecordByUserId(user.id);
-      if (linkedRecord?.cardNumber) {
-        activeStudentId = linkedRecord.cardNumber;
+      // Determine active student ID
+      let activeStudentId = profile?.student_id || null;
+      if (!activeStudentId) {
+        const linkedRecord = await storage.findRosterRecordByUserId(user.id);
+        if (linkedRecord?.cardNumber) {
+          activeStudentId = linkedRecord.cardNumber;
+        }
       }
-    }
 
-    let boundStudentId: string | null = null;
-    let suRecord: KclsuMemberRecord | null = null;
-    let membership: Membership | null = null;
+      let boundStudentId: string | null = null;
+      let suRecord: KclsuMemberRecord | null = null;
+      let membership: Membership | null = null;
 
-    if (activeStudentId) {
-      let cleanId = activeStudentId.trim().toUpperCase();
-      if (/^\d{6,9}$/.test(cleanId)) {
-        cleanId = `K${cleanId}`;
+      const safetyCheck = checkSafetyProfileCompleteness(profile);
+
+      if (activeStudentId) {
+        let cleanId = activeStudentId.trim().toUpperCase();
+        if (/^\d{6,9}$/.test(cleanId)) {
+          cleanId = `K${cleanId}`;
+        }
+        boundStudentId = cleanId;
+        suRecord = await storage.findRosterRecord(cleanId);
+
+        const recordOwnerId = (suRecord as any)?.user_id;
+        if (suRecord && suRecord.suStatus !== 'revoked' && (!recordOwnerId || recordOwnerId === user.id)) {
+          storage.bindRosterRecord(cleanId, user.id, suRecord).catch(() => {});
+          membership = {
+            id: suRecord.cardNumber,
+            user_id: user.id,
+            membership_number: suRecord.cardNumber,
+            tier: suRecord.tier,
+            valid_from: '2026-09-01',
+            valid_until: '2027-08-31',
+            payment_reference: suRecord.transactionId,
+            is_active: Boolean(safetyCheck.isComplete),
+            created_at: new Date().toISOString(),
+          };
+        }
       }
-      boundStudentId = cleanId;
-      suRecord = await this.storage.findRosterRecord(cleanId);
 
-      if (suRecord && suRecord.suStatus !== 'revoked') {
-        this.storage.bindRosterRecord(cleanId, user.id, suRecord).catch(() => {});
-        membership = {
-          id: suRecord.cardNumber,
-          user_id: user.id,
-          membership_number: suRecord.cardNumber,
-          tier: suRecord.tier,
-          valid_from: '2026-09-01',
-          valid_until: '2027-08-31',
-          payment_reference: suRecord.transactionId,
-          is_active: true,
-          created_at: new Date().toISOString(),
-        };
-      }
-    }
-
-    const safetyCheck = checkSafetyProfileCompleteness(profile);
-
-    return {
-      authenticated: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: profile?.role ?? 0,
-        fullName: profile?.full_name || user.user_metadata?.full_name,
-      },
-      profile,
-      boundStudentId,
-      suRecord,
-      membership,
-      safetyCheck,
-    };
+      return {
+        authenticated: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: (user as any).role ?? profile?.role ?? getUserRole(user.email),
+          fullName: profile?.full_name || user.user_metadata?.full_name,
+        },
+        profile,
+        boundStudentId,
+        suRecord,
+        membership,
+        safetyCheck,
+      };
+    });
   }
 
   /**
@@ -1042,117 +1136,121 @@ export class MemberRosterService {
     emergencyPhone?: string | null;
     dietary?: string | null;
   }): Promise<{ success: boolean; profile: Profile | null; safetyCheck: SafetyCompletenessResult }> {
-    const effectiveUniversity = sanitizeUniversity(
-      data.university === 'Other UK Institution' ? data.customUniversity : data.university
-    );
+    return this.executeWithCircuitBreaker('updateSafetyNotes', async (storage) => {
+      const effectiveUniversity = sanitizeUniversity(
+        data.university === 'Other UK Institution' ? data.customUniversity : data.university
+      );
 
-    const updatePayload: Partial<Profile> = {
-      university: effectiveUniversity,
-      phone: typeof data.phone === 'string' ? data.phone.trim().slice(0, 30) : null,
-      emergency_contact_name: typeof data.emergencyName === 'string' ? data.emergencyName.trim().slice(0, 100) : null,
-      emergency_contact_phone: typeof data.emergencyPhone === 'string' ? data.emergencyPhone.trim().slice(0, 30) : null,
-      dietary_requirements: typeof data.dietary === 'string' ? data.dietary.trim().slice(0, 500) : null,
-    };
+      const updatePayload: Partial<Profile> = {
+        university: effectiveUniversity,
+        phone: typeof data.phone === 'string' ? data.phone.trim().slice(0, 30) : null,
+        emergency_contact_name: typeof data.emergencyName === 'string' ? data.emergencyName.trim().slice(0, 100) : null,
+        emergency_contact_phone: typeof data.emergencyPhone === 'string' ? data.emergencyPhone.trim().slice(0, 30) : null,
+        dietary_requirements: typeof data.dietary === 'string' ? data.dietary.trim().slice(0, 500) : null,
+      };
 
-    const updated = await this.storage.upsertProfile(userId, updatePayload);
-    const safetyCheck = checkSafetyProfileCompleteness(updated);
+      const updated = await storage.upsertProfile(userId, updatePayload);
+      const safetyCheck = checkSafetyProfileCompleteness(updated);
 
-    return {
-      success: true,
-      profile: updated,
-      safetyCheck,
-    };
+      return {
+        success: true,
+        profile: updated,
+        safetyCheck,
+      };
+    });
   }
 
   /**
    * Links a KCL student ID or Committee-issued Associate ID to an authenticated Climber account.
    */
   async linkStudentId(userId: string, rawStudentId: string): Promise<LinkMemberResult> {
-    let cleanId = (rawStudentId || '').trim().toUpperCase();
-    if (/^\d{6,9}$/.test(cleanId)) {
-      cleanId = `K${cleanId}`;
-    }
+    return this.executeWithCircuitBreaker('linkStudentId', async (storage) => {
+      let cleanId = (rawStudentId || '').trim().toUpperCase();
+      if (/^\d{6,9}$/.test(cleanId)) {
+        cleanId = `K${cleanId}`;
+      }
 
-    if (!cleanId || cleanId.length > 32 || !/^[A-Z0-9_-]{3,32}$/.test(cleanId)) {
-      return {
-        success: false,
-        statusCode: 400,
-        error: 'Please provide a valid KCL Student ID (e.g. K25008223) or Associate ID (e.g. ASSOC-2601).',
+      if (!cleanId || cleanId.length > 32 || !/^[A-Z0-9_-]{3,32}$/.test(cleanId)) {
+        return {
+          success: false,
+          statusCode: 400,
+          error: 'Please provide a valid KCL Student ID (e.g. K25008223) or Associate ID (e.g. ASSOC-2601).',
+        };
+      }
+
+      const safeDisplayId = cleanId.replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
+
+      // 1. Conflict check: already bound in profiles table?
+      const existingProfile = await storage.findProfileByStudentId(cleanId);
+      if (existingProfile && existingProfile.id !== userId) {
+        return {
+          success: false,
+          statusCode: 409,
+          error: `Student ID "${safeDisplayId}" is already linked to another KCLMC account. If this is your student ID, please contact kclmc.committee@gmail.com.`,
+        };
+      }
+
+      // 2. Conflict check: already bound in kclsu_roster table?
+      const existingRoster = await storage.findRosterRecord(cleanId);
+      if ((existingRoster as any)?.user_id && (existingRoster as any).user_id !== userId) {
+        return {
+          success: false,
+          statusCode: 409,
+          error: `Student ID "${safeDisplayId}" is already linked to another KCLMC account. If this is your student ID, please contact kclmc.committee@gmail.com.`,
+        };
+      }
+
+      // 3. Verify membership exists in official KCLSU / Associate records
+      let memberRecord = existingRoster;
+      if (!memberRecord) {
+        memberRecord = findMemberByCardNumber(cleanId) || null;
+      }
+
+      if (!memberRecord) {
+        return {
+          success: false,
+          statusCode: 404,
+          error: `Student ID "${cleanId}" was not found in the official KCLSU purchase list. Please ensure you have purchased a 2026/27 membership on the KCLSU shop or received a valid Associate ID from the Committee.`,
+        };
+      }
+
+      if (memberRecord.suStatus === 'revoked') {
+        return {
+          success: false,
+          statusCode: 403,
+          error: `Membership ID "${safeDisplayId}" has been revoked. Please contact kclmc.committee@gmail.com.`,
+        };
+      }
+
+      // 4. Bind roster record and update profile
+      await storage.bindRosterRecord(cleanId, userId, memberRecord);
+      const profileUpdates: Partial<Profile> = {
+        student_id: cleanId,
+        full_name: memberRecord.name,
       };
-    }
+      if (memberRecord.university) {
+        profileUpdates.university = memberRecord.university;
+      }
+      await storage.upsertProfile(userId, profileUpdates);
 
-    const safeDisplayId = cleanId.replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
+      // 5. Emit activation telemetry
+      trackServerEvent('membership_activated', {
+        userId,
+        cardNumber: cleanId,
+        tier: memberRecord.tier,
+        isAssociate: Boolean(memberRecord.isAssociate),
+        academicYear: '2026/27',
+      }).catch(() => {});
 
-    // 1. Conflict check: already bound in profiles table?
-    const existingProfile = await this.storage.findProfileByStudentId(cleanId);
-    if (existingProfile && existingProfile.id !== userId) {
       return {
-        success: false,
-        statusCode: 409,
-        error: `Student ID "${safeDisplayId}" is already linked to another KCLMC account. If this is your student ID, please contact kclmc.committee@gmail.com.`,
+        success: true,
+        statusCode: 200,
+        member: memberRecord,
+        message: memberRecord.isAssociate
+          ? `Successfully linked Associate Member ID ${cleanId} to your account.`
+          : `Successfully linked KCL Student ID ${cleanId} to your account.`,
       };
-    }
-
-    // 2. Conflict check: already bound in kclsu_roster table?
-    const existingRoster = await this.storage.findRosterRecord(cleanId);
-    if ((existingRoster as any)?.user_id && (existingRoster as any).user_id !== userId) {
-      return {
-        success: false,
-        statusCode: 409,
-        error: `Student ID "${safeDisplayId}" is already linked to another KCLMC account. If this is your student ID, please contact kclmc.committee@gmail.com.`,
-      };
-    }
-
-    // 3. Verify membership exists in official KCLSU / Associate records
-    let memberRecord = existingRoster;
-    if (!memberRecord) {
-      memberRecord = findMemberByCardNumber(cleanId) || null;
-    }
-
-    if (!memberRecord) {
-      return {
-        success: false,
-        statusCode: 404,
-        error: `Student ID "${cleanId}" was not found in the official KCLSU purchase list. Please ensure you have purchased a 2026/27 membership on the KCLSU shop or received a valid Associate ID from the Committee.`,
-      };
-    }
-
-    if (memberRecord.suStatus === 'revoked') {
-      return {
-        success: false,
-        statusCode: 403,
-        error: `Membership ID "${safeDisplayId}" has been revoked. Please contact kclmc.committee@gmail.com.`,
-      };
-    }
-
-    // 4. Bind roster record and update profile
-    await this.storage.bindRosterRecord(cleanId, userId, memberRecord);
-    const profileUpdates: Partial<Profile> = {
-      student_id: cleanId,
-      full_name: memberRecord.name,
-    };
-    if (memberRecord.university) {
-      profileUpdates.university = memberRecord.university;
-    }
-    await this.storage.upsertProfile(userId, profileUpdates);
-
-    // 5. Emit activation telemetry
-    trackServerEvent('membership_activated', {
-      userId,
-      cardNumber: cleanId,
-      tier: memberRecord.tier,
-      isAssociate: Boolean(memberRecord.isAssociate),
-      academicYear: '2026/27',
-    }).catch(() => {});
-
-    return {
-      success: true,
-      statusCode: 200,
-      member: memberRecord,
-      message: memberRecord.isAssociate
-        ? `Successfully linked Associate Member ID ${cleanId} to your account.`
-        : `Successfully linked KCL Student ID ${cleanId} to your account.`,
-    };
+    });
   }
 
   /**
@@ -1168,20 +1266,22 @@ export class MemberRosterService {
     nextAssociateId: string;
     members: RosterMemberDirectoryItem[];
   }> {
-    const result = await this.storage.listRosterWithProfiles();
-    const associateCount = result.members.filter(m => m.isAssociate || !m.cardNumber.toUpperCase().startsWith('K')).length;
-    const awaitingSuCount = result.members.filter(m => m.suStatus === 'awaiting_su').length;
-    const nextAssociateId = generateNextAssociateId(result.members.map(m => m.cardNumber), '26');
-    return {
-      source: result.source,
-      total: result.members.length,
-      socialCount: result.socialCount,
-      recreationalCount: result.recreationalCount,
-      associateCount,
-      awaitingSuCount,
-      nextAssociateId,
-      members: result.members,
-    };
+    return this.executeWithCircuitBreaker('listRoster', async (storage) => {
+      const result = await storage.listRosterWithProfiles();
+      const associateCount = result.members.filter(m => m.isAssociate || !m.cardNumber.toUpperCase().startsWith('K')).length;
+      const awaitingSuCount = result.members.filter(m => m.suStatus === 'awaiting_su').length;
+      const nextAssociateId = generateNextAssociateId(result.members.map(m => m.cardNumber), '26');
+      return {
+        source: result.source,
+        total: result.members.length,
+        socialCount: result.socialCount,
+        recreationalCount: result.recreationalCount,
+        associateCount,
+        awaitingSuCount,
+        nextAssociateId,
+        members: result.members,
+      };
+    });
   }
 
   /**
@@ -1201,7 +1301,9 @@ export class MemberRosterService {
       return { valid: false, error: 'Invalid membership ID characters', statusCode: 400 };
     }
 
-    return this.storage.verifyPublicPass(clean);
+    return this.executeWithCircuitBreaker('verifyPass', async (storage) => {
+      return storage.verifyPublicPass(clean);
+    });
   }
 
   /**
@@ -1231,23 +1333,25 @@ export class MemberRosterService {
       };
     }
 
-    const { count, error } = await this.storage.upsertRosterRecords(records);
-    if (error) {
-      return {
-        success: false,
-        source: 'error',
-        totalSynced: 0,
-        records,
-        error: typeof error === 'string' ? error : error?.message || 'Roster upsert failed',
-      };
-    }
+    return this.executeWithCircuitBreaker('syncRoster', async (storage) => {
+      const { count, error } = await storage.upsertRosterRecords(records);
+      if (error) {
+        return {
+          success: false,
+          source: 'error',
+          totalSynced: 0,
+          records,
+          error: typeof error === 'string' ? error : error?.message || 'Roster upsert failed',
+        };
+      }
 
-    return {
-      success: true,
-      source: this.storage.isConfigured() ? 'supabase' : 'local_preview',
-      totalSynced: count,
-      records,
-    };
+      return {
+        success: true,
+        source: storage instanceof D1RosterAdapter ? 'cloudflare_d1' : (storage.isConfigured() ? 'supabase' : 'local_preview'),
+        totalSynced: count,
+        records,
+      };
+    });
   }
 
   /**
@@ -1255,7 +1359,9 @@ export class MemberRosterService {
    * shielding it from future CSV reconciliation overwrites.
    */
   async updateMemberName(cardNumber: string, fullName: string): Promise<{ success: boolean; error?: string }> {
-    return this.storage.updateMemberName(cardNumber, fullName);
+    return this.executeWithCircuitBreaker('updateMemberName', async (storage) => {
+      return storage.updateMemberName(cardNumber, fullName);
+    });
   }
 
   /**
@@ -1270,46 +1376,48 @@ export class MemberRosterService {
       return { success: false, error: 'Please provide the associate member\'s full name.' };
     }
 
-    const currentRoster = await this.storage.listRosterWithProfiles();
-    const existingCards = currentRoster.members.map(m => m.cardNumber);
-    const requestedId = input.customCardNumber || input.cardNumber;
-    const cardNumber = requestedId && requestedId.trim()
-      ? requestedId.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32)
-      : generateNextAssociateId(existingCards, '26');
+    return this.executeWithCircuitBreaker('createAssociateMember', async (storage) => {
+      const currentRoster = await storage.listRosterWithProfiles();
+      const existingCards = currentRoster.members.map(m => m.cardNumber);
+      const requestedId = input.customCardNumber || input.cardNumber;
+      const cardNumber = requestedId && requestedId.trim()
+        ? requestedId.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32)
+        : generateNextAssociateId(existingCards, '26');
 
-    if (!cardNumber || cardNumber.length < 3) {
-      return { success: false, error: 'Invalid custom Associate ID format' };
-    }
+      if (!cardNumber || cardNumber.length < 3) {
+        return { success: false, error: 'Invalid custom Associate ID format' };
+      }
 
-    const existing = await this.storage.findRosterRecord(cardNumber);
-    if (existing) {
-      return { success: false, error: `ID ${cardNumber} already exists in the roster` };
-    }
+      const existing = await storage.findRosterRecord(cardNumber);
+      if (existing) {
+        return { success: false, error: `ID ${cardNumber} already exists in the roster` };
+      }
 
-    const cleanName = input.fullName.trim();
-    const tier: 'social' | 'recreational' = input.tier === 'recreational' ? 'recreational' : 'social';
-    const suStatus: SuProcessingStatus = input.suStatus || 'awaiting_su';
-    const productName = tier === 'recreational'
-      ? 'KCL Mountaineering Associate Recreational Membership 2026/27'
-      : 'KCL Mountaineering Associate Social Membership 2026/27';
-    const txId = input.transactionId?.trim() || `MANUAL-${cardNumber}`;
-    const purchaseDate = new Date().toLocaleDateString('en-GB');
+      const cleanName = input.fullName.trim();
+      const tier: 'social' | 'recreational' = input.tier === 'recreational' ? 'recreational' : 'social';
+      const suStatus: SuProcessingStatus = input.suStatus || 'awaiting_su';
+      const productName = tier === 'recreational'
+        ? 'KCL Mountaineering Associate Recreational Membership 2026/27'
+        : 'KCL Mountaineering Associate Social Membership 2026/27';
+      const txId = input.transactionId?.trim() || `MANUAL-${cardNumber}`;
+      const purchaseDate = new Date().toLocaleDateString('en-GB');
 
-    const record: KclsuMemberRecord = {
-      name: cleanName,
-      rawPurchaser: cleanName,
-      cardNumber,
-      productName,
-      tier,
-      purchaseDate,
-      transactionId: txId,
-      isAssociate: true,
-      email: input.email ? sanitizeEmail(input.email) : null,
-      university: input.university ? sanitizeUniversity(input.university) : 'Alumni / Associate / Guest',
-      suStatus,
-    };
+      const record: KclsuMemberRecord = {
+        name: cleanName,
+        rawPurchaser: cleanName,
+        cardNumber,
+        productName,
+        tier,
+        purchaseDate,
+        transactionId: txId,
+        isAssociate: true,
+        email: input.email ? sanitizeEmail(input.email) : null,
+        university: input.university ? sanitizeUniversity(input.university) : 'Alumni / Associate / Guest',
+        suStatus,
+      };
 
-    return this.storage.createAssociateRecord(record);
+      return storage.createAssociateRecord(record);
+    });
   }
 
   /**
@@ -1323,7 +1431,9 @@ export class MemberRosterService {
     if (!cardNumber || !cardNumber.trim()) {
       return { success: false, error: 'Card number / Member ID is required.' };
     }
-    return this.storage.updateRosterMember(cardNumber, updates);
+    return this.executeWithCircuitBreaker('updateRosterMember', async (storage) => {
+      return storage.updateRosterMember(cardNumber, updates);
+    });
   }
 
   /**
@@ -1333,7 +1443,9 @@ export class MemberRosterService {
     if (!cardNumber || !cardNumber.trim()) {
       return { success: false, error: 'Card number / Member ID is required.' };
     }
-    return this.storage.deleteRosterMember(cardNumber);
+    return this.executeWithCircuitBreaker('deleteRosterMember', async (storage) => {
+      return storage.deleteRosterMember(cardNumber);
+    });
   }
 }
 
