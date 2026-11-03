@@ -5,6 +5,7 @@ node_modules
 
 # Testing
 /coverage
+.agents/
 
 # Next.js
 /.next/
@@ -44,3 +45,4 @@ backups/
 *.dump
 scripts/bmc_sent_log.json
 d1/seed_data.sql
+d1/*delta*.sql
