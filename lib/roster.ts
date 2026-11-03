@@ -376,6 +376,20 @@ export function determineMemberTier(productName: string): 'recreational' | 'soci
 }
 
 /**
+ * Survivor Rule: Determines higher membership tier between two candidates.
+ * recreational strictly overrides social.
+ */
+export function getHigherTier(
+  tierA?: string | null,
+  tierB?: string | null
+): 'recreational' | 'social' {
+  if (tierA === 'recreational' || tierB === 'recreational') {
+    return 'recreational';
+  }
+  return 'social';
+}
+
+/**
  * Generates the next sequential Associate ID (e.g. ASSOC-2601, ASSOC-2602).
  */
 export function generateNextAssociateId(
@@ -403,13 +417,86 @@ export function generateNextAssociateId(
   return `${prefix}${String(nextNum).padStart(2, '0')}`;
 }
 
+/**
+ * Parse raw CSV string into rows of columns, honoring quoted fields,
+ * escaped double-quotes, multiline values, and stripping UTF-8 BOM.
+ */
+export function parseCsvRows(csvText: string): string[][] {
+  const clean = csvText.startsWith('\uFEFF') ? csvText.slice(1) : csvText;
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentField = '';
+  let inQuotes = false;
+  let i = 0;
+
+  while (i < clean.length) {
+    const char = clean[i];
+
+    if (inQuotes) {
+      if (char === '"') {
+        if (i + 1 < clean.length && clean[i + 1] === '"') {
+          currentField += '"';
+          i += 2;
+        } else {
+          inQuotes = false;
+          i++;
+        }
+      } else {
+        currentField += char;
+        i++;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+        i++;
+      } else if (char === ',') {
+        currentRow.push(currentField);
+        currentField = '';
+        i++;
+      } else if (char === '\r') {
+        if (i + 1 < clean.length && clean[i + 1] === '\n') {
+          i++;
+        }
+        currentRow.push(currentField);
+        currentField = '';
+        if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0].trim() !== '')) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+        i++;
+      } else if (char === '\n') {
+        currentRow.push(currentField);
+        currentField = '';
+        if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0].trim() !== '')) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+        i++;
+      } else {
+        currentField += char;
+        i++;
+      }
+    }
+  }
+
+  if (currentField.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentField);
+    if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0].trim() !== '')) {
+      rows.push(currentRow);
+    }
+  }
+
+  return rows;
+}
+
 export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
-  const lines = csvText.split('\n');
+  const rows = parseCsvRows(csvText);
   const recordsMap = new Map<string, KclsuMemberRecord>();
 
   let headerIndex = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes('product_name') && lines[i].includes('card_number')) {
+  for (let i = 0; i < rows.length; i++) {
+    const rowJoined = rows[i].map(c => c.toLowerCase()).join(',');
+    if (rowJoined.includes('product_name') && rowJoined.includes('card_number')) {
       headerIndex = i;
       break;
     }
@@ -417,17 +504,9 @@ export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
 
   if (headerIndex === -1) return [];
 
-  for (let i = headerIndex + 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-
-    // Parse CSV line handling quotes
-    const regex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^",]*))/g;
-    const cols: string[] = [];
-    let match;
-    while ((match = regex.exec(line)) !== null) {
-      cols.push(match[1] ? match[1].replace(/""/g, '"') : match[2] || '');
-    }
+  for (let i = headerIndex + 1; i < rows.length; i++) {
+    const cols = rows[i];
+    if (!cols || cols.length === 0) continue;
 
     if (cols.length >= 8) {
       const productName = sanitizeCsvCell(cols[0]);

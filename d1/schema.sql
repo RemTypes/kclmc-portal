@@ -108,9 +108,9 @@ CREATE TABLE IF NOT EXISTS password_resets (
 
 CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets(token_hash);
 
--- 4. PROFILES
+-- 4. PROFILES (references Better Auth "user"("id"))
 CREATE TABLE IF NOT EXISTS profiles (
-  id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY REFERENCES "user"("id") ON DELETE CASCADE,
   full_name TEXT NOT NULL DEFAULT '',
   student_id TEXT UNIQUE,
   university TEXT NOT NULL DEFAULT "King's College London",
