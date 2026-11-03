@@ -9,7 +9,6 @@
     "build:worker": "opennextjs-cloudflare build",
     "deploy:cloudflare": "opennextjs-cloudflare build && wrangler deploy",
     "backup": "tsx scripts/backup_database.ts",
-    "bmc:format": "tsx scripts/format_bmc_export.ts",
     "check:frontend-copy": "tsx scripts/check_frontend_copy.ts",
     "test": "vitest run",
     "test:security": "vitest run tests/security.test.ts",
@@ -26,19 +25,14 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.0",
-    "@types/qrcode.react": "^1.0.5",
     "better-auth": "^1.7.12",
     "canvas-confetti": "^1.9.4",
-    "clsx": "^2.1.1",
-    "framer-motion": "^13.2.0",
     "kysely": "^0.29.7",
     "kysely-d1": "^0.4.0",
-    "lucide-react": "^1.45.0",
     "next": "^16.3.5",
     "qrcode.react": "^4.2.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "tailwind-merge": "^3.7.0"
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.20.6",

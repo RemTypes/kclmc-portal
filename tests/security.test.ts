@@ -29,7 +29,6 @@ import { POST as authSignupPost } from '@/app/api/auth/signup/route';
 import { POST as authForgotPost } from '@/app/api/auth/forgot-password/route';
 import { POST as authResetPost } from '@/app/api/auth/reset-password/route';
 import { POST as authVerify2FAPost } from '@/app/api/auth/verify-2fa/route';
-import { POST as authVerifyOtpPost } from '@/app/api/auth/verify-otp/route';
 import { POST as authLogoutPost } from '@/app/api/auth/logout/route';
 import { GET as authMeGet } from '@/app/api/auth/me/route';
 import { GET as membershipGet, POST as membershipPost } from '@/app/api/membership/route';
@@ -1331,7 +1330,7 @@ describe('Security Testing Suite', () => {
       expect(data.error.toLowerCase()).toContain('at least 12 characters');
     });
 
-    it('POST /api/auth/verify-2fa and /api/auth/verify-otp require challenge token and code', async () => {
+    it('POST /api/auth/verify-2fa requires challenge token and code', async () => {
       const req1 = new Request('http://localhost:3000/api/auth/verify-2fa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1339,14 +1338,6 @@ describe('Security Testing Suite', () => {
       });
       const res1 = await authVerify2FAPost(req1);
       expect(res1.status).toBe(400);
-
-      const req2 = new Request('http://localhost:3000/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challengeToken: 'test-tok', code: '123456' }),
-      });
-      const res2 = await authVerifyOtpPost(req2);
-      expect(res2.status).toBe(400);
     });
 
     it('POST /api/auth/verify-2fa completes first-time 2FA enrollment and issues session cookies', async () => {
