@@ -7,7 +7,7 @@
 > **Frontend Copy Audit**: **0 errors** (`npm run check:frontend-copy`)  
 > **Edge Bundle**: Built and verified (`npm run build:worker` -> `.open-next/worker.js`)  
 > **Cloudflare D1 Database**: `kclmc-production` (`25583bc2-683b-49ac-a5c0-2419a66f651a`) — 100% synced (192 users, 190 profiles, 287 roster members)  
-> **Live Deployments**: [kclmc.org](https://kclmc.org) • [epic-replace-supabase.kclmc.org](https://epic-replace-supabase.kclmc.org)
+> **Live Deployment**: [kclmc.org](https://kclmc.org) (with automatic Cloudflare Workers preview branches created per PR)
 
 ---
 

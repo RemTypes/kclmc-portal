@@ -12,7 +12,7 @@
 The official digital infrastructure, member pass engine, and operations platform for the **King's College London Mountaineering & Climbing Club (KCLMC)** (accredited society of King's College London Students' Union, Registered Charity No. 1136729) and the **London Universities Bouldering Event (LUBE)** multi-university league.
 
 **Author & Lead Engineer**: [Remy Preston](https://github.com/RemTypes)  
-**Live Production**: [kclmc.org](https://kclmc.org) • **Edge Preview**: [epic-replace-supabase.kclmc.org](https://epic-replace-supabase.kclmc.org)  
+**Live Production**: [kclmc.org](https://kclmc.org) • **Edge Previews**: Automatic Cloudflare Workers preview environments created per Pull Request  
 **Architecture Document**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) • **Domain Model**: [GLOSSARY.md](GLOSSARY.md)
 
 ---
