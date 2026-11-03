@@ -49,7 +49,7 @@ export default function ContentAdminPage() {
     is_highlighted: false,
   });
 
-  const supabase = useMemo(() => createClient(), []);
+  const dbClient = useMemo(() => createClient(), []);
 
   useEffect(() => {
     fetchData();
@@ -69,9 +69,9 @@ export default function ContentAdminPage() {
           { data: liveGuides },
           { data: liveShop },
         ] = await Promise.all([
-          supabase.from('trips').select('*').order('date_start', { ascending: true }),
-          supabase.from('guides').select('*').order('sort_order', { ascending: true }),
-          supabase.from('shop_items').select('*'),
+          dbClient.from('trips').select('*').order('date_start', { ascending: true }),
+          dbClient.from('guides').select('*').order('sort_order', { ascending: true }),
+          dbClient.from('shop_items').select('*'),
         ]);
 
         if (liveTrips) {
@@ -93,7 +93,7 @@ export default function ContentAdminPage() {
           }));
         }
       } catch (err) {
-        console.error('CMS Supabase fetch error:', err);
+        console.error('CMS D1 fetch error:', err);
       }
     }
 
@@ -257,7 +257,7 @@ export default function ContentAdminPage() {
         if (table === 'trips') {
           const typeVal = (payload.type || 'bouldering').toLowerCase();
           const cleanType = typeVal.includes('winter') ? 'winter' : typeVal.includes('sport') ? 'sport' : typeVal.includes('trad') ? 'trad' : 'social';
-          await supabase.from('trips').insert({
+          await dbClient.from('trips').insert({
             title: payload.title,
             description: `${payload.title} — Official KCLMC club meet`,
             trip_type: cleanType,
@@ -267,7 +267,7 @@ export default function ContentAdminPage() {
             price_pence: (payload.price || 0) * 100,
           });
         } else if (table === 'guides') {
-          await supabase.from('guides').insert({
+          await dbClient.from('guides').insert({
             title: payload.title,
             description: payload.description,
             category: payload.category || 'indoor',
@@ -279,7 +279,7 @@ export default function ContentAdminPage() {
             sort_order: guides.length + 1,
           });
         } else if (table === 'shop_items') {
-          await supabase.from('shop_items').insert({
+          await dbClient.from('shop_items').insert({
             name: payload.name,
             brand: payload.brand || 'KCL',
             price_pence: (payload.price || 20) * 100,
@@ -290,7 +290,7 @@ export default function ContentAdminPage() {
           });
         }
       } catch (err) {
-        console.error('Error inserting into Supabase:', err);
+        console.error('Error inserting into database:', err);
       }
     } else {
       await supabaseMock.from(table).insert(payload);
@@ -302,9 +302,9 @@ export default function ContentAdminPage() {
   async function handleDelete(table: any, id: string) {
     if (isSupabaseConfigured() && ['trips', 'guides', 'shop_items'].includes(table)) {
       try {
-        await supabase.from(table).delete().eq('id', id);
+        await dbClient.from(table).delete().eq('id', id);
       } catch (err) {
-        console.error('Error deleting from Supabase:', err);
+        console.error('Error deleting from database:', err);
       }
     } else {
       await supabaseMock.from(table).delete().eq('id', id);
@@ -354,7 +354,7 @@ export default function ContentAdminPage() {
 
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#084746] border border-[#FFBD59]/40 text-xs font-mono">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span className="text-zinc-200">Supabase Connected</span>
+            <span className="text-zinc-200">Cloudflare D1 Connected</span>
           </div>
         </div>
 

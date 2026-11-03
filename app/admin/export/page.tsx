@@ -479,7 +479,7 @@ export default function ExportPage() {
                   </p>
                 </div>
                 <span className="text-xs font-mono text-[#FFBD59] bg-[#084746] px-3 py-1 rounded-full border border-[#FFBD59]/30">
-                  Live Supabase Join
+                  Live Cloudflare D1 Join
                 </span>
               </div>
 

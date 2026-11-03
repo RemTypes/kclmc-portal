@@ -17,8 +17,8 @@ export default function LubeDropsPage() {
     async function fetchData() {
       if (isSupabaseConfigured()) {
         try {
-          const supabase = createClient();
-          const { data, error } = await supabase
+          const dbClient = createClient();
+          const { data, error } = await dbClient
             .from('shop_items')
             .select('*')
             .eq('brand', 'LUBE')
