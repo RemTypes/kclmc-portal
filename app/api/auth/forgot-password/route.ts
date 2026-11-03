@@ -6,10 +6,10 @@ import { createBetterAuth } from '@/lib/auth/better-auth';
 import { createServerClient } from '@supabase/ssr';
 
 function getClientIp(request: Request): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
   const cfIp = request.headers.get('cf-connecting-ip');
   if (cfIp) return cfIp.trim();
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) return forwarded.split(',')[0].trim();
   const realIp = request.headers.get('x-real-ip');
   if (realIp) return realIp.trim();
   return '127.0.0.1';
