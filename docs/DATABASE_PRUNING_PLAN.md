@@ -95,6 +95,12 @@ The following audit reflects the exact state of remote Cloudflare D1 (`kclmc-pro
     DELETE FROM telemetry_events WHERE event_type = 'runtime_error' AND created_at < datetime('now', '-14 days');
     ```
 
+### Vector 6: Duplicate Student Accounts Sharing Identical Student IDs
+- **Problem:** Students at King's commonly have two email addresses: student format (`k<id>@kcl.ac.uk`) and name format (`<first>.<last>@kcl.ac.uk`), or a personal Gmail. 11 students created multiple accounts in the portal, creating 12 duplicate profiles with identical `student_id`s (e.g. Ben Frost has 3 accounts across `benfrost888@gmail.com`, `k23155079@kcl.ac.uk`, and `benjamin.b.frost@kcl.ac.uk`). When `kclsu_roster` joined on `p.student_id = r.card_number`, this Cartesian fan-out inflated the active roster count from 287 to 299.
+- **Fix:**
+  - In `lib/roster/d1-adapter.ts`, `listRosterWithProfiles()` now groups profiles by `student_id` using `HAVING MAX(...)` and applies TypeScript card-level deduplication so exactly 287 members are returned.
+  - In the database, merge and prune duplicate secondary accounts by consolidating emergency contacts into the student's primary institutional profile (`@kcl.ac.uk`) and removing orphaned empty placeholder accounts.
+
 ---
 
 ## 4. Phased Implementation Roadmap

@@ -90,15 +90,24 @@ class MockD1PreparedStatement implements D1PreparedStatement {
 
     // listRosterWithProfiles join query
     if (q.includes('FROM kclsu_roster r') && q.includes('LEFT JOIN profiles p')) {
-      const joined = this.db.tables.kclsu_roster.map(r => {
-        const prof = this.db.tables.profiles.find(p => (r.user_id && p.id === r.user_id) || (!r.user_id && p.student_id === r.card_number)) || {};
-        return {
+      const joined = this.db.tables.kclsu_roster.flatMap(r => {
+        const matches = this.db.tables.profiles.filter(p => (r.user_id && p.id === r.user_id) || (!r.user_id && p.student_id === r.card_number));
+        if (matches.length === 0) {
+          return [{
+            ...r,
+            profile_full_name: null,
+            phone: null,
+            emergency_contact_name: null,
+            emergency_contact_phone: null,
+          }];
+        }
+        return matches.map(prof => ({
           ...r,
           profile_full_name: prof.full_name || null,
           phone: prof.phone || null,
           emergency_contact_name: prof.emergency_contact_name || null,
           emergency_contact_phone: prof.emergency_contact_phone || null,
-        };
+        }));
       });
       return { results: joined as any, success: true };
     }
@@ -365,6 +374,40 @@ describe('Cloudflare D1 Roster Storage Adapter (D1RosterAdapter)', () => {
     expect(list.members.length).toBe(2);
     expect(list.socialCount).toBe(1);
     expect(list.recreationalCount).toBe(1);
+  });
+
+  it('does not duplicate members when multiple profiles share the same student_id', async () => {
+    await adapter.upsertRosterRecords([
+      {
+        cardNumber: 'K23155079',
+        name: 'Ben Frost',
+        rawPurchaser: 'FROST, Ben',
+        tier: 'recreational',
+        productName: 'Rec',
+        transactionId: 'TX100',
+        purchaseDate: '20 Sep 2026',
+      },
+    ]);
+
+    // Student created multiple accounts with the same student ID (e.g. personal email and KCL email)
+    await adapter.upsertProfile('user-personal', {
+      id: 'user-personal',
+      full_name: 'Ben Frost',
+      student_id: 'K23155079',
+      phone: null,
+    } as any);
+
+    await adapter.upsertProfile('user-kcl', {
+      id: 'user-kcl',
+      full_name: 'Ben Frost',
+      student_id: 'K23155079',
+      phone: '07948341174',
+      emergency_contact_phone: '07948341175',
+    } as any);
+
+    const list = await adapter.listRosterWithProfiles();
+    const benEntries = list.members.filter(m => m.cardNumber === 'K23155079');
+    expect(benEntries.length).toBe(1);
   });
 
   it('updates member name and deletes member record', async () => {

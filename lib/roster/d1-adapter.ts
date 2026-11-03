@@ -216,18 +216,33 @@ export class D1RosterAdapter implements RosterStorageAdapter {
         r.member_email,
         r.university,
         r.su_status,
-        p.full_name AS profile_full_name,
-        p.phone,
-        p.emergency_contact_name,
-        p.emergency_contact_phone
+        COALESCE(p.full_name, p2.full_name) AS profile_full_name,
+        COALESCE(p.phone, p2.phone) AS phone,
+        COALESCE(p.emergency_contact_name, p2.emergency_contact_name) AS emergency_contact_name,
+        COALESCE(p.emergency_contact_phone, p2.emergency_contact_phone) AS emergency_contact_phone
       FROM kclsu_roster r
-      LEFT JOIN profiles p ON (r.user_id = p.id) OR (r.user_id IS NULL AND p.student_id = r.card_number)
+      LEFT JOIN profiles p ON (r.user_id IS NOT NULL AND r.user_id = p.id)
+      LEFT JOIN (
+        SELECT student_id, full_name, phone, emergency_contact_name, emergency_contact_phone
+        FROM profiles
+        WHERE student_id IS NOT NULL AND student_id != ''
+        GROUP BY student_id
+        HAVING MAX(CASE WHEN phone IS NOT NULL AND emergency_contact_phone IS NOT NULL THEN 1 ELSE 0 END)
+      ) p2 ON (r.user_id IS NULL AND r.card_number = p2.student_id)
       ORDER BY r.purchase_date DESC
     `;
 
     const { results } = await db.prepare(query).all<any>();
-    const members: RosterMemberDirectoryItem[] = (results || []).map(row => {
+    const seenCards = new Set<string>();
+    const members: RosterMemberDirectoryItem[] = [];
+
+    for (const row of (results || [])) {
       const card = String(row.card_number || '').trim().toUpperCase();
+      if (!card || seenCards.has(card)) {
+        continue;
+      }
+      seenCards.add(card);
+
       const hasPhone = Boolean(row.phone && row.phone.trim().length >= 8);
       const hasEmergency = Boolean(
         row.emergency_contact_name &&
@@ -240,7 +255,7 @@ export class D1RosterAdapter implements RosterStorageAdapter {
       const profileNameHasFull = isCompleteFullName(row.profile_full_name);
       const resolvedName = rosterNameHasFull ? row.full_name : (profileNameHasFull ? row.profile_full_name : row.full_name);
 
-      return {
+      members.push({
         cardNumber: card,
         name: resolvedName,
         rawPurchaser: row.raw_purchaser || '',
@@ -257,8 +272,8 @@ export class D1RosterAdapter implements RosterStorageAdapter {
         isAssociate: isAssoc,
         email: row.member_email || null,
         suStatus: (row.su_status as SuProcessingStatus) || 'verified',
-      };
-    });
+      });
+    }
 
     const socialCount = members.filter(m => m.tier === 'social').length;
     const recreationalCount = members.filter(m => m.tier === 'recreational').length;
