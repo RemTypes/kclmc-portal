@@ -57,16 +57,16 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized: SuperAdmin clearance required' }, { status: 403 });
   }
 
-  let body: { targetUserId?: string; targetEmail?: string };
+  let body: { targetUserId?: string; targetEmail?: string; resetAll?: boolean };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: 'Malformed JSON payload' }, { status: 400 });
   }
 
-  const { targetUserId, targetEmail } = body;
-  if (!targetUserId && !targetEmail) {
-    return NextResponse.json({ error: 'targetUserId or targetEmail is required' }, { status: 400 });
+  const { targetUserId, targetEmail, resetAll } = body;
+  if (!targetUserId && !targetEmail && !resetAll) {
+    return NextResponse.json({ error: 'targetUserId, targetEmail, or resetAll: true is required' }, { status: 400 });
   }
 
   try {
@@ -74,6 +74,21 @@ export async function POST(request: Request): Promise<NextResponse> {
     const db = (await getD1Database()) || env?.DB;
     if (!db) {
       return NextResponse.json({ error: 'D1 Database unavailable' }, { status: 503 });
+    }
+
+    if (resetAll) {
+      // Wipe all 2FA keys from D1 across the database
+      await db.exec(`
+        DELETE FROM "twoFactor";
+        UPDATE "user" SET "twoFactorEnabled" = 0 WHERE role >= 1 OR email LIKE '%@kclmc.org';
+      `).catch(() => {});
+
+      clear2FAStores();
+
+      return NextResponse.json({
+        success: true,
+        message: 'All committee 2FA records have been wiped. All officers will be guided through fresh 2FA setup upon their next login.',
+      });
     }
 
     let effectiveUserId = targetUserId;

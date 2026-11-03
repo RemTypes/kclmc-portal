@@ -72,7 +72,7 @@ SELECT
   1,
   u.created_at,
   u.updated_at,
-  CASE WHEN u.mfa_secret IS NOT NULL THEN 1 ELSE 0 END,
+  0, -- twoFactorEnabled defaults to 0 to require clean in-portal D1 re-setup
   COALESCE(u.role, 0)
 FROM users u
 LEFT JOIN profiles p ON u.id = p.id

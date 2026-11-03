@@ -30,7 +30,13 @@ export function applySessionCookies(
   cookiesToSet: Array<{ name: string; value: string; options?: any }>
 ): void {
   cookiesToSet.forEach(({ name, value, options }) => {
-    response.cookies.set(name, value, {
+    let cleanValue = value;
+    try {
+      if (typeof cleanValue === 'string' && cleanValue.includes('%')) {
+        cleanValue = decodeURIComponent(cleanValue);
+      }
+    } catch {}
+    response.cookies.set(name, cleanValue, {
       ...options,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

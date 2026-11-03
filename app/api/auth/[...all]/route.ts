@@ -24,10 +24,17 @@ async function handler(request: Request) {
       );
     }
 
-    // Block direct password sign-in bypass (force flow through /api/auth/login for 2FA, lockout, and CAPTCHA)
+    // Block direct password sign-in & sign-up bypasses (force flows through /api/auth/login and /api/auth/signup)
     if (url.pathname.endsWith("/sign-in/email") || url.pathname.endsWith("/sign-in/email/")) {
       return new Response(
         JSON.stringify({ error: "Direct sign-in disabled. Use /api/auth/login for 2FA enforcement." }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    if (url.pathname.endsWith("/sign-up/email") || url.pathname.endsWith("/sign-up/email/")) {
+      return new Response(
+        JSON.stringify({ error: "Direct sign-up disabled. Use /api/auth/signup for password policy enforcement." }),
         { status: 403, headers: { "Content-Type": "application/json" } }
       );
     }
