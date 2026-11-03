@@ -54,8 +54,8 @@ export async function middleware(request: NextRequest) {
     process.env.BETTER_AUTH_SECRET,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
   ].filter((s): s is string => typeof s === 'string' && s.length > 0);
-  // Mandatory 2FA Gate Disabled
-  const isEnforce2FA = false;
+  // Evaluate Mandatory 2FA Gate (can be disabled via ENFORCE_MANDATORY_2FA=false)
+  const isEnforce2FA = (cfEnv?.ENFORCE_MANDATORY_2FA ?? process.env.ENFORCE_MANDATORY_2FA) !== 'false';
 
   // 1.5. Check Better Auth Edge Session on D1 first (sub-5ms)
   const hasBetterAuthCookie = request.cookies.getAll().some(c => c.name.includes('better-auth.session_token'));

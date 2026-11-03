@@ -357,8 +357,10 @@ export class AuthSessionService {
       ? requestedNext
       : (userRole >= 1 ? '/admin' : '/membership');
 
-    // 4. Mandatory 2FA Gate Disabled
-    const enforce2FAGate = false;
+    // 4. Evaluate Mandatory 2FA Gate (Committee Members)
+    // Strictly enforces 2FA at the Login Gate for all committee members (role >= 1).
+    // Can be toggled for emergency maintenance via ENFORCE_MANDATORY_2FA=false.
+    const enforce2FAGate = (cfRuntimeEnv?.ENFORCE_MANDATORY_2FA ?? process.env.ENFORCE_MANDATORY_2FA) !== 'false';
     if (enforce2FAGate && requiresMandatory2FA(cleanEmail, userRole)) {
       // In D1 native auth, legacy Supabase user_metadata is ignored so committee
       // members cleanly re-enroll their 2FA in D1 rather than inheriting broken secrets.
