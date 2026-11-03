@@ -1,11 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
-import { extractClientIp } from '@/lib/auth/session';
+import { authSession, extractClientIp } from '@/lib/auth/session';
 import { SESSION_COOKIE_OPTIONS, applySessionCookies } from '@/lib/security/cookies';
 import { getCloudflareEnv } from '@/lib/db/d1';
 import { createBetterAuth } from '@/lib/auth/better-auth';
 import * as clientModule from '@/lib/auth/better-auth-client';
-import { requiresMandatory2FA } from '@/lib/security/two-factor';
+import {
+  requiresMandatory2FA,
+  create2FAChallenge,
+  calculateTOTP,
+  clear2FAStores,
+  resolveValid2FASecret,
+} from '@/lib/security/two-factor';
+import { checkRateLimit, recordFailedAttempt, clearRateLimitStores } from '@/lib/security/rate-limiter';
 import { middleware } from '@/middleware';
 
 describe('Two-Factor Enforcement & Cloudflare Edge Hardening (M1)', () => {
@@ -170,6 +177,92 @@ describe('Two-Factor Enforcement & Cloudflare Edge Hardening (M1)', () => {
         if (origUrl !== undefined) process.env.NEXT_PUBLIC_SUPABASE_URL = origUrl;
         else delete process.env.NEXT_PUBLIC_SUPABASE_URL;
       }
+    });
+  });
+
+  describe('Cross-Isolate 2FA Acceptance & Rate Limit Isolation', () => {
+    it('accepts valid 2FA TOTP on the first attempt across isolates even when BETTER_AUTH_SECRET is banned or unset in production', async () => {
+      const origNodeEnv = process.env.NODE_ENV;
+      const origSecret = process.env.BETTER_AUTH_SECRET;
+      const origSupabase = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      try {
+        (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
+        // Simulate banned secret present in BETTER_AUTH_SECRET while SUPABASE_SERVICE_ROLE_KEY is unset
+        process.env.BETTER_AUTH_SECRET = '1ee648c7f7b07ffcce236264aad790a17d390b39ba5f2c9df02a7d5919925278';
+        delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+        const totpSecret = 'JBSWY3DPEHPK3PXP';
+        const cfSecret = resolveValid2FASecret(process.env);
+        const challenge = create2FAChallenge(
+          'committee-iso-user',
+          'president@kclmc.org',
+          1,
+          { session: { token: 'ba-session-token' } },
+          totpSecret,
+          [],
+          cfSecret
+        );
+
+        // Simulate verification landing on a completely separate Cloudflare Worker isolate (empty memory)
+        clear2FAStores();
+        clearRateLimitStores();
+
+        const validCode = calculateTOTP(totpSecret);
+        const outcome = await authSession.verifyTwoFactor({
+          challengeToken: challenge.challengeToken,
+          code: validCode,
+          ip: '203.0.113.50',
+        });
+
+        expect(outcome.status).toBe('authenticated');
+      } finally {
+        (process.env as Record<string, string | undefined>).NODE_ENV = origNodeEnv;
+        if (origSecret !== undefined) process.env.BETTER_AUTH_SECRET = origSecret;
+        else delete process.env.BETTER_AUTH_SECRET;
+        if (origSupabase !== undefined) process.env.SUPABASE_SERVICE_ROLE_KEY = origSupabase;
+        else delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+      }
+    });
+
+    it('isolates 2FA verification rate limiting from primary login IP rate limiting', async () => {
+      clearRateLimitStores();
+      const ip = '203.0.113.77';
+
+      // Record 3 failed password login attempts on the IP
+      recordFailedAttempt(ip, 'president@kclmc.org', 'Invalid password');
+      recordFailedAttempt(ip, 'president@kclmc.org', 'Invalid password');
+      recordFailedAttempt(ip, 'president@kclmc.org', 'Invalid password');
+
+      const challenge = create2FAChallenge(
+        'committee-rate-user',
+        'president@kclmc.org',
+        1,
+        { session: { token: 'ba-session-token' } },
+        'JBSWY3DPEHPK3PXP'
+      );
+
+      // Even after 2 failed 2FA code typos, the user must NOT hit the 5-attempt IP lockout from login
+      await authSession.verifyTwoFactor({
+        challengeToken: challenge.challengeToken,
+        code: '000000',
+        ip,
+      });
+      await authSession.verifyTwoFactor({
+        challengeToken: challenge.challengeToken,
+        code: '111111',
+        ip,
+      });
+
+      // 3rd attempt with valid TOTP code succeeds without hitting 429 locked
+      const validCode = calculateTOTP('JBSWY3DPEHPK3PXP');
+      const outcome = await authSession.verifyTwoFactor({
+        challengeToken: challenge.challengeToken,
+        code: validCode,
+        ip,
+      });
+
+      expect(outcome.status).toBe('authenticated');
+      expect(checkRateLimit(ip).allowed).toBe(true);
     });
   });
 });

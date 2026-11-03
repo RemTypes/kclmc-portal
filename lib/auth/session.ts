@@ -25,6 +25,7 @@ import {
   verify2FAChallenge,
   seal2FAAttestation,
   verify2FAAttestation,
+  resolveValid2FASecret,
 } from '@/lib/security/two-factor';
 import { setSessionCookies, applySessionCookies } from '@/lib/security/cookies';
 import { getAuthenticatedUserRole, getUserRole, sanitizeEmail, getSafeRedirectUrl, Role } from '@/lib/auth';
@@ -201,9 +202,7 @@ export class AuthSessionService {
       const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
       const env = await getCloudflareEnv();
       cfRuntimeEnv = env;
-      if (!cfSecret) {
-        cfSecret = env?.BETTER_AUTH_SECRET || env?.SUPABASE_SERVICE_ROLE_KEY;
-      }
+      cfSecret = resolveValid2FASecret(env, secretKeyOverride);
       const db = (await getD1Database()) || env?.DB;
       if (db) d1Database = db;
 
@@ -356,6 +355,9 @@ export class AuthSessionService {
     const safeDestination = (requestedNext && requestedNext !== '/login' && !requestedNext.startsWith('/login?') && !requestedNext.startsWith('/auth'))
       ? requestedNext
       : (userRole >= 1 ? '/admin' : '/membership');
+
+    // Clear password login failure counters once primary credentials succeed
+    recordSuccessfulAttempt(ip, cleanEmail);
 
     // 4. Evaluate Mandatory 2FA Gate (Committee Members)
     // Strictly enforces 2FA at the Login Gate for all committee members (role >= 1).
@@ -523,8 +525,9 @@ export class AuthSessionService {
       };
     }
 
-    // Rate limit verification attempts by IP
-    const rateCheck = checkRateLimit(ip);
+    // Rate limit verification attempts in a dedicated 2FA bucket (separate from password login bucket)
+    const twoFactorRateKey = `2fa:${ip}`;
+    const rateCheck = checkRateLimit(twoFactorRateKey);
     if (!rateCheck.allowed) {
       return {
         status: 'locked',
@@ -538,15 +541,17 @@ export class AuthSessionService {
     try {
       const { getCloudflareEnv } = await import('@/lib/db/d1');
       const env = await getCloudflareEnv();
-      if (!cfSecret) {
-        cfSecret = env?.BETTER_AUTH_SECRET || env?.SUPABASE_SERVICE_ROLE_KEY;
-      }
+      cfSecret = resolveValid2FASecret(env, secretKeyOverride);
     } catch {}
 
     const result = verify2FAChallenge(effectiveToken, code, cfSecret);
 
     if (!result.success || !result.sessionData) {
-      recordFailedAttempt(ip, undefined, 'Invalid 2FA code');
+      // Only record a failed attempt for an incorrect code against a valid challenge,
+      // not for an unsealed/expired session token across isolates.
+      if (!result.error || !result.error.includes('Invalid or expired 2FA session')) {
+        recordFailedAttempt(twoFactorRateKey, undefined, 'Invalid 2FA code');
+      }
       return {
         status: 'invalid_code',
         error: result.error || 'Invalid or expired verification code',
@@ -554,6 +559,7 @@ export class AuthSessionService {
     }
 
     recordSuccessfulAttempt(ip, result.email);
+    recordSuccessfulAttempt(twoFactorRateKey, result.email);
 
     // 1. Persist 2FA enrollment directly to Cloudflare D1
     if (result.enrolledSecret && result.userId) {
@@ -769,7 +775,7 @@ export class AuthSessionService {
         response.cookies.set('kclmc_2fa_pending', outcome.challengeToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: 'lax',
           path: '/',
           maxAge: 10 * 60, // 10 minutes
         });
@@ -789,7 +795,7 @@ export class AuthSessionService {
         response.cookies.set('kclmc_2fa_pending', outcome.challengeToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: 'lax',
           path: '/',
           maxAge: 5 * 60, // 5 minutes
         });

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth/server';
 import { getCloudflareEnv, getD1Database } from '@/lib/db/d1';
-import { create2FAEnrollmentChallenge, verify2FAAttestation } from '@/lib/security/two-factor';
+import { create2FAEnrollmentChallenge, verify2FAAttestation, resolveValid2FASecret } from '@/lib/security/two-factor';
 
 /**
  * GET /api/auth/setup-2fa
@@ -73,7 +73,7 @@ export async function POST(request?: Request): Promise<NextResponse> {
   }
 
   const env = await getCloudflareEnv();
-  const cfSecret = env?.BETTER_AUTH_SECRET || env?.SUPABASE_SERVICE_ROLE_KEY;
+  const cfSecret = resolveValid2FASecret(env);
   const db = (await getD1Database()) || env?.DB;
 
   if (db) {
@@ -124,7 +124,7 @@ export async function POST(request?: Request): Promise<NextResponse> {
   response.cookies.set('kclmc_2fa_pending', setup.challengeToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: 'lax',
     path: '/',
     maxAge: 10 * 60, // 10 minutes
   });
