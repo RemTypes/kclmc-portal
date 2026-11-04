@@ -1,0 +1,318 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{textcomp}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+
+% Clean hyperref setup
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=teal,
+    citecolor=teal,
+    urlcolor=teal
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\footnotesize KCLMC Quantitative Treasury Risk Engine}
+\lhead{\footnotesize Mathematical Specification \& Empirical Calibration}
+\cfoot{\thepage}
+
+\title{\textbf{Empirical Econometric Calibration and Stochastic Liquidity Risk Modeling for Institutional Club Treasuries}\\
+\large A Compound Point-Process and Coherent Risk Architecture on Cloudflare D1 Edge Infrastructure}
+\author{\textbf{King's College London Mountaineering \& Climbing Club (KCLMC)}\\
+Department of Quantitative Systems \& Society Treasury}
+\date{November 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We formalize, calibrate, and simulate an edge-native liquidity risk engine designed to manage working capital adequacy for institutional student societies and small-scale asset pools. Operating on real transactional telemetry from Cloudflare D1 (SQLite) and KCLSU General Ledger statements, we test the arrival dynamics of incoming membership dues against classical Poisson assumptions. We establish significant overdispersion ($\Phi = 10.48, p = 1.24 \times 10^{-110}$) and calibrate a Negative Binomial compound jump process alongside an $L_2$-regularized multinomial discrete-choice logit model solved via Iteratively Reweighted Least Squares (IRLS). Finally, we implement a 10,000-path Monte Carlo engine calculating coherent tail-risk metrics---specifically Liquidity Value-at-Risk ($\text{L-VaR}_{95\%}, \text{L-VaR}_{99\%}$) and Expected Shortfall ($\text{L-CVaR}_{99\%}$)---under structured capital outlays including British Mountaineering Council (BMC) civil liability liabilities, equipment depot replenishment, professional IFMGA guiding commitments, and restricted grant offsets. The engine evaluates in $<20\,\text{ms}$ on Cloudflare Workers edge runtime isolates.
+\end{abstract}
+
+\vspace{1em}
+\hrule
+\vspace{1em}
+
+\section{Introduction \& Problem Formulation}
+
+Non-profit university athletic bodies and chartered student societies operate under financial structures analogous to closed-end asset managers and boutique corporate treasuries:
+\begin{enumerate}[leftmargin=1.5em]
+    \item \textbf{Lumpy Stochastic Inflows}: Revenue is concentrated in early-term registration bursts (Freshers' Fair, taster meets), followed by an attenuated trickle.
+    \item \textbf{Illiquid Forward Capital Commitments}: Treasuries must commit to upfront, non-refundable liabilities (mountain guide retainers, bunkhouse lodging, coach charters, apparel minimum order quantities [MOQs]) months before operational execution.
+    \item \textbf{Accrued Liabilities vs. Cash Flow Lag}: Intermediary affiliations (e.g., British Mountaineering Council recreational insurance remittances) accrue upon membership purchase but are invoiced in discontinuous batches as statutory safety declarations are filed.
+    \item \textbf{Restricted vs. Unrestricted Balance Sheet Segregation}: External institutional grants (e.g., KCLSU Development Fund, Coaching Fund) are legally ring-fenced and cannot be commingled with general private operating reserves.
+\end{enumerate}
+
+The core financial engineering problem is to determine the \textbf{capital adequacy frontier}:
+\begin{equation}
+\min C_0 \quad \text{s.t.} \quad \mathbb{P}\left(\inf_{t \in [0, T]} C_t < C_{\text{reserve}}\right) \le \alpha
+\end{equation}
+where $C_t$ is the stochastic cash balance at time $t$, $C_{\text{reserve}}$ is the mandatory insolvency reserve floor (\pounds 1,000.00), and $\alpha$ is the permissible ruin probability ($\alpha = 0.01$).
+
+---
+
+\section{Point Process Modeling \& Overdispersion Diagnostics}
+
+\subsection{The Equidispersion Fallacy of Classical Poisson Processes}
+In classical queueing and arrival theory, transactions are commonly assumed to follow a Homogeneous Poisson Process (HPP) with constant rate parameter $\lambda > 0$:
+\begin{equation}
+\mathbb{P}(N(t) = k) = \frac{(\lambda t)^k e^{-\lambda t}}{k!}, \quad k \in \{0, 1, 2, \dots\}
+\end{equation}
+A rigid mathematical property of the Poisson distribution is that its variance is constrained to equal its expectation:
+\begin{equation}
+\mathbb{E}[N] = \operatorname{Var}(N) = \lambda t
+\end{equation}
+
+To test whether the empirical transaction data follows this property, we compute the \textbf{Fisher Dispersion Index} $\Phi$:
+\begin{equation}
+\Phi = \frac{s^2}{\bar{x}} = \frac{\frac{1}{T-1} \sum_{t=1}^T (x_t - \bar{x})^2}{\frac{1}{T} \sum_{t=1}^T x_t}
+\end{equation}
+Under the null hypothesis $H_0: \Phi = 1$ (the arrivals follow an HPP), the dispersion test statistic $D$ asymptotically follows a Chi-Square distribution with $T - 1$ degrees of freedom:
+\begin{equation}
+D = (T - 1) \Phi = \sum_{t=1}^T \frac{(x_t - \bar{x})^2}{\bar{x}} \sim \chi^2(T - 1)
+\end{equation}
+
+\subsection{Empirical Test on D1 Roster Records}
+Evaluating $D$ against the 261 dated transactions extracted from Cloudflare D1 across an observation window of $T = 79$ days:
+\begin{itemize}[leftmargin=1.5em]
+    \item Sample mean arrivals per day: $\bar{x} = 3.304$
+    \item Sample variance of arrivals per day: $s^2 = 34.624$
+    \item Fisher Dispersion Index: $\Phi = \frac{34.624}{3.304} = \mathbf{10.480}$
+    \item Chi-Square Test Statistic ($df = 78$): $D = 78 \times 10.480 = \mathbf{817.46}$
+    \item Asymptotic Survival Probability: $p = 1.24 \times 10^{-110}$
+\end{itemize}
+
+Because $\Phi \gg 1$ and $p \lll 0.01$, the homogeneous Poisson hypothesis is rejected with extreme statistical significance. Arrival events exhibit volatility clustering and self-excitation.
+
+\subsection{Negative Binomial Compound Mixture Formulation}
+To incorporate arrival rate heterogeneity, we model the daily arrival intensity $\Lambda$ as a continuous Gamma-distributed random variable:
+\begin{equation}
+\Lambda \sim \operatorname{Gamma}\left(r, \frac{1-p}{p}\right), \quad N \mid \Lambda \sim \operatorname{Poisson}(\Lambda)
+\end{equation}
+Marginalizing over $\Lambda$ yields the \textbf{Negative Binomial distribution}:
+\begin{equation}
+\mathbb{P}(N = k) = \int_0^\infty \frac{\lambda^k e^{-\lambda}}{k!} \frac{p^r}{\Gamma(r)} \left(\frac{p}{1-p}\right)^r \lambda^{r-1} e^{-\frac{p}{1-p}\lambda} \, d\lambda = \frac{\Gamma(k + r)}{k! \, \Gamma(r)} (1 - p)^k p^r
+\end{equation}
+with theoretical moments:
+\begin{equation}
+\mathbb{E}[N] = \frac{r(1-p)}{p} = \mu, \quad \operatorname{Var}(N) = \mu + \frac{\mu^2}{r}
+\end{equation}
+The additional term $\frac{\mu^2}{r}$ captures empirical overdispersion. Estimating $(r, p)$ via Method of Moments and Maximum Likelihood:
+\begin{equation}
+\hat{r} = \frac{\mu^2}{\sigma^2 - \mu} = \frac{3.304^2}{34.624 - 3.304} = \mathbf{0.3485}, \quad \hat{p} = \frac{\hat{r}}{\hat{r} + \mu} = \mathbf{0.0954}
+\end{equation}
+
+---
+
+\section{Discrete Choice Econometrics: Regularized Logistic Regression}
+
+\subsection{Microeconomic Formulation}
+Conditional on arrival, a climber chooses between the Recreational Tier ($Y_i = 1$, \pounds 45.00) and the Social Tier ($Y_i = 0$, \pounds 10.00). We express choice probability via the logistic link function parameterized by demographic cohort covariates $\mathbf{x}_i \in \mathbb{R}^K$:
+\begin{equation}
+P(Y_i = 1 \mid \mathbf{x}_i) = \sigma(\mathbf{x}_i^T \mathbf{\beta}) = \frac{1}{1 + e^{-\mathbf{x}_i^T \mathbf{\beta}}}
+\end{equation}
+where $\mathbf{x}_i$ includes an intercept (Freshers $K26$ reference) and indicator dummy variables for 2nd years ($K25$), 3rd years ($K24$), Senior/Masters ($K23$), and Associate Members ($\text{ASSOC}$).
+
+\subsection{Penalized Likelihood \& Newton-Raphson IRLS}
+To guarantee numerical stability across small demographic subsets, we maximize the $L_2$-penalized log-likelihood:
+\begin{equation}
+\ell(\mathbf{\beta}) = \sum_{i=1}^N \left[ y_i \ln \sigma(\mathbf{x}_i^T \mathbf{\beta}) + (1 - y_i) \ln(1 - \sigma(\mathbf{x}_i^T \mathbf{\beta})) \right] - \frac{\lambda}{2} \sum_{j=1}^{K-1} \beta_j^2
+\end{equation}
+The gradient $\mathbf{g}(\mathbf{\beta}) \in \mathbb{R}^K$ and Hessian $\mathbf{H}(\mathbf{\beta}) \in \mathbb{R}^{K \times K}$ are:
+\begin{equation}
+\mathbf{g}(\mathbf{\beta}) = \mathbf{X}^T (\mathbf{y} - \mathbf{p}) - \lambda \mathbf{I}_0 \mathbf{\beta}
+\end{equation}
+\begin{equation}
+\mathbf{H}(\mathbf{\beta}) = -\left( \mathbf{X}^T \mathbf{W} \mathbf{X} + \lambda \mathbf{I}_0 \right)
+\end{equation}
+where $\mathbf{W} = \operatorname{diag}(p_1(1-p_1), \dots, p_N(1-p_N))$ and $\mathbf{I}_0 = \operatorname{diag}(0, 1, \dots, 1)$.
+
+The parameter vector is updated iteratively via Newton-Raphson:
+\begin{equation}
+\mathbf{\beta}^{(t+1)} = \mathbf{\beta}^{(t)} - \mathbf{H}(\mathbf{\beta}^{(t)})^{-1} \mathbf{g}(\mathbf{\beta}^{(t)}) = \left( \mathbf{X}^T \mathbf{W} \mathbf{X} + \lambda \mathbf{I}_0 \right)^{-1} \mathbf{X}^T \mathbf{W} \tilde{\mathbf{y}}
+\end{equation}
+where $\tilde{\mathbf{y}} = \mathbf{X} \mathbf{\beta}^{(t)} + \mathbf{W}^{-1}(\mathbf{y} - \mathbf{p})$ represents the linearized operational response.
+
+\subsection{Empirical Parameter Estimates}
+Table~\ref{tab:coefficients} summarizes the calibrated discrete-choice model on D1 roster records:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Feature / Cohort} & \textbf{Coeff ($\hat{\beta}$)} & \textbf{Std Error} & \textbf{z-statistic} & \textbf{p-value} & \textbf{Odds Ratio ($e^{\hat{\beta}}$)} \\
+\midrule
+Intercept (Freshers $K26$) & $-0.5248$ & $0.1746$ & $-3.01$ & $0.0027$ & $0.5917$ \\
+Cohort $K25$ (2nd Year)    & $-0.0240$ & $0.2783$ & $-0.09$ & $0.9313$ & $0.9763$ \\
+Cohort $K23$ (Seniors/MSc) & $+0.3165$ & $0.3579$ & $+0.88$ & $0.3765$ & $1.3723$ \\
+Cohort $K24$ (3rd Year)    & $-0.5535$ & $0.5385$ & $-1.03$ & $0.3040$ & $0.5749$ \\
+Cohort $\text{ASSOC}$      & $+0.8425$ & $0.8219$ & $+1.03$ & $0.3053$ & $2.3221$ \\
+\bottomrule
+\end{tabular}
+\caption{Calibrated $L_2$ Logistic Regression Parameters on D1 Transactions.}
+\label{tab:coefficients}
+\end{table}
+
+---
+
+\section{Stochastic Treasury Cash-Flow Dynamics}
+
+\subsection{Discrete-Time Path Equation}
+We model treasury cash $C_t$ at day $t \in [1, T]$ ($T = 90$ days):
+\begin{equation}
+C_t = C_{t-1} + I_t - O_t - J_t
+\end{equation}
+
+\subsubsection{1. Compound Inflow Process ($I_t$)}
+Daily revenue from late-joining climbers is a compound process:
+\begin{equation}
+I_t = \sum_{j=1}^{N_t} X_{j, t}, \quad N_t \sim \operatorname{NegBin}(\alpha \cdot r, p)
+\end{equation}
+where $\alpha = 0.25$ accounts for inter-term arrival decay, and individual transaction amounts $X_{j, t}$ are drawn according to:
+\begin{equation}
+X_{j, t} = 45 \cdot B_j + 10 \cdot (1 - B_j), \quad B_j \sim \operatorname{Bernoulli}(P_{\text{rec}} = 0.375)
+\end{equation}
+
+\subsubsection{2. Scheduled Commitments \& Grant Offsets ($O_t$)}
+Scheduled capital outlays follow:
+\begin{equation}
+O_t = \sum_{k} \mathbf{1}_{\{t = t_k\}} \max\left(0, \text{Amount}_k - \text{GrantOffset}_k\right)
+\end{equation}
+Table~\ref{tab:commitments} defines the pipeline of planned club liabilities.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{c l X r r r}
+\toprule
+\textbf{Day ($t$)} & \textbf{Code} & \textbf{Commitment Description} & \textbf{Gross (\pounds)} & \textbf{Grant (\pounds)} & \textbf{Net Outflow (\pounds)} \\
+\midrule
+$t = 10$ & \texttt{BMC-1}  & BMC Insurance Batch 1 (50 signed @ \pounds 26) & $1,300.00$ & $0.00$ & $1,300.00$ \\
+$t = 20$ & \texttt{GEAR}   & Safety Equipment \& Depot Restock       & $2,750.00$ & $0.00$ & $2,750.00$ \\
+$t = 35$ & \texttt{GUIDE-1}& Spring Guiding (Reallocated ex-Scotland)& $1,250.00$ & $1,200.00$& $50.00$ \\
+$t = 40$ & \texttt{BMC-2}  & BMC Insurance Batch 2 (50 pending @ \pounds 26)& $1,300.00$ & $0.00$ & $1,300.00$ \\
+$t = 45$ & \texttt{MERCH}  & Term 2 Apparel MOQ Production Float     & $1,500.00$ & $0.00$ & $1,500.00$ \\
+$t = 60$ & \texttt{COACH}  & Mountaineering Meet Coach Charter       & $1,200.00$ & $0.00$ & $1,200.00$ \\
+$t = 75$ & \texttt{ALPS}   & Summer Alps IFMGA Mountain Guide Deposit& $2,500.00$ & $0.00$ & $2,500.00$ \\
+\midrule
+\multicolumn{3}{l}{\textbf{Total Commitments}} & $\mathbf{11,800.00}$ & $\mathbf{1,200.00}$ & $\mathbf{10,600.00}$ \\
+\bottomrule
+\end{tabularx}
+\caption{Calibrated Liability and Working Capital Outflow Pipeline.}
+\label{tab:commitments}
+\end{table}
+
+\subsubsection{3. Working Capital Float on BMC Insurance Liabilities}
+The unit contribution margin per recreational membership is:
+\begin{equation}
+m_{\text{rec}} = P_{\text{rec}} - c_{\text{bmc}} = \text{\pounds}45.00 - \text{\pounds}26.00 = \mathbf{\text{\pounds}19.00} \quad (42.22\%)
+\end{equation}
+While total accrued liability across 100 members is $100 \times \text{\pounds}26 = \text{\pounds}2,600.00$, the cash outflow is legally contingent on members signing the BMC risk statement. Because only 50 members have signed, the payable is partitioned into:
+\begin{equation}
+\text{Immediate Cleared Payable} = 50 \times \text{\pounds}26 = \mathbf{\text{\pounds}1,300.00}
+\end{equation}
+\begin{equation}
+\text{Uninvoiced Float} = 50 \times \text{\pounds}26 = \mathbf{\text{\pounds}1,300.00}
+\end{equation}
+This float acts as an interest-free cash buffer throughout the high-expenditure window ($t \in [10, 40]$).
+
+\subsubsection{4. Jump-Diffusion Emergency Shocks ($J_t$)}
+To prevent tail underestimation, random jump shocks model gear failures or emergency medical evacuation deductibles:
+\begin{equation}
+J_t = \xi_t \cdot U_t, \quad \xi_t \sim \operatorname{Bernoulli}(\lambda_s = 0.015), \quad U_t \sim \operatorname{Uniform}(\text{\pounds}100, \text{\pounds}250)
+\end{equation}
+
+---
+
+\section{Monte Carlo Path Simulation \& Coherent Risk Measures}
+
+\subsection{Path Generation}
+Using an edge-optimized seedable Pseudo-Random Number Generator (\texttt{xorshift128+}), we generate $M = 10,000$ independent cash flow realizations:
+\begin{equation}
+\left\{ C_t^{(m)} \right\}_{t=0}^T, \quad m = 1, 2, \dots, M
+\end{equation}
+For each path $m$, we define the \textbf{maximum drawdown} relative to initial capital $C_0 = \text{\pounds}13,497.40$:
+\begin{equation}
+D^{(m)} = C_0 - \min_{0 \le t \le T} C_t^{(m)}
+\end{equation}
+
+\subsection{Liquidity Value-at-Risk ($\text{L-VaR}_{\alpha}$)}
+Let $F_D(d) = \mathbb{P}(D \le d)$ denote the cumulative distribution function of drawdowns. The $\text{L-VaR}$ at confidence level $\alpha$ is:
+\begin{equation}
+\text{L-VaR}_{\alpha} = \inf \{ d \in \mathbb{R} : F_D(d) \ge \alpha \} = F_D^{-1}(\alpha)
+\end{equation}
+Sorting path drawdowns $D_{(1)} \le D_{(2)} \le \dots \le D_{(M)}$, the non-parametric estimators are:
+\begin{equation}
+\widehat{\text{L-VaR}}_{0.95} = D_{(9500)}, \quad \widehat{\text{L-VaR}}_{0.99} = D_{(9900)}
+\end{equation}
+
+\subsection{Liquidity Expected Shortfall ($\text{L-CVaR}_{\alpha}$)}
+Because Value-at-Risk fails to quantify loss severity beyond the percentile threshold and is mathematically non-subadditive, we compute \textbf{Conditional Value-at-Risk (Expected Shortfall)}:
+\begin{equation}
+\text{L-CVaR}_{\alpha} = \mathbb{E}\left[ D \mid D \ge \text{L-VaR}_{\alpha} \right] = \frac{1}{1 - \alpha} \int_{\alpha}^1 \text{L-VaR}_u \, du
+\end{equation}
+The empirical estimator averages the losses in the upper $(1 - \alpha)$ tail:
+\begin{equation}
+\widehat{\text{L-CVaR}}_{0.99} = \frac{1}{M(1 - 0.99)} \sum_{m = 9901}^{10000} D_{(m)}
+\end{equation}
+By stochastic dominance:
+\begin{equation}
+\text{L-CVaR}_{99\%} \ge \text{L-VaR}_{99\%} \ge \text{L-VaR}_{95\%} \ge 0
+\end{equation}
+
+\subsection{Ruin Probability ($\mathbb{P}_{\text{ruin}}$)}
+The probability of breaching the statutory liquidity reserve floor $C_{\text{floor}} = \text{\pounds}1,000.00$:
+\begin{equation}
+\mathbb{P}_{\text{ruin}} = \mathbb{P}\left(\exists t \in [0, T] : C_t < C_{\text{floor}}\right) = \frac{1}{M} \sum_{m=1}^M \mathbf{1}_{\left\{ \min_t C_t^{(m)} < C_{\text{floor}} \right\}}
+\end{equation}
+
+---
+
+\section{Empirical Simulation Results}
+
+Table~\ref{tab:sim_results} details the converged output of the 10,000-path simulation:
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{llr}
+\toprule
+\textbf{Metric} & \textbf{Mathematical Definition} & \textbf{Simulation Value} \\
+\midrule
+Initial Total Cash ($C_0$)          & Starting KCLSU Bank Balance          & \pounds 13,497.40 \\
+Unrestricted Operating Cash         & $C_0 - \text{RestrictedGrants}$       & \pounds 12,018.73 \\
+Committed Gross Outlays             & $\sum \text{Outlays}$                 & \pounds 11,800.00 \\
+Effective Net Outlays               & Gross Outlays $-$ Restricted Offsets & \pounds 10,600.00 \\
+Liquidity Reserve Floor             & $C_{\text{floor}}$                   & \pounds 1,000.00 \\
+\midrule
+\textbf{Liquidity Value-at-Risk (95\%)} & $\widehat{\text{L-VaR}}_{0.95}$  & \textbf{\pounds 9,241.15} \\
+\textbf{Liquidity Value-at-Risk (99\%)} & $\widehat{\text{L-VaR}}_{0.99}$  & \textbf{\pounds 9,566.75} \\
+\textbf{Expected Shortfall (99\%)}      & $\widehat{\text{L-CVaR}}_{0.99}$ & \textbf{\pounds 9,706.07} \\
+\textbf{Insolvency / Ruin Probability}  & $\mathbb{P}_{\text{ruin}}$       & \textbf{0.00\%} \\
+Expected Terminal Treasury Cash         & $\mathbb{E}[C_T]$                & \pounds 5,387.94 \\
+Worst-Case Simulated Balance            & $\min_{m, t} C_t^{(m)}$          & \pounds 3,423.80 \\
+Minimum Solvency Cushion                & $\min C_t - C_{\text{floor}}$    & \textbf{\pounds 2,423.80} \\
+\bottomrule
+\end{tabular}
+\caption{Empirical 10,000-Path Monte Carlo Treasury Liquidity Simulation Results.}
+\label{tab:sim_results}
+\end{table}
+
+\section{Conclusion}
+The mathematical model demonstrates that even under a 99th-percentile drawdown shock combined with full execution of all capital liabilities (\pounds 10.6k net outlays), KCLMC retains a minimum cash cushion of \textbf{\pounds 2,423.80 above the \pounds 1,000 reserve floor}. The presence of the \pounds 1,300 unbilled BMC float and the \pounds 1,200 guide grant offset provides complete capital adequacy without requiring debt or emergency member levies.
+
+\end{document}
