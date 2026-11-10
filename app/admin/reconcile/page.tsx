@@ -227,9 +227,15 @@ export default function ReconcilePage() {
 
   const handleRosterFile = (text: string) => {
     setRosterCsvText(text);
-    const rawLines = text.split('\n').filter(l => l.trim().length > 0 && (l.includes(',K') || l.includes('K2') || l.includes('K1') || l.toLowerCase().includes('associate')));
-    setRawTransactionCount(rawLines.length);
     const parsed = parseKclsuCsv(text);
+    // Count non-empty data lines after the header row
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    const headerIdx = lines.findIndex(l => {
+      const lower = l.toLowerCase();
+      return lower.includes('product_name') && (lower.includes('card_number') || lower.includes('purchaser'));
+    });
+    const dataLineCount = headerIdx !== -1 ? Math.max(0, lines.length - headerIdx - 1) : lines.length;
+    setRawTransactionCount(dataLineCount);
     setParsedMembers(parsed);
     setRosterSyncResult(null);
   };
@@ -587,8 +593,14 @@ export default function ReconcilePage() {
                       )}
                     </div>
                     <p className="text-xs text-zinc-400 mt-1">
-                      {parsedMembers.filter((m) => m.tier === 'recreational').length} Recreational •{' '}
+                      {parsedMembers.filter((m) => m.tier === 'recreational' && !m.isAssociate).length} Recreational •{' '}
                       {parsedMembers.filter((m) => m.tier === 'social').length} Social
+                      {parsedMembers.some((m) => m.isAssociate) && (
+                        <span> • <span className="text-[#FFBD59] font-bold">{parsedMembers.filter((m) => m.isAssociate).length} Associate</span></span>
+                      )}
+                      {rawTransactionCount > parsedMembers.length && (
+                        <span> • <span className="text-zinc-500 font-mono">({rawTransactionCount - parsedMembers.length} non-membership or merged rows skipped)</span></span>
+                      )}
                     </p>
                   </div>
                   <button
@@ -608,7 +620,7 @@ export default function ReconcilePage() {
                   <table className="w-full text-left font-mono">
                     <thead className="bg-[#041F1E] text-zinc-400 text-xs uppercase tracking-wider border-b border-[#084746]">
                       <tr>
-                        <th className="p-4 font-bold text-white">Student ID</th>
+                        <th className="p-4 font-bold text-white">Student / Associate ID</th>
                         <th className="p-4 font-bold text-white">Member Name</th>
                         <th className="p-4">Tier</th>
                         <th className="p-4">Transaction ID</th>
@@ -618,7 +630,16 @@ export default function ReconcilePage() {
                     <tbody className="divide-y divide-[#084746]/60 text-xs">
                       {parsedMembers.slice(0, 10).map((m, i) => (
                         <tr key={i} className="hover:bg-[#084746]/30 transition-colors">
-                          <td className="p-4 text-[#FFBD59] font-bold">{m.cardNumber}</td>
+                          <td className="p-4 text-[#FFBD59] font-bold">
+                            <div className="flex items-center gap-1.5">
+                              <span>{m.cardNumber}</span>
+                              {m.isAssociate && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-950 text-purple-300 border border-purple-500/40">
+                                  🤝 ASSOC
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="p-4 font-bold text-white font-sans">
                             <div className="flex items-center gap-2">
                               <span>{m.name}</span>

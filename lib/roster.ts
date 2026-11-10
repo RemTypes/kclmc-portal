@@ -343,13 +343,61 @@ export function findMemberByCardNumber(cardNumber: string): KclsuMemberRecord | 
   );
 }
 
+/**
+ * Checks whether a given product name represents an official membership or upgrade.
+ * Distinguishes true memberships from trips (e.g. Portland Trip), gear drops, or event tickets.
+ */
+export function isMembershipProduct(productName: string): boolean {
+  if (!productName) return false;
+  const p = productName.toLowerCase();
+  // Explicit membership product IDs
+  if (
+    p.includes('10002480') || // Recreational Membership
+    p.includes('10166870') || // Social Membership
+    p.includes('10188720') || // Soc to Rec Upgrade
+    p.includes('10002490')    // Associate Membership (Non-students)
+  ) {
+    return true;
+  }
+  // Keyword checks
+  if (
+    p.includes('membership') ||
+    p.includes('soc to rec') ||
+    p.includes('social to rec') ||
+    p.includes('upgrade') ||
+    p.includes('top-up') ||
+    p.includes('top up')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Checks whether a given product name or purchaser type denotes an Associate (non-student) membership.
+ */
+export function isAssociateMembership(productName: string, purchaserType?: string): boolean {
+  const p = (productName || '').toLowerCase();
+  const t = (purchaserType || '').toLowerCase();
+  return (
+    p.includes('10002490') ||
+    /associate|non-student|non-students|external|alumni|guest/i.test(p) ||
+    /associate|non-student|non-students|external|alumni|guest/i.test(t)
+  );
+}
+
 export function determineMemberTier(productName: string): 'recreational' | 'social' {
   const p = (productName || '').toLowerCase();
 
-  // Explicit check for upgrade product ID or keywords:
+  // Explicit check for upgrade product ID or keywords, plus Recreational & Associate IDs:
   // e.g. [10188720] Climbing/Mountaineering Soc to Rec Membership Upgrade
+  // e.g. [10002480] Recreational Membership
+  // e.g. [10002490] Associate Membership (Non-students)
   if (
     p.includes('10188720') ||
+    p.includes('10002480') ||
+    p.includes('10002490') ||
+    p.includes('associate') ||
     p.includes('soc to rec') ||
     p.includes('social to rec') ||
     p.includes('social-recreational') ||
@@ -387,6 +435,19 @@ export function getHigherTier(
     return 'recreational';
   }
   return 'social';
+}
+
+/**
+ * Parses a single CSV line while correctly handling quoted cells and escaped quotes.
+ */
+export function parseCsvRow(line: string): string[] {
+  const regex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^",]*))/g;
+  const cols: string[] = [];
+  let match;
+  while ((match = regex.exec(line)) !== null) {
+    cols.push(match[1] !== undefined ? match[1].replace(/""/g, '"') : match[2] || '');
+  }
+  return cols;
 }
 
 /**
@@ -496,7 +557,7 @@ export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
   let headerIndex = -1;
   for (let i = 0; i < rows.length; i++) {
     const rowJoined = rows[i].map(c => c.toLowerCase()).join(',');
-    if (rowJoined.includes('product_name') && rowJoined.includes('card_number')) {
+    if (rowJoined.includes('product_name') && (rowJoined.includes('card_number') || rowJoined.includes('purchaser'))) {
       headerIndex = i;
       break;
     }
@@ -504,100 +565,152 @@ export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
 
   if (headerIndex === -1) return [];
 
+  // Parse header columns dynamically
+  const headerCols = rows[headerIndex].map(c => c.trim().toLowerCase());
+  const findCol = (candidates: string[]) => {
+    // First pass: exact match
+    const exact = headerCols.findIndex(h => candidates.some(cand => h === cand));
+    if (exact !== -1) return exact;
+    // Second pass: substring match, excluding ambiguous generic tokens ('name', 'id', 'type')
+    return headerCols.findIndex(h =>
+      candidates.some(cand => {
+        if (cand === 'name' || cand === 'id' || cand === 'type') return false;
+        return h.includes(cand);
+      })
+    );
+  };
+
+  const productIdx = findCol(['product_name', 'product name', 'product']);
+  const txIdx = findCol(['transaction_id', 'transaction id', 'order_id', 'order id']);
+  const purchaserIdx = findCol(['purchaser', 'purchaser_name', 'member_name', 'name']);
+  const typeIdx = findCol(['purchaser_type', 'purchaser type', 'member_type', 'textbox6', 'type']);
+  const cardIdx = findCol(['card_number', 'card number', 'student_id', 'card', 'id']);
+  const emailIdx = findCol(['email', 'email_address', 'member_email']);
+  const dateIdx = findCol(['purchase_date', 'purchase date', 'date']);
+
+  const colProd = productIdx !== -1 ? productIdx : 0;
+  const colTx = txIdx !== -1 ? txIdx : 1;
+  const colPurchaser = purchaserIdx !== -1 ? purchaserIdx : 2;
+  const colType = typeIdx !== -1 ? typeIdx : 3;
+  const colCard = cardIdx !== -1 ? cardIdx : 4;
+  const colDate = dateIdx !== -1 ? dateIdx : 7;
+
   for (let i = headerIndex + 1; i < rows.length; i++) {
     const cols = rows[i];
     if (!cols || cols.length === 0) continue;
+    if (cols.length < Math.max(colProd, colPurchaser) + 1) continue;
 
-    if (cols.length >= 8) {
-      const productName = sanitizeCsvCell(cols[0]);
-      const transactionId = sanitizeCsvCell(cols[1]);
-      const rawPurchaser = sanitizeCsvCell(cols[2]);
-      const purchaserType = sanitizeCsvCell(cols[3] || '');
-      const cardNumber = sanitizeCsvCell(cols[4]);
-      const rawEmail = sanitizeCsvCell(cols[6] || '');
-      const purchaseDate = sanitizeCsvCell(cols[7]);
+    const productName = sanitizeCsvCell(cols[colProd] || '');
+    // Strictly filter out non-membership items (trips, events, merchandise)
+    if (!isMembershipProduct(productName)) {
+      continue;
+    }
 
-      const rawCardTrimmed = (cardNumber || '').trim().toUpperCase();
-      const isKclCard = rawCardTrimmed.startsWith('K');
-      const isExplicitAssociateCard = rawCardTrimmed.startsWith('ASSOC') || rawCardTrimmed.startsWith('EXT-') || rawCardTrimmed.startsWith('GUEST-');
-      const isNumericGuestCard = /^\d{5,12}$/.test(rawCardTrimmed);
-      const isBlankCard = isPlaceholderToken(rawCardTrimmed);
-      const isAssociateProductOrType =
-        /associate|non-kcl|external|guest|alumni/i.test(productName) ||
-        /associate|non-kcl|external|guest|alumni/i.test(purchaserType);
+    const transactionId = colTx < cols.length ? sanitizeCsvCell(cols[colTx] || '') : '';
+    const rawPurchaser = colPurchaser < cols.length ? sanitizeCsvCell(cols[colPurchaser] || '') : '';
+    const purchaserType = colType !== -1 && colType < cols.length ? sanitizeCsvCell(cols[colType] || '') : '';
+    const cardNumber = colCard < cols.length ? sanitizeCsvCell(cols[colCard] || '') : '';
+    const purchaseDate = colDate !== -1 && colDate < cols.length ? sanitizeCsvCell(cols[colDate] || '') : '';
 
-      let cleanCard = '';
-      let isAssociate = false;
+    let rawEmail = '';
+    if (emailIdx !== -1 && emailIdx < cols.length) {
+      rawEmail = sanitizeCsvCell(cols[emailIdx] || '');
+    } else {
+      // Check if any column contains a valid email format
+      const emailCandidate = cols.find(c => c && c.includes('@') && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.trim()));
+      if (emailCandidate) rawEmail = sanitizeCsvCell(emailCandidate);
+    }
 
-      if (isKclCard) {
+    const isAssocProduct = isAssociateMembership(productName, purchaserType);
+    const rawCardTrimmed = (cardNumber || '').trim().toUpperCase();
+    const isKclCard = rawCardTrimmed.startsWith('K');
+    const isExplicitAssociateCard = rawCardTrimmed.startsWith('ASSOC') || rawCardTrimmed.startsWith('EXT-') || rawCardTrimmed.startsWith('GUEST-');
+    const isNumericGuestCard = /^\d{5,12}$/.test(rawCardTrimmed);
+    const isBlankCard = isPlaceholderToken(rawCardTrimmed);
+
+    let cleanCard = '';
+    let isAssociate = false;
+
+    if (isAssocProduct) {
+      isAssociate = true;
+      if (isKclCard || isExplicitAssociateCard) {
         cleanCard = rawCardTrimmed;
-        isAssociate = false;
-      } else if (isExplicitAssociateCard) {
-        cleanCard = rawCardTrimmed;
-        isAssociate = true;
-      } else if (isAssociateProductOrType || isNumericGuestCard || (isBlankCard && transactionId && rawPurchaser)) {
-        isAssociate = true;
-        if (!isBlankCard) {
-          cleanCard = rawCardTrimmed.startsWith('ASSOC') ? rawCardTrimmed : `ASSOC-${rawCardTrimmed}`;
-        } else {
-          const fallbackTx = (transactionId || '').replace(/[^A-Z0-9]/gi, '').slice(-8).toUpperCase();
-          cleanCard = fallbackTx ? `ASSOC-SU-${fallbackTx}` : `ASSOC-SU-${i}`;
+      } else if (isNumericGuestCard) {
+        cleanCard = `ASSOC-${rawCardTrimmed}`;
+      } else if (!isBlankCard) {
+        cleanCard = rawCardTrimmed.startsWith('ASSOC') ? rawCardTrimmed : `ASSOC-${rawCardTrimmed}`;
+      } else {
+        const fallbackTx = (transactionId || '').replace(/[^A-Z0-9]/gi, '').slice(-8).toUpperCase();
+        cleanCard = fallbackTx ? `ASSOC-SU-${fallbackTx}` : `ASSOC-SU-${i}`;
+      }
+    } else if (isKclCard) {
+      cleanCard = rawCardTrimmed;
+      isAssociate = false;
+    } else if (isExplicitAssociateCard) {
+      cleanCard = rawCardTrimmed;
+      isAssociate = true;
+    } else if (isNumericGuestCard || (isBlankCard && transactionId && rawPurchaser)) {
+      isAssociate = true;
+      if (!isBlankCard) {
+        cleanCard = rawCardTrimmed.startsWith('ASSOC') ? rawCardTrimmed : `ASSOC-${rawCardTrimmed}`;
+      } else {
+        const fallbackTx = (transactionId || '').replace(/[^A-Z0-9]/gi, '').slice(-8).toUpperCase();
+        cleanCard = fallbackTx ? `ASSOC-SU-${fallbackTx}` : `ASSOC-SU-${i}`;
+      }
+    }
+
+    if (cleanCard) {
+      const tier = determineMemberTier(productName);
+      const formattedName = formatPurchaserName(rawPurchaser);
+      const cleanEmail = rawEmail && rawEmail.includes('@') ? rawEmail.trim().toLowerCase() : null;
+
+      // Check if an associate row without a permanent ID matches an earlier row in the same CSV by full name
+      let targetKey = cleanCard;
+      if (isAssociate && formattedName) {
+        for (const [existingKey, existingVal] of recordsMap.entries()) {
+          if (
+            existingVal.isAssociate &&
+            existingVal.name.toLowerCase() === formattedName.toLowerCase()
+          ) {
+            targetKey = existingKey;
+            break;
+          }
         }
       }
 
-      if (cleanCard) {
-        const tier = determineMemberTier(productName);
-        const formattedName = formatPurchaserName(rawPurchaser);
-        const cleanEmail = rawEmail && rawEmail.includes('@') ? rawEmail.trim().toLowerCase() : null;
+      const newRecord: KclsuMemberRecord = {
+        cardNumber: targetKey,
+        name: formattedName,
+        rawPurchaser,
+        tier,
+        productName,
+        transactionId,
+        purchaseDate,
+        isAssociate,
+        email: cleanEmail,
+        suStatus: 'verified',
+      };
 
-        // Check if an associate row without a permanent ID matches an earlier row in the same CSV by full name
-        let targetKey = cleanCard;
-        if (isAssociate && formattedName) {
-          for (const [existingKey, existingVal] of recordsMap.entries()) {
-            if (
-              existingVal.isAssociate &&
-              existingVal.name.toLowerCase() === formattedName.toLowerCase()
-            ) {
-              targetKey = existingKey;
-              break;
-            }
-          }
-        }
+      const existing = recordsMap.get(targetKey);
+      if (!existing) {
+        recordsMap.set(targetKey, newRecord);
+      } else {
+        // Social-Recreational upgrade strictly overrides Social to Recreational
+        const isRecreational = getHigherTier(existing.tier, tier) === 'recreational';
+        const preferredProduct = (tier === 'recreational' && existing.tier === 'social')
+          ? productName
+          : (existing.tier === 'recreational' ? existing.productName : productName);
 
-        const newRecord: KclsuMemberRecord = {
-          cardNumber: targetKey,
-          name: formattedName,
-          rawPurchaser,
-          tier,
-          productName,
-          transactionId,
-          purchaseDate,
-          isAssociate,
-          email: cleanEmail,
+        recordsMap.set(targetKey, {
+          ...existing,
+          tier: isRecreational ? 'recreational' : 'social',
+          productName: preferredProduct,
+          transactionId: newRecord.transactionId || existing.transactionId,
+          purchaseDate: newRecord.purchaseDate || existing.purchaseDate,
+          email: newRecord.email || existing.email,
+          isAssociate: Boolean(existing.isAssociate || newRecord.isAssociate),
           suStatus: 'verified',
-        };
-
-        const existing = recordsMap.get(targetKey);
-        if (!existing) {
-          recordsMap.set(targetKey, newRecord);
-        } else {
-          // Social-Recreational upgrade strictly overrides Social to Recreational
-          const isRecreational = existing.tier === 'recreational' || tier === 'recreational';
-          const preferredProduct = (tier === 'recreational' && existing.tier === 'social')
-            ? productName
-            : (existing.tier === 'recreational' ? existing.productName : productName);
-
-          recordsMap.set(targetKey, {
-            ...existing,
-            tier: isRecreational ? 'recreational' : 'social',
-            productName: preferredProduct,
-            transactionId: newRecord.transactionId || existing.transactionId,
-            purchaseDate: newRecord.purchaseDate || existing.purchaseDate,
-            email: newRecord.email || existing.email,
-            isAssociate: Boolean(existing.isAssociate || newRecord.isAssociate),
-            suStatus: 'verified',
-          });
-        }
+        });
       }
     }
   }

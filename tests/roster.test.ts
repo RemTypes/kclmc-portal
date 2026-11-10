@@ -308,6 +308,47 @@ describe('Roster Core Logic (lib/roster.ts)', () => {
       expect(adam?.isAssociate).toBe(true);
       expect(adam?.tier).toBe('social');
     });
+
+    it('correctly parses official [10002490] Associate Membership even when card_number starts with K (alumni student IDs)', () => {
+      const csv = [
+        'textbox37,textbox23,textbox53,textbox28,textbox51,textbox48,textbox45',
+        'ALL,ALL,Climbing/Mountaineering,Tue 03 Nov 2026 00:00,Wed 11 Nov 2026 00:00,* ALL *,* ALL *',
+        '',
+        'product_name,transaction_id,purchaser,textbox6,card_number,shop_name,qty,purchase_date',
+        '[10002490] Climbing/Mountaineering Associate Membership (Non-students),31685137,"REN, Jingwei",,K21154433,KCLSU Hub at Strand,1,Tue 10 Nov 2026 11:48',
+        '[10002490] Climbing/Mountaineering Associate Membership (Non-students),31685131,"SU, Emily",,K23044471,KCLSU Hub at Strand,1,Tue 10 Nov 2026 11:44',
+      ].join('\n');
+
+      const results = parseKclsuCsv(csv);
+      expect(results).toHaveLength(2);
+
+      const ren = results.find(r => r.cardNumber === 'K21154433');
+      expect(ren).toBeDefined();
+      expect(ren?.name).toBe('Jingwei Ren');
+      expect(ren?.isAssociate).toBe(true);
+      expect(ren?.tier).toBe('recreational');
+      expect(ren?.productName).toContain('10002490');
+
+      const su = results.find(r => r.cardNumber === 'K23044471');
+      expect(su).toBeDefined();
+      expect(su?.name).toBe('Emily Su');
+      expect(su?.isAssociate).toBe(true);
+      expect(su?.tier).toBe('recreational');
+    });
+
+    it('strictly filters out non-membership trip ticket products (e.g. Portland Trip)', () => {
+      const csv = [
+        'product_name,transaction_id,purchaser,textbox6,card_number,shop_name,qty,purchase_date',
+        '[10166870] Climbing/Mountaineering Social Membership,31684087,"Orazgaliyev, Rakhim",,K26048513,Website,1,Mon 09 Nov 2026 15:21',
+        '[10259510] Portland Trip Fri 13 Nov 2026 - Portland Trip,31684106,"ENERCAN, Arda",,K24058186,Website,1,Mon 09 Nov 2026 15:49',
+        '[10002480] Climbing/Mountaineering Recreational Membership,31682111,"HUSSEIN, Mahamed",,K24073566,Website,1,Wed 04 Nov 2026 12:01',
+      ].join('\n');
+
+      const results = parseKclsuCsv(csv);
+      expect(results).toHaveLength(2);
+      expect(results.map(r => r.name)).toEqual(['Rakhim Orazgaliyev', 'Mahamed Hussein']);
+      expect(results.some(r => r.name.includes('Enercan'))).toBe(false);
+    });
   });
 });
 
