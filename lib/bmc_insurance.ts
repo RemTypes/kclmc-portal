@@ -12,6 +12,8 @@
  * - Social only: [10166870] Social Membership (excluded from insurance form release)
  */
 
+import { isMembershipProduct, isAssociateMembership, parseCsvRow } from '@/lib/roster';
+
 export const DEFAULT_BMC_GOOGLE_FORM_ID = '1FAIpQLSekfG2gtiKdh2WQiAkBQpbkgrm3gFBQzkD37bDRJTsVMsDK-Q';
 export const DEFAULT_BMC_FORM_URL =
   process.env.BMC_FORM_URL ||
@@ -35,6 +37,7 @@ export interface BmcMemberRecipient {
   prefilledFormUrl?: string;
   isSent?: boolean;
   sentAt?: string;
+  isAssociate?: boolean;
 }
 
 export interface BmcRosterStats {
@@ -200,6 +203,8 @@ export function isRecreationalProduct(productName: string): {
   const isRec =
     isUpgrade ||
     p.includes('10002480') ||
+    p.includes('10002490') ||
+    p.includes('associate') ||
     p.includes('recreational');
 
   return { isRec, isUpgrade };
@@ -252,6 +257,33 @@ export function parseKclsuSalesForBmc(
     };
   }
 
+  const headerCols = parseCsvRow(lines[headerIndex]).map(c => c.trim().toLowerCase());
+  const findCol = (candidates: string[]) => {
+    const exact = headerCols.findIndex(h => candidates.some(cand => h === cand));
+    if (exact !== -1) return exact;
+    return headerCols.findIndex(h =>
+      candidates.some(cand => {
+        if (cand === 'name' || cand === 'id' || cand === 'type') return false;
+        return h.includes(cand);
+      })
+    );
+  };
+
+  const productIdx = findCol(['product_name', 'product name', 'product']);
+  const txIdx = findCol(['transaction_id', 'transaction id', 'order_id', 'order id']);
+  const purchaserIdx = findCol(['purchaser', 'purchaser_name', 'member_name', 'name']);
+  const typeIdx = findCol(['purchaser_type', 'purchaser type', 'member_type', 'textbox6', 'type']);
+  const cardIdx = findCol(['card_number', 'card number', 'student_id', 'card', 'id']);
+  const emailIdx = findCol(['email', 'email_address', 'member_email']);
+  const dateIdx = findCol(['purchase_date', 'purchase date', 'date']);
+
+  const colProd = productIdx !== -1 ? productIdx : 0;
+  const colTx = txIdx !== -1 ? txIdx : 1;
+  const colPurchaser = purchaserIdx !== -1 ? purchaserIdx : 2;
+  const colType = typeIdx !== -1 ? typeIdx : 3;
+  const colCard = cardIdx !== -1 ? cardIdx : 4;
+  const colDate = dateIdx !== -1 ? dateIdx : 7;
+
   const memberMap = new Map<string, BmcMemberRecipient>();
   let totalRows = 0;
 
@@ -259,28 +291,32 @@ export function parseKclsuSalesForBmc(
     const line = lines[i].trim();
     if (!line) continue;
 
-    const regex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^",]*))/g;
-    const cols: string[] = [];
-    let match;
-    while ((match = regex.exec(line)) !== null) {
-      const val = match[1] !== undefined ? match[1].replace(/""/g, '"') : match[2];
-      cols.push((val || '').trim());
-    }
+    const cols = parseCsvRow(line);
+    if (cols.length < Math.max(colProd, colPurchaser) + 1) continue;
 
-    if (cols.length < 5) continue;
+    const productName = (cols[colProd] || '').trim();
+    if (!isMembershipProduct(productName)) continue;
+
     totalRows++;
 
-    const productName = cols[0] || '';
-    const transactionId = cols[1] || '';
-    const purchaserRaw = cols[2] || '';
-    const purchaserType = cols[3] || '';
-    const cardNumber = cols[4] || '';
-    const rawEmail = cols[6] || '';
-    const purchaseDate = cols[7] || '';
+    const transactionId = colTx < cols.length ? (cols[colTx] || '').trim() : '';
+    const purchaserRaw = colPurchaser < cols.length ? (cols[colPurchaser] || '').trim() : '';
+    const purchaserType = colType !== -1 && colType < cols.length ? (cols[colType] || '').trim() : '';
+    const cardNumber = colCard < cols.length ? (cols[colCard] || '').trim() : '';
+    let rawEmail = '';
+    if (emailIdx !== -1 && emailIdx < cols.length) {
+      rawEmail = (cols[emailIdx] || '').trim();
+    } else {
+      const emailCandidate = cols.find(c => c && c.includes('@') && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.trim()));
+      if (emailCandidate) rawEmail = emailCandidate.trim();
+    }
+    const purchaseDate = colDate !== -1 && colDate < cols.length ? (cols[colDate] || '').trim() : '';
 
+    const isAssoc = isAssociateMembership(productName, purchaserType);
     const rawCardTrimmed = cardNumber.trim().toUpperCase();
     const isBlankCard = !rawCardTrimmed || rawCardTrimmed === '-' || rawCardTrimmed === 'N/A';
     const isAssociateRow =
+      isAssoc ||
       rawCardTrimmed.startsWith('ASSOC') ||
       /associate|non-kcl|external|guest|alumni/i.test(productName) ||
       /associate|non-kcl|external|guest|alumni/i.test(purchaserType) ||
@@ -308,6 +344,9 @@ export function parseKclsuSalesForBmc(
       if (!existing.email && email) {
         existing.email = email;
       }
+      if (isAssociateRow) {
+        existing.isAssociate = true;
+      }
     } else {
       const tier: 'recreational' | 'social' = isRec ? 'recreational' : 'social';
       memberMap.set(key, {
@@ -322,6 +361,7 @@ export function parseKclsuSalesForBmc(
         productName,
         transactionId,
         purchaseDate,
+        isAssociate: isAssociateRow,
       });
     }
   }
@@ -341,7 +381,11 @@ export function parseKclsuSalesForBmc(
         upgradedCount++;
       }
       m.prefilledFormUrl = generateBmcPrefilledUrl(
-        { firstName: m.firstName, lastName: m.lastName, membershipType: 'Student' },
+        {
+          firstName: m.firstName,
+          lastName: m.lastName,
+          membershipType: m.isAssociate ? 'Non-Student' : 'Student',
+        },
         baseFormUrl
       );
       recipients.push(m);

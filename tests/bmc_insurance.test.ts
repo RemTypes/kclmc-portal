@@ -112,6 +112,12 @@ describe('BMC Insurance Email Automation & Verification Engine', () => {
       expect(res.isRec).toBe(false);
       expect(res.isUpgrade).toBe(false);
     });
+
+    it('identifies official associate membership products as recreational', () => {
+      const res = isRecreationalProduct('[10002490] Climbing/Mountaineering Associate Membership (Non-students)');
+      expect(res.isRec).toBe(true);
+      expect(res.isUpgrade).toBe(false);
+    });
   });
 
   describe('parseKclsuSalesForBmc', () => {
@@ -149,6 +155,26 @@ product_name,transaction_id,purchaser,textbox6,card_number,shop_name,qty,purchas
       for (const rec of result.recipients) {
         expect(rec.email).toMatch(/^k\d+@kcl\.ac\.uk$/);
       }
+    });
+
+    it('correctly includes associate members with Non-Student prefilled membershipType and skips trip tickets', () => {
+      const csv = `product_name,transaction_id,purchaser,textbox6,card_number,shop_name,qty,purchase_date
+[10002490] Climbing/Mountaineering Associate Membership (Non-students),31685137,"REN, Jingwei",,K21154433,KCLSU Hub at Strand,1,Tue 10 Nov 2026 11:48
+[10259510] Portland Trip Fri 13 Nov 2026 - Portland Trip,31684106,"ENERCAN, Arda",,K24058186,Website,1,Mon 09 Nov 2026 15:49
+[10002480] Climbing/Mountaineering Recreational Membership,31682111,"HUSSEIN, Mahamed",,K24073566,Website,1,Wed 04 Nov 2026 12:01
+`;
+      const result = parseKclsuSalesForBmc(csv);
+      expect(result.stats.totalRows).toBe(2); // Portland Trip skipped
+      expect(result.stats.recreationalCount).toBe(2);
+      const ren = result.recipients.find(r => r.cardNumber === 'K21154433');
+      expect(ren).toBeDefined();
+      expect(ren?.isAssociate).toBe(true);
+      expect(ren?.prefilledFormUrl).toContain('entry.812283993=Non-Student');
+
+      const mahamed = result.recipients.find(r => r.cardNumber === 'K24073566');
+      expect(mahamed).toBeDefined();
+      expect(mahamed?.isAssociate).toBe(false);
+      expect(mahamed?.prefilledFormUrl).toContain('entry.812283993=Student');
     });
   });
 
