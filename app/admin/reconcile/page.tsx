@@ -492,7 +492,7 @@ export default function ReconcilePage() {
                   <span className="text-xs text-zinc-400 font-mono">Members</span>
                 </div>
                 <span className="text-[10px] text-zinc-400 font-mono mt-1">
-                  Source: {dbStats?.source === 'supabase' ? 'Supabase Postgres' : 'Local Fallback'}
+                  Source: {dbStats?.source === 'cloudflare_d1' ? 'Cloudflare D1 (SQLite)' : 'Local Fallback'}
                 </span>
               </div>
 

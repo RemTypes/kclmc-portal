@@ -47,6 +47,11 @@ export default function Navigation() {
     router.refresh();
   };
 
+  // Bio-link directory (/links) is rendered distraction-free without full site navigation header
+  if (pathname === '/links') {
+    return null;
+  }
+
   return (
     <header className="sticky top-0 z-40 shadow-md">
       {/* 1. Top Utility Strip */}

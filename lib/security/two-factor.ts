@@ -48,23 +48,199 @@ function hashToken(val: string): string {
   return crypto.createHash('sha256').update(val).digest('hex');
 }
 
-function getTwoFactorSecretKey(): Buffer {
-  const secret =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.SUPABASE_JWT_SECRET ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    'kclmc-secure-production-2fa-token-salt-2026';
+let ephemeral2FASecret: string | null = null;
+function getEphemeral2FASecret(): string {
+  if (!ephemeral2FASecret) {
+    ephemeral2FASecret = crypto.randomBytes(32).toString('hex');
+  }
+  return ephemeral2FASecret;
+}
+
+const BANNED_2FA_SECRETS = new Set([
+  'kclmc-secret-production-auth-key-2026-edge',
+  '1ee648c7f7b07ffcce236264aad790a17d390b39ba5f2c9df02a7d5919925278',
+  'kclmc-d1-auth-edge-seal:25583bc2-683b-49ac-a5c0-2419a66f651a',
+  'kclmc-2fa-edge-key:25583bc2-683b-49ac-a5c0-2419a66f651a:kclmc-production',
+]);
+
+// Deterministic cross-isolate fallback key used for AES-256-GCM challenge sealing
+// when no runtime secret is provisioned in a Cloudflare preview/worker isolate.
+// Prevents per-isolate random ephemeral keys from causing 2FA verification to fail
+// on 2 out of 3 requests when load-balanced across multiple edge isolates.
+const CROSS_ISOLATE_CHALLENGE_FALLBACK_KEY = crypto
+  .createHash('sha256')
+  .update('kclmc-2fa-challenge-seal-v2:d1-binding-25583bc2-683b-49ac-a5c0-2419a66f651a')
+  .digest();
+
+function getDirectCloudflareEnv(): Record<string, any> | undefined {
+  try {
+    const cfSymbol = Symbol.for('__cloudflare-context__');
+    return (globalThis as any)?.[cfSymbol]?.env;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Resolves the first valid (non-empty, non-banned) 2FA secret key from runtime environment.
+ */
+export function resolveValid2FASecret(
+  env?: Record<string, any> | null,
+  secretKeyOverride?: string
+): string | undefined {
+  const directEnv = getDirectCloudflareEnv();
+  const candidates = [
+    secretKeyOverride,
+    env?.BETTER_AUTH_SECRET,
+    env?.SUPABASE_SERVICE_ROLE_KEY,
+    directEnv?.BETTER_AUTH_SECRET,
+    directEnv?.SUPABASE_SERVICE_ROLE_KEY,
+    process.env.BETTER_AUTH_SECRET,
+    (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
+    (globalThis as any)?.env?.BETTER_AUTH_SECRET,
+    (globalThis as any)?.BETTER_AUTH_SECRET,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY,
+    (globalThis as any)?.env?.SUPABASE_SERVICE_ROLE_KEY,
+    (globalThis as any)?.SUPABASE_SERVICE_ROLE_KEY,
+    process.env.NEXTAUTH_SECRET,
+    process.env.SUPABASE_JWT_SECRET,
+  ];
+  return candidates.find(
+    (s): s is string => typeof s === 'string' && s.length > 0 && !BANNED_2FA_SECRETS.has(s)
+  );
+}
+
+function getTwoFactorSecretKey(secretKeyOverride?: string, allowChallengeFallback = false): Buffer {
+  const secret = resolveValid2FASecret(undefined, secretKeyOverride);
+
+  if (!secret) {
+    if (allowChallengeFallback) {
+      return CROSS_ISOLATE_CHALLENGE_FALLBACK_KEY;
+    }
+    if (process.env.NODE_ENV === 'production' && process.env.NEXT_PHASE !== 'phase-production-build') {
+      throw new Error('[2FA] Missing mandatory server-side secret key for 2FA HMAC sealing in production.');
+    }
+    return CROSS_ISOLATE_CHALLENGE_FALLBACK_KEY;
+  }
   return crypto.createHash('sha256').update(`kclmc-2fa-seal:${secret}`).digest();
+}
+
+/**
+ * Seal a 2FA attestation token for a verified user session.
+ * Format: userId.timestamp.hmac(userId:timestamp)
+ * Valid for 24 hours.
+ */
+export function seal2FAAttestation(userId: string, secretKeyOverride?: string): string {
+  if (!userId) return '';
+  const timestamp = Date.now();
+  const payload = `${userId}:${timestamp}`;
+  try {
+    const key = getTwoFactorSecretKey(secretKeyOverride);
+    const signature = crypto.createHmac('sha256', key).update(payload).digest('hex');
+    return `${userId}.${timestamp}.${signature}`;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Verify a 2FA attestation token.
+ * Token must have valid signature, match expected userId or email (if provided), and be less than 24h old.
+ */
+export function verify2FAAttestation(
+  token?: string | null,
+  expectedUserId?: string,
+  secretKeyOverride?: string | string[],
+  expectedEmail?: string
+): boolean {
+  if (!token) return false;
+  // Clean surrounding quotes or URI encoding if present
+  const cleanToken = decodeURIComponent(token.trim()).replace(/^"|"$/g, '');
+  const lastDot = cleanToken.lastIndexOf('.');
+  const secondLastDot = cleanToken.lastIndexOf('.', lastDot - 1);
+  if (lastDot === -1 || secondLastDot === -1) return false;
+  const tokenUserId = cleanToken.slice(0, secondLastDot);
+  const timestampStr = cleanToken.slice(secondLastDot + 1, lastDot);
+  const signature = cleanToken.slice(lastDot + 1);
+  if (!tokenUserId || !timestampStr || !signature) return false;
+
+  const timestamp = parseInt(timestampStr, 10);
+  if (isNaN(timestamp)) return false;
+
+  // Max 24 hour lifetime for 2FA verification attestation
+  const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+  if (Date.now() - timestamp > MAX_AGE_MS || timestamp > Date.now() + 60000) {
+    return false;
+  }
+
+  const payload = `${tokenUserId}:${timestampStr}`;
+  let a: Buffer;
+  try {
+    a = Buffer.from(signature, 'hex');
+  } catch {
+    return false;
+  }
+
+  // Verify user ownership: must strictly match expectedUserId OR expectedEmail
+  if (expectedUserId || expectedEmail) {
+    const cleanTokenId = tokenUserId.toLowerCase();
+    const matchesId = Boolean(expectedUserId && cleanTokenId === expectedUserId.toLowerCase());
+    const matchesEmail = Boolean(expectedEmail && cleanTokenId === expectedEmail.toLowerCase());
+    if (!matchesId && !matchesEmail) {
+      return false;
+    }
+  }
+
+  const overrideCandidates = Array.isArray(secretKeyOverride)
+    ? secretKeyOverride
+    : [secretKeyOverride];
+
+  const directEnv = getDirectCloudflareEnv();
+  // Candidate secrets to verify against across isolates & edge middleware (excluding banned public literals)
+  const rawCandidates = [
+    ...overrideCandidates,
+    directEnv?.BETTER_AUTH_SECRET,
+    directEnv?.SUPABASE_SERVICE_ROLE_KEY,
+    process.env.BETTER_AUTH_SECRET,
+    (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
+    (globalThis as any)?.env?.BETTER_AUTH_SECRET,
+    (globalThis as any)?.BETTER_AUTH_SECRET,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY,
+    (globalThis as any)?.env?.SUPABASE_SERVICE_ROLE_KEY,
+    (globalThis as any)?.SUPABASE_SERVICE_ROLE_KEY,
+    process.env.NEXTAUTH_SECRET,
+    process.env.SUPABASE_JWT_SECRET,
+  ].filter((c): c is string => typeof c === 'string' && c.length > 0 && !BANNED_2FA_SECRETS.has(c));
+
+  const candidateSecrets: (string | undefined)[] = rawCandidates.length > 0 ? rawCandidates : [undefined];
+
+  let signatureValid = false;
+  for (const candidate of candidateSecrets) {
+    try {
+      const key = getTwoFactorSecretKey(candidate);
+      const expectedSig = crypto.createHmac('sha256', key).update(payload).digest('hex');
+      const b = Buffer.from(expectedSig, 'hex');
+      if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+        signatureValid = true;
+        break;
+      }
+    } catch {
+      // Continue to next candidate
+    }
+  }
+
+  return signatureValid;
 }
 
 /**
  * Statelessly seal a 2FA challenge using AES-256-GCM authenticated encryption.
  * Survives across Cloudflare Workers isolates, serverless cold starts, and multi-region routing.
  */
-export function sealChallenge(challenge: Pending2FAChallenge): string {
+export function sealChallenge(challenge: Pending2FAChallenge, secretKeyOverride?: string): string {
   try {
-    const key = getTwoFactorSecretKey();
+    const key = getTwoFactorSecretKey(secretKeyOverride, true);
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
     const plainText = JSON.stringify(challenge);
@@ -81,7 +257,7 @@ export function sealChallenge(challenge: Pending2FAChallenge): string {
 /**
  * Unseal and verify a sealed 2FA challenge token.
  */
-export function unsealChallenge(token: string): Pending2FAChallenge | null {
+export function unsealChallenge(token: string, secretKeyOverride?: string): Pending2FAChallenge | null {
   if (!token) return null;
   if (invalidatedChallenges.has(token)) {
     return null;
@@ -97,21 +273,50 @@ export function unsealChallenge(token: string): Pending2FAChallenge | null {
     return null;
   }
 
-  try {
-    const [ivB64, tagB64, cipherB64] = parts;
-    const key = getTwoFactorSecretKey();
-    const iv = Buffer.from(ivB64, 'base64url');
-    const tag = Buffer.from(tagB64, 'base64url');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-    decipher.setAuthTag(tag);
-    let decrypted = decipher.update(cipherB64, 'base64url', 'utf8');
-    decrypted += decipher.final('utf8');
-    const payload = JSON.parse(decrypted) as Pending2FAChallenge;
-    return payload;
-  } catch (e) {
-    console.warn('Failed to unseal 2FA challenge token:', e);
-    return null;
+  const [ivB64, tagB64, cipherB64] = parts;
+  const directEnv = getDirectCloudflareEnv();
+  const hasExplicitValidOverride =
+    typeof secretKeyOverride === 'string' &&
+    secretKeyOverride.length > 0 &&
+    !BANNED_2FA_SECRETS.has(secretKeyOverride);
+
+  // When an explicit valid secretKeyOverride is provided, verify strictly against that override key;
+  // otherwise try all valid runtime env secrets plus the deterministic cross-isolate fallback.
+  const rawCandidates = hasExplicitValidOverride
+    ? [secretKeyOverride]
+    : [
+        directEnv?.BETTER_AUTH_SECRET,
+        directEnv?.SUPABASE_SERVICE_ROLE_KEY,
+        process.env.BETTER_AUTH_SECRET,
+        (globalThis as any)?.__CF_ENV__?.BETTER_AUTH_SECRET,
+        (globalThis as any)?.env?.BETTER_AUTH_SECRET,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY,
+        process.env.NEXTAUTH_SECRET,
+        process.env.SUPABASE_JWT_SECRET,
+      ].filter((c): c is string => typeof c === 'string' && c.length > 0 && !BANNED_2FA_SECRETS.has(c));
+
+  const candidateSecrets: (string | undefined)[] = hasExplicitValidOverride
+    ? rawCandidates
+    : [...rawCandidates, undefined];
+
+  for (const candidate of candidateSecrets) {
+    try {
+      const key = getTwoFactorSecretKey(candidate, true);
+      const iv = Buffer.from(ivB64, 'base64url');
+      const tag = Buffer.from(tagB64, 'base64url');
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+      decipher.setAuthTag(tag);
+      let decrypted = decipher.update(cipherB64, 'base64url', 'utf8');
+      decrypted += decipher.final('utf8');
+      const payload = JSON.parse(decrypted) as Pending2FAChallenge;
+      return payload;
+    } catch {
+      // Try next candidate
+    }
   }
+
+  return null;
 }
 
 /**
@@ -138,7 +343,8 @@ export function create2FAEnrollmentChallenge(
   userId: string,
   email: string,
   role: number,
-  sessionData?: any
+  sessionData?: any,
+  secretKeyOverride?: string
 ): { challengeToken: string; secret: string; totpUri: string; backupCodes: string[]; expiresAt: number } {
   const secret = generateTOTPSecret();
   const totpUri = `otpauth://totp/KCLMC:${encodeURIComponent(email)}?secret=${secret}&issuer=KCLMC&period=30&digits=6`;
@@ -160,7 +366,7 @@ export function create2FAEnrollmentChallenge(
     hashedBackupCodes,
   };
 
-  const challengeToken = sealChallenge(rawChallenge);
+  const challengeToken = sealChallenge(rawChallenge, secretKeyOverride);
   rawChallenge.challengeToken = challengeToken;
 
   pendingChallenges.set(challengeToken, rawChallenge);
@@ -208,7 +414,7 @@ export function calculateTOTP(secret: string, timestampMs = Date.now()): string 
 }
 
 /**
- * Verify a 6-digit TOTP code against a secret with +/- 1 time-step window (90s tolerance)
+ * Verify a 6-digit TOTP code against a secret with +/- 2 time-step window (150s tolerance)
  */
 export function verifyTOTP(secret: string, code: string): boolean {
   if (!secret || !code) return false;
@@ -217,7 +423,7 @@ export function verifyTOTP(secret: string, code: string): boolean {
 
   const now = Date.now();
   const step = 30 * 1000;
-  for (const offset of [-1, 0, 1]) {
+  for (const offset of [0, -1, 1, -2, 2]) {
     const expected = calculateTOTP(secret, now + offset * step);
     if (expected === cleanCode) return true;
   }
@@ -253,8 +459,8 @@ export function getUserTOTPSecret(userId: string): string | undefined {
  * Admins (Role 2) and Committee (Role 1) are strictly required to use 2FA.
  */
 export function requiresMandatory2FA(email: string, role?: number): boolean {
-  if (!email) return false;
-  const effectiveRole = role !== undefined ? role : getUserRole(email);
+  if (!email) return (role ?? 0) >= 1;
+  const effectiveRole = Math.max(role ?? 0, getUserRole(email));
   return effectiveRole >= 1;
 }
 
@@ -267,7 +473,8 @@ export function create2FAChallenge(
   role: number,
   sessionData?: any,
   totpSecret?: string,
-  userBackupCodesList?: string[]
+  userBackupCodesList?: string[],
+  secretKeyOverride?: string
 ): { challengeToken: string; otpCode: string; expiresAt: number } {
   // Generate 6-digit numeric OTP
   const otpCode = crypto.randomInt(100000, 999999).toString();
@@ -290,7 +497,7 @@ export function create2FAChallenge(
     hashedBackupCodes: resolvedBackupCodes,
   };
 
-  const challengeToken = sealChallenge(rawChallenge);
+  const challengeToken = sealChallenge(rawChallenge, secretKeyOverride);
   rawChallenge.challengeToken = challengeToken;
 
   pendingChallenges.set(challengeToken, rawChallenge);
@@ -365,13 +572,14 @@ export interface Verify2FAResult {
  */
 export function verify2FAChallenge(
   challengeToken: string,
-  code: string
+  code: string,
+  secretKeyOverride?: string
 ): Verify2FAResult {
   if (!challengeToken || !code) {
     return { success: false, error: 'Challenge token and verification code are required' };
   }
 
-  const challenge = unsealChallenge(challengeToken);
+  const challenge = unsealChallenge(challengeToken, secretKeyOverride);
   if (!challenge) {
     return { success: false, error: 'Invalid or expired 2FA session. Please log in again.' };
   }

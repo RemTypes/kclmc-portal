@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import { createClient, isSupabaseConfigured } from '@/lib/supabase/server';
+import { getAuthenticatedUser } from '@/lib/auth/server';
 import { memberRoster } from '@/lib/roster/service';
+
+export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/roster/link
@@ -8,17 +10,9 @@ import { memberRoster } from '@/lib/roster/service';
  */
 export async function POST(request: Request) {
   try {
-    if (!isSupabaseConfigured()) {
-      return NextResponse.json(
-        { error: 'Database is not configured' },
-        { status: 503, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
+    const user = await getAuthenticatedUser(request);
 
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Authentication required. Please sign in to link your membership.' },
         { status: 401, headers: { 'Content-Type': 'application/json' } }

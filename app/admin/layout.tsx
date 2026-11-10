@@ -1,7 +1,6 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { getUserRole, getAuthenticatedUserRole } from '@/lib/auth';
+import { getAuthenticatedUser } from '@/lib/auth/server';
 import type { Metadata } from 'next';
 import AdminNav from '@/components/AdminNav';
 
@@ -16,24 +15,20 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getAuthenticatedUser();
 
     if (!user) {
       redirect('/login?next=/admin');
     }
 
-    // Unified role resolution: checks email whitelist & Supabase profiles table
-    const role = await getAuthenticatedUserRole(supabase, user);
-
     // Clearance check: Must be at least Committee (role >= 1)
-    if (role < 1) {
+    if (user.role < 1) {
       redirect('/403?req=committee&from=/admin');
     }
 
     return (
       <div className="min-h-screen bg-[#041F1E] text-slate-100 flex flex-col font-sans">
-        <AdminNav userRole={role} />
+        <AdminNav userRole={user.role} />
         <div className="flex-1">
           {children}
         </div>

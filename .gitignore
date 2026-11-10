@@ -5,6 +5,7 @@ node_modules
 
 # Testing
 /coverage
+.agents/
 
 # Next.js
 /.next/
@@ -28,6 +29,7 @@ node_modules
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+worker-configuration.d.ts
 
 # Python / ML artifacts
 __pycache__/
@@ -38,7 +40,9 @@ env/
 venv/
 *.ipynb_checkpoints/
 
-# Data Redundancy Backups (UK GDPR Confidentiality)
+# Data Redundancy Backups & Seed Data (UK GDPR Confidentiality)
 backups/
 *.dump
 scripts/bmc_sent_log.json
+d1/seed_data.sql
+d1/*delta*.sql

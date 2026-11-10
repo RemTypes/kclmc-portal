@@ -424,6 +424,20 @@ export function determineMemberTier(productName: string): 'recreational' | 'soci
 }
 
 /**
+ * Survivor Rule: Determines higher membership tier between two candidates.
+ * recreational strictly overrides social.
+ */
+export function getHigherTier(
+  tierA?: string | null,
+  tierB?: string | null
+): 'recreational' | 'social' {
+  if (tierA === 'recreational' || tierB === 'recreational') {
+    return 'recreational';
+  }
+  return 'social';
+}
+
+/**
  * Parses a single CSV line while correctly handling quoted cells and escaped quotes.
  */
 export function parseCsvRow(line: string): string[] {
@@ -464,14 +478,86 @@ export function generateNextAssociateId(
   return `${prefix}${String(nextNum).padStart(2, '0')}`;
 }
 
+/**
+ * Parse raw CSV string into rows of columns, honoring quoted fields,
+ * escaped double-quotes, multiline values, and stripping UTF-8 BOM.
+ */
+export function parseCsvRows(csvText: string): string[][] {
+  const clean = csvText.startsWith('\uFEFF') ? csvText.slice(1) : csvText;
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentField = '';
+  let inQuotes = false;
+  let i = 0;
+
+  while (i < clean.length) {
+    const char = clean[i];
+
+    if (inQuotes) {
+      if (char === '"') {
+        if (i + 1 < clean.length && clean[i + 1] === '"') {
+          currentField += '"';
+          i += 2;
+        } else {
+          inQuotes = false;
+          i++;
+        }
+      } else {
+        currentField += char;
+        i++;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+        i++;
+      } else if (char === ',') {
+        currentRow.push(currentField);
+        currentField = '';
+        i++;
+      } else if (char === '\r') {
+        if (i + 1 < clean.length && clean[i + 1] === '\n') {
+          i++;
+        }
+        currentRow.push(currentField);
+        currentField = '';
+        if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0].trim() !== '')) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+        i++;
+      } else if (char === '\n') {
+        currentRow.push(currentField);
+        currentField = '';
+        if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0].trim() !== '')) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+        i++;
+      } else {
+        currentField += char;
+        i++;
+      }
+    }
+  }
+
+  if (currentField.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentField);
+    if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0].trim() !== '')) {
+      rows.push(currentRow);
+    }
+  }
+
+  return rows;
+}
+
 export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
-  const lines = csvText.split('\n');
+  const rows = parseCsvRows(csvText);
   const recordsMap = new Map<string, KclsuMemberRecord>();
 
   let headerIndex = -1;
-  for (let i = 0; i < lines.length; i++) {
-    const lower = lines[i].toLowerCase();
-    if (lower.includes('product_name') && (lower.includes('card_number') || lower.includes('purchaser'))) {
+  for (let i = 0; i < rows.length; i++) {
+    const rowJoined = rows[i].map(c => c.toLowerCase()).join(',');
+    if (rowJoined.includes('product_name') && (rowJoined.includes('card_number') || rowJoined.includes('purchaser'))) {
       headerIndex = i;
       break;
     }
@@ -480,7 +566,7 @@ export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
   if (headerIndex === -1) return [];
 
   // Parse header columns dynamically
-  const headerCols = parseCsvRow(lines[headerIndex]).map(c => c.trim().toLowerCase());
+  const headerCols = rows[headerIndex].map(c => c.trim().toLowerCase());
   const findCol = (candidates: string[]) => {
     // First pass: exact match
     const exact = headerCols.findIndex(h => candidates.some(cand => h === cand));
@@ -509,11 +595,9 @@ export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
   const colCard = cardIdx !== -1 ? cardIdx : 4;
   const colDate = dateIdx !== -1 ? dateIdx : 7;
 
-  for (let i = headerIndex + 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-
-    const cols = parseCsvRow(line);
+  for (let i = headerIndex + 1; i < rows.length; i++) {
+    const cols = rows[i];
+    if (!cols || cols.length === 0) continue;
     if (cols.length < Math.max(colProd, colPurchaser) + 1) continue;
 
     const productName = sanitizeCsvCell(cols[colProd] || '');
@@ -612,7 +696,7 @@ export function parseKclsuCsv(csvText: string): KclsuMemberRecord[] {
         recordsMap.set(targetKey, newRecord);
       } else {
         // Social-Recreational upgrade strictly overrides Social to Recreational
-        const isRecreational = existing.tier === 'recreational' || tier === 'recreational';
+        const isRecreational = getHigherTier(existing.tier, tier) === 'recreational';
         const preferredProduct = (tier === 'recreational' && existing.tier === 'social')
           ? productName
           : (existing.tier === 'recreational' ? existing.productName : productName);

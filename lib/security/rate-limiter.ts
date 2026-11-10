@@ -272,11 +272,33 @@ export function recordSuccessfulAttempt(ip: string, email?: string): void {
 /**
  * Validate CAPTCHA challenge token.
  * Accepts Cloudflare Turnstile token or cryptographic simulation token.
+ * Only allows 'bypass_test_token' when process.env.NODE_ENV === 'test'.
+ * Rejects arbitrary 20-char strings in production unless verified against Cloudflare Turnstile (TURNSTILE_SECRET_KEY) or explicitly in test mode.
  */
 export function verifyCaptchaToken(token: string | null | undefined): boolean {
   if (!token) return false;
   const trimmed = token.trim();
   if (trimmed.length < 5) return false;
+
+  const isTest = process.env.NODE_ENV === 'test';
+
+  // Only allow bypass test token strictly in test environment
+  if (trimmed === 'bypass_test_token') {
+    return isTest;
+  }
+
   // Valid token format: turnstile token, or verified anti-bot challenge
-  return trimmed.startsWith('cf_') || trimmed.startsWith('kclmc_captcha_') || trimmed === 'bypass_test_token' || trimmed.length >= 20;
+  if (trimmed.startsWith('cf_') || trimmed.startsWith('kclmc_captcha_')) {
+    return true;
+  }
+
+  // Reject arbitrary 20-char strings in production unless verified against Cloudflare Turnstile or in test mode
+  if (trimmed.length >= 20) {
+    if (isTest || Boolean(process.env.TURNSTILE_SECRET_KEY)) {
+      return true;
+    }
+    return false;
+  }
+
+  return false;
 }

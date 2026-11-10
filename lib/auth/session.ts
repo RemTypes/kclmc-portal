@@ -19,18 +19,25 @@ import {
   create2FAEnrollmentChallenge,
   isUser2FAEnrolled,
   getUserTOTPSecret,
+  setUserTOTPSecret,
   getUserHashedBackupCodes,
+  setUserHashedBackupCodes,
   verify2FAChallenge,
+  seal2FAAttestation,
+  verify2FAAttestation,
+  resolveValid2FASecret,
 } from '@/lib/security/two-factor';
 import { setSessionCookies, applySessionCookies } from '@/lib/security/cookies';
-import { getAuthenticatedUserRole, sanitizeEmail, getSafeRedirectUrl, Role } from '@/lib/auth';
+import { getAuthenticatedUserRole, getUserRole, sanitizeEmail, getSafeRedirectUrl, Role } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/server';
+import { autoBumpUserPasswordInD1 } from '@/lib/security/password-hasher';
 
 export interface ClimberSessionUser {
   id: string;
   email: string;
   role: Role;
   fullName?: string;
+  user_metadata?: any;
 }
 
 export type AuthOutcome =
@@ -106,10 +113,10 @@ export interface VerifyTwoFactorParams {
 }
 
 export function extractClientIp(request: Request): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
   const cfIp = request.headers.get('cf-connecting-ip');
   if (cfIp) return cfIp.trim();
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) return forwarded.split(',')[0].trim();
   const realIp = request.headers.get('x-real-ip');
   if (realIp) return realIp.trim();
   return '127.0.0.1';
@@ -122,7 +129,7 @@ export class AuthSessionService {
   /**
    * Authenticates user credentials with integrated rate limiting, CAPTCHA, and 2FA gating.
    */
-  async authenticateCredentials(input: Request | LoginParams): Promise<AuthOutcome> {
+  async authenticateCredentials(input: Request | LoginParams, secretKeyOverride?: string): Promise<AuthOutcome> {
     let email: string = '';
     let password = '';
     let captchaToken: string | undefined;
@@ -183,53 +190,234 @@ export class AuthSessionService {
       }
     }
 
-    // 3. Authenticate with Supabase Auth Engine
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsvnyibipcwrcyzqilge.supabase.co';
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg';
-
+    // 3. Authenticate with Better Auth Engine on Cloudflare D1 first
     let cookiesToSet: { name: string; value: string; options: any }[] = [];
-    const serverSupabase = createServerClient(supabaseUrl, supabaseKey, {
-      cookies: {
-        getAll() {
-          return cookieHeader.split(';').map(c => {
-            const [name, ...rest] = c.trim().split('=');
-            return { name, value: rest.join('=') };
-          });
-        },
-        setAll(toSet) {
-          cookiesToSet = toSet;
-        },
-      },
-    });
+    let authenticatedUser: ClimberSessionUser | null = null;
+    let authenticatedSessionPayload: any = null;
+    let d1Database: any = null;
+    let cfSecret = secretKeyOverride;
+    let cfRuntimeEnv: any = null;
 
-    const { data: authData, error: authError } = await serverSupabase.auth.signInWithPassword({
-      email: cleanEmail,
-      password,
-    });
+    try {
+      const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
+      const env = await getCloudflareEnv();
+      cfRuntimeEnv = env;
+      cfSecret = resolveValid2FASecret(env, secretKeyOverride);
+      const db = (await getD1Database()) || env?.DB;
+      if (db) d1Database = db;
 
-    if (authError || !authData?.user || !authData?.session) {
-      const failRecord = recordFailedAttempt(ip, cleanEmail, authError?.message || 'Invalid credentials');
-      return {
-        status: 'invalid_credentials',
-        error: authError?.message || 'Invalid email or password',
-        remainingAttempts: Math.max(0, 5 - failRecord.attemptCount),
-        requiresCaptcha: failRecord.requiresCaptcha,
-        isLocked: failRecord.isLocked,
-        backoffSeconds: failRecord.backoffSeconds,
-      };
+      if (db) {
+        const { createBetterAuth } = await import('@/lib/auth/better-auth');
+        const reqOrigin = input instanceof Request ? new URL(input.url).origin : undefined;
+        const auth = createBetterAuth({ ...env, DB: db, ...(reqOrigin ? { BETTER_AUTH_URL: reqOrigin } : {}) });
+        const baRes = await auth.api.signInEmail({
+          body: { email: cleanEmail, password },
+          asResponse: true,
+        });
+
+        if (baRes.ok) {
+          const baData = await baRes.json().catch(() => ({}));
+          const u = baData.user;
+          if (u) {
+            const emailRole = getUserRole(cleanEmail);
+            let role: Role = 0;
+            let prof: any = null;
+            try {
+              prof = (await db.prepare('SELECT role FROM profiles WHERE id = ?').bind(u.id).first()) as any;
+            } catch {}
+
+            if (emailRole >= 1) {
+              role = emailRole;
+            } else if (prof?.role === 1 || prof?.role === 2) {
+              role = prof.role as Role;
+            }
+
+            if ((u as any).role !== role) {
+              await db
+                .prepare('UPDATE "user" SET role = ? WHERE id = ?')
+                .bind(role, u.id)
+                .run()
+                .catch(() => {});
+            }
+            if (prof && prof.role !== role) {
+              await db
+                .prepare('UPDATE profiles SET role = ? WHERE id = ?')
+                .bind(role, u.id)
+                .run()
+                .catch(() => {});
+            }
+
+            const rawCookies = typeof (baRes.headers as any).getSetCookie === 'function'
+              ? (baRes.headers as any).getSetCookie()
+              : [baRes.headers.get('set-cookie')].filter(Boolean);
+
+            for (const headerStr of rawCookies) {
+              if (!headerStr) continue;
+              const [nv] = headerStr.split(';');
+              const eqIdx = nv.indexOf('=');
+              if (eqIdx !== -1) {
+                const cName = nv.slice(0, eqIdx).trim();
+                const rawVal = nv.slice(eqIdx + 1).trim();
+                let cVal = rawVal;
+                try {
+                  if (rawVal.includes('%')) {
+                    cVal = decodeURIComponent(rawVal);
+                  }
+                } catch {}
+                cookiesToSet.push({
+                  name: cName,
+                  value: cVal,
+                  options: {
+                    path: '/',
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV !== 'development',
+                    sameSite: 'lax',
+                    maxAge: 60 * 60 * 24 * 7,
+                  },
+                });
+              }
+            }
+
+            authenticatedUser = {
+              id: u.id,
+              email: u.email,
+              role,
+              fullName: u.name,
+            };
+            authenticatedSessionPayload = baData;
+          }
+        }
+      }
+    } catch (baErr) {
+      console.warn('[Session] Better Auth login check non-fatal notice:', baErr);
     }
 
-    const user = authData.user;
-    const session = authData.session;
-    const userRole = await getAuthenticatedUserRole(serverSupabase, user);
+    // 3.5. Fallback to Supabase Auth Engine if not authenticated via Better Auth
+    if (!authenticatedUser) {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsvnyibipcwrcyzqilge.supabase.co';
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_IZmrUzhCzPpLG5ZuWVxY_A_QxQJl5Hg';
+
+      const serverSupabase = createServerClient(supabaseUrl, supabaseKey, {
+        cookies: {
+          getAll() {
+            return cookieHeader.split(';').map(c => {
+              const [name, ...rest] = c.trim().split('=');
+              return { name, value: rest.join('=') };
+            });
+          },
+          setAll(toSet) {
+            cookiesToSet = toSet;
+          },
+        },
+      });
+
+      const { data: authData, error: authError } = await serverSupabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+
+      if (authError || !authData?.user || !authData?.session) {
+        const failRecord = recordFailedAttempt(ip, cleanEmail, authError?.message || 'Invalid credentials');
+        return {
+          status: 'invalid_credentials',
+          error: authError?.message || 'Invalid email or password',
+          remainingAttempts: Math.max(0, 5 - failRecord.attemptCount),
+          requiresCaptcha: failRecord.requiresCaptcha,
+          isLocked: failRecord.isLocked,
+          backoffSeconds: failRecord.backoffSeconds,
+        };
+      }
+
+      const user = authData.user;
+      const session = authData.session;
+      const userRole = await getAuthenticatedUserRole(serverSupabase, user);
+
+      // JIT Password Auto-Bump to Cloudflare D1 (Zero Risk, Non-blocking)
+      try {
+        await autoBumpUserPasswordInD1(user.id, cleanEmail, password, userRole);
+      } catch (bumpErr) {
+        console.warn('[Session] JIT password auto-bump non-fatal error:', bumpErr);
+      }
+
+      authenticatedUser = {
+        id: user.id,
+        email: user.email || cleanEmail,
+        role: userRole,
+        user_metadata: user.user_metadata,
+      };
+      authenticatedSessionPayload = session;
+    }
+
+    const user = authenticatedUser;
+    const session = authenticatedSessionPayload;
+    const userRole = authenticatedUser.role;
 
     const safeDestination = (requestedNext && requestedNext !== '/login' && !requestedNext.startsWith('/login?') && !requestedNext.startsWith('/auth'))
       ? requestedNext
       : (userRole >= 1 ? '/admin' : '/membership');
 
+    // Clear password login failure counters once primary credentials succeed
+    recordSuccessfulAttempt(ip, cleanEmail);
+
     // 4. Evaluate Mandatory 2FA Gate (Committee Members)
-    if (requiresMandatory2FA(cleanEmail, userRole)) {
-      const isEnrolled = isUser2FAEnrolled(user.id, user.user_metadata);
+    // Strictly enforces 2FA at the Login Gate for all committee members (role >= 1).
+    // Can be toggled for emergency maintenance via ENFORCE_MANDATORY_2FA=false.
+    const enforce2FAGate = (cfRuntimeEnv?.ENFORCE_MANDATORY_2FA ?? process.env.ENFORCE_MANDATORY_2FA) !== 'false';
+    if (enforce2FAGate && requiresMandatory2FA(cleanEmail, userRole)) {
+      // In D1 native auth, legacy Supabase user_metadata is ignored so committee
+      // members cleanly re-enroll their 2FA in D1 rather than inheriting broken secrets.
+      let isEnrolled = false;
+      let userTotpSecret: string | undefined;
+      let userBackupCodesList: string[] | undefined;
+
+      // In-memory store fallback (used in unit tests)
+      const memSecret = getUserTOTPSecret(user.id);
+      if (memSecret) {
+        isEnrolled = true;
+        userTotpSecret = memSecret;
+        userBackupCodesList = getUserHashedBackupCodes(user.id);
+      }
+
+      // Authoritative source of truth: Cloudflare D1 twoFactor table
+      if (!d1Database) {
+        try {
+          const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
+          const env = await getCloudflareEnv();
+          d1Database = (await getD1Database()) || env?.DB;
+        } catch {}
+      }
+
+      if (d1Database) {
+        try {
+          const d1Row = (await d1Database
+            .prepare('SELECT secret, backupCodes, verified FROM "twoFactor" WHERE userId = ?')
+            .bind(user.id)
+            .first()) as { secret?: string; backupCodes?: string; verified?: number } | null;
+
+          if (d1Row?.secret && (d1Row.verified === 1 || d1Row.verified === null)) {
+            isEnrolled = true;
+            userTotpSecret = d1Row.secret;
+            setUserTOTPSecret(user.id, d1Row.secret);
+            if (d1Row.backupCodes) {
+              try {
+                const parsed = JSON.parse(d1Row.backupCodes);
+                if (Array.isArray(parsed)) {
+                  userBackupCodesList = parsed;
+                  setUserHashedBackupCodes(user.id, parsed);
+                }
+              } catch {}
+            }
+          } else {
+            // No valid verified row in D1 twoFactor -> require fresh setup
+            isEnrolled = false;
+            userTotpSecret = undefined;
+            userBackupCodesList = undefined;
+          }
+        } catch (d1TwoFactorErr) {
+          console.warn('[Session] D1 twoFactor lookup warning:', d1TwoFactorErr);
+        }
+      }
+
       const sessionPayload = {
         session,
         cookiesToSet: cookiesToSet.length > 0 ? cookiesToSet : undefined,
@@ -240,7 +428,8 @@ export class AuthSessionService {
           user.id,
           cleanEmail,
           userRole,
-          sessionPayload
+          sessionPayload,
+          cfSecret
         );
 
         return {
@@ -256,16 +445,14 @@ export class AuthSessionService {
       }
 
       // Existing 2FA enrollment: generate verification challenge
-      const userTotpSecret = user.user_metadata?.totp_secret || getUserTOTPSecret(user.id);
-      const userBackupCodesList = user.user_metadata?.backup_codes || getUserHashedBackupCodes(user.id);
-
       const challenge = create2FAChallenge(
         user.id,
         cleanEmail,
         userRole,
         sessionPayload,
         userTotpSecret,
-        userBackupCodesList
+        userBackupCodesList,
+        cfSecret
       );
 
       return {
@@ -297,7 +484,7 @@ export class AuthSessionService {
   /**
    * Verifies second-factor challenge code (TOTP or single-use backup code).
    */
-  async verifyTwoFactor(input: Request | VerifyTwoFactorParams): Promise<AuthOutcome> {
+  async verifyTwoFactor(input: Request | VerifyTwoFactorParams, secretKeyOverride?: string): Promise<AuthOutcome> {
     let challengeToken: string = '';
     let code: string = '';
     let nextParam: string | undefined;
@@ -338,8 +525,9 @@ export class AuthSessionService {
       };
     }
 
-    // Rate limit verification attempts by IP
-    const rateCheck = checkRateLimit(ip);
+    // Rate limit verification attempts in a dedicated 2FA bucket (separate from password login bucket)
+    const twoFactorRateKey = `2fa:${ip}`;
+    const rateCheck = checkRateLimit(twoFactorRateKey);
     if (!rateCheck.allowed) {
       return {
         status: 'locked',
@@ -349,10 +537,21 @@ export class AuthSessionService {
       };
     }
 
-    const result = verify2FAChallenge(effectiveToken, code);
+    let cfSecret = secretKeyOverride;
+    try {
+      const { getCloudflareEnv } = await import('@/lib/db/d1');
+      const env = await getCloudflareEnv();
+      cfSecret = resolveValid2FASecret(env, secretKeyOverride);
+    } catch {}
+
+    const result = verify2FAChallenge(effectiveToken, code, cfSecret);
 
     if (!result.success || !result.sessionData) {
-      recordFailedAttempt(ip, undefined, 'Invalid 2FA code');
+      // Only record a failed attempt for an incorrect code against a valid challenge,
+      // not for an unsealed/expired session token across isolates.
+      if (!result.error || !result.error.includes('Invalid or expired 2FA session')) {
+        recordFailedAttempt(twoFactorRateKey, undefined, 'Invalid 2FA code');
+      }
       return {
         status: 'invalid_code',
         error: result.error || 'Invalid or expired verification code',
@@ -360,10 +559,57 @@ export class AuthSessionService {
     }
 
     recordSuccessfulAttempt(ip, result.email);
+    recordSuccessfulAttempt(twoFactorRateKey, result.email);
 
-    // Persist 2FA enrollment metadata to Supabase if enrolled during this flow
+    // 1. Persist 2FA enrollment directly to Cloudflare D1
     if (result.enrolledSecret && result.userId) {
-      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      try {
+        const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
+        const env = await getCloudflareEnv();
+        const db = (await getD1Database()) || env?.DB;
+        if (db) {
+          const backupJson = JSON.stringify(result.hashedBackupCodes || []);
+          const existing = (await db
+            .prepare('SELECT id FROM "twoFactor" WHERE userId = ?')
+            .bind(result.userId)
+            .first()) as { id?: string } | null;
+
+          if (existing?.id) {
+            const attestMatch = cookieHeader.match(/kclmc_2fa_verified=([^;]+)/);
+            const attestToken = attestMatch ? decodeURIComponent(attestMatch[1].trim()) : null;
+            const hasValidStepUp = verify2FAAttestation(attestToken, result.userId, cfSecret, result.email);
+            if (!hasValidStepUp) {
+              return {
+                status: 'error',
+                error: '2FA is already enrolled for this account. Verify your current 2FA first or request a SuperAdmin reset.',
+                statusCode: 403,
+              };
+            }
+            await db
+              .prepare('UPDATE "twoFactor" SET secret = ?, backupCodes = ?, verified = 1 WHERE userId = ?')
+              .bind(result.enrolledSecret, backupJson, result.userId)
+              .run();
+          } else {
+            const tfId = `tf_${crypto.randomUUID()}`;
+            await db
+              .prepare('INSERT INTO "twoFactor" (id, secret, backupCodes, userId, verified) VALUES (?, ?, ?, ?, 1)')
+              .bind(tfId, result.enrolledSecret, backupJson, result.userId)
+              .run();
+          }
+
+          await db
+            .prepare('UPDATE "user" SET "twoFactorEnabled" = 1 WHERE id = ?')
+            .bind(result.userId)
+            .run()
+            .catch(() => {});
+        }
+      } catch (d1Err) {
+        console.warn('[2FA] D1 twoFactor persistence error:', d1Err);
+      }
+
+      // Legacy fallback: Persist 2FA enrollment metadata to Supabase if configured
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || (globalThis as any)?.__CF_ENV__?.SUPABASE_SERVICE_ROLE_KEY;
+      if (serviceKey) {
         try {
           const adminSupabase = createAdminClient();
           if (adminSupabase?.auth?.admin?.updateUserById) {
@@ -412,20 +658,37 @@ export class AuthSessionService {
       }
     }
 
-    // Persist remaining backup codes if a code was burned
-    if (result.usedBackupCode && result.userId && result.remainingBackupCodes && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    // Persist remaining backup codes if a code was burned (D1 + Supabase)
+    if (result.usedBackupCode && result.userId && result.remainingBackupCodes) {
       try {
-        const adminSupabase = createAdminClient();
-        if (adminSupabase?.auth?.admin?.updateUserById) {
-          await Promise.race([
-            adminSupabase.auth.admin.updateUserById(result.userId, {
-              user_metadata: { backup_codes: result.remainingBackupCodes },
-            }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000)),
-          ]).catch(() => {});
+        const { getCloudflareEnv, getD1Database } = await import('@/lib/db/d1');
+        const env = await getCloudflareEnv();
+        const db = (await getD1Database()) || env?.DB;
+        if (db) {
+          const backupJson = JSON.stringify(result.remainingBackupCodes);
+          await db
+            .prepare('UPDATE "twoFactor" SET backupCodes = ? WHERE userId = ?')
+            .bind(backupJson, result.userId)
+            .run();
         }
-      } catch {
-        // non-fatal
+      } catch (d1BurnErr) {
+        console.warn('[2FA] D1 backup code burn error:', d1BurnErr);
+      }
+
+      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        try {
+          const adminSupabase = createAdminClient();
+          if (adminSupabase?.auth?.admin?.updateUserById) {
+            await Promise.race([
+              adminSupabase.auth.admin.updateUserById(result.userId, {
+                user_metadata: { backup_codes: result.remainingBackupCodes },
+              }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000)),
+            ]).catch(() => {});
+          }
+        } catch {
+          // non-fatal
+        }
       }
     }
 
@@ -447,6 +710,7 @@ export class AuthSessionService {
       },
       destination: safeDestination,
       sessionData: result.sessionData,
+      cookiesToSet: result.sessionData?.cookiesToSet,
       usedBackupCode: result.usedBackupCode,
     };
   }
@@ -454,7 +718,7 @@ export class AuthSessionService {
   /**
    * Adapts an AuthOutcome into an RFC-compliant HTTP NextResponse.
    */
-  toApiResponse(outcome: AuthOutcome): NextResponse {
+  toApiResponse(outcome: AuthOutcome, secretKeyOverride?: string): NextResponse {
     switch (outcome.status) {
       case 'authenticated': {
         const response = NextResponse.json({
@@ -472,11 +736,23 @@ export class AuthSessionService {
           setSessionCookies(response, outcome.sessionData);
         }
 
+        if (outcome.user && outcome.user.role >= 1) {
+          const userIdentifier = outcome.user.email || outcome.user.id;
+          const attestationToken = seal2FAAttestation(userIdentifier, secretKeyOverride);
+          response.cookies.set('kclmc_2fa_verified', attestationToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: 60 * 60 * 24, // 24-hour attestation
+          });
+        }
+
         // Clear temporary challenge cookie
         response.cookies.set('kclmc_2fa_pending', '', {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: 'lax',
           path: '/',
           maxAge: 0,
         });
@@ -499,7 +775,7 @@ export class AuthSessionService {
         response.cookies.set('kclmc_2fa_pending', outcome.challengeToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: 'lax',
           path: '/',
           maxAge: 10 * 60, // 10 minutes
         });
@@ -519,7 +795,7 @@ export class AuthSessionService {
         response.cookies.set('kclmc_2fa_pending', outcome.challengeToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: 'lax',
           path: '/',
           maxAge: 5 * 60, // 5 minutes
         });

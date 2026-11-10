@@ -55,11 +55,23 @@ function ForbiddenContent() {
         {/* Action Buttons */}
         <div className="space-y-3 mb-6">
           <Link
-            href={`/login?next=${encodeURIComponent(fromPath)}`}
+            href={`/login?next=${encodeURIComponent(fromPath)}&switch=true`}
             className="w-full block text-center bg-[#FFBD59] hover:bg-[#FFE0A3] text-[#052322] font-heading font-black text-sm uppercase tracking-wider py-3 rounded-xl transition-colors shadow-md"
           >
             Sign In with Committee Account →
           </Link>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await fetch('/api/auth/logout', { method: 'POST' });
+              } catch {}
+              window.location.href = `/login?next=${encodeURIComponent(fromPath)}&switch=true`;
+            }}
+            className="w-full block text-center bg-red-950/40 hover:bg-red-900/50 border border-red-800/50 text-red-300 font-heading font-bold text-xs uppercase tracking-wider py-2.5 rounded-xl transition-colors"
+          >
+            Sign Out of Current Account
+          </button>
           <Link
             href="/"
             className="w-full block text-center bg-[#084746] hover:bg-[#0D5F5E] border border-white/10 text-white font-heading font-bold text-sm uppercase tracking-wider py-2.5 rounded-xl transition-colors"

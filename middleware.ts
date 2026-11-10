@@ -23,10 +23,101 @@ export async function middleware(request: NextRequest) {
   const moduleDef = getModuleByRoute(path);
   if (moduleDef && !moduleDef.enabled && !path.startsWith('/admin')) {
     const hasAuthCookie = request.cookies.getAll().some(
-      c => c.name.startsWith('sb-') || c.name === 'kclmc_session'
+      c => c.name.startsWith('sb-') || c.name === 'kclmc_session' || c.name.includes('better-auth.session_token')
     );
     if (!hasAuthCookie) {
       return NextResponse.redirect(new URL(`/403?from=${encodeURIComponent(path)}&req=disabled`, request.url));
+    }
+  }
+
+  // 1.4. Resolve Cloudflare runtime environment bindings and secrets across all isolates
+  let cfEnv: Record<string, any> | undefined;
+  try {
+    const cfSymbol = Symbol.for('__cloudflare-context__');
+    cfEnv = (globalThis as any)?.[cfSymbol]?.env;
+  } catch {}
+  if (!cfEnv) {
+    try {
+      const { getCloudflareEnv } = await import('./lib/db/d1');
+      cfEnv = await getCloudflareEnv();
+    } catch (envErr) {
+      console.warn('[Middleware] Cloudflare env resolution warning:', envErr);
+    }
+  }
+
+  // 1.5. Check Better Auth Edge Session on D1 first (sub-5ms)
+  const hasBetterAuthCookie = request.cookies.getAll().some(c => c.name.includes('better-auth.session_token'));
+  if (hasBetterAuthCookie) {
+    try {
+      const { getD1Database } = await import('./lib/db/d1');
+      const env = cfEnv;
+      const db = (await getD1Database()) || env?.DB;
+      if (db) {
+        const { createBetterAuth } = await import('./lib/auth/better-auth');
+        const reqOrigin = request.nextUrl.origin;
+        const auth = createBetterAuth({ ...env, DB: db, ...(reqOrigin ? { BETTER_AUTH_URL: reqOrigin } : {}) });
+        const session = await auth.api.getSession({ headers: request.headers });
+
+        if (session?.user) {
+          const baUser = session.user;
+          const emailRole = getUserRole(baUser.email);
+          let role = 0;
+          if (emailRole >= 1) {
+            role = emailRole;
+          } else {
+            try {
+              const profile = await db.prepare('SELECT role FROM profiles WHERE id = ?').bind(baUser.id).first();
+              if (profile && ((profile as any).role === 1 || (profile as any).role === 2)) {
+                role = (profile as any).role;
+              }
+            } catch {}
+          }
+
+          // Admin API checks
+          const isOrdersAdminApi =
+            path.startsWith('/api/orders') &&
+            (request.method === 'PUT' ||
+              request.method === 'DELETE' ||
+              (request.method === 'GET' && !request.nextUrl.searchParams.has('code')));
+
+          const isAdminApi =
+            path.startsWith('/api/admin') ||
+            path.startsWith('/api/reconcile') ||
+            (path.startsWith('/api/roster') && !path.startsWith('/api/roster/link')) ||
+            (path.startsWith('/api/links') && request.method !== 'GET') ||
+            isOrdersAdminApi ||
+            (path === '/api/telemetry' && request.method === 'GET');
+
+          if (isAdminApi && role < 1) {
+            return NextResponse.json({ error: 'Unauthorized: Committee access required' }, { status: 403 });
+          }
+
+          // Admin page clearance
+          if (path.startsWith('/admin') || path === '/status' || path.startsWith('/status/')) {
+            if (role < 1) {
+              return NextResponse.redirect(new URL(`/403?req=committee&from=${encodeURIComponent(path)}`, request.url));
+            }
+            if (moduleDef && !moduleDef.enabled && role < 2) {
+              return NextResponse.redirect(new URL(`/403?from=${encodeURIComponent(path)}&req=disabled`, request.url));
+            }
+            if (path.startsWith('/admin/ml') && role < 2) {
+              return NextResponse.redirect(new URL(`/403?req=superadmin&from=${encodeURIComponent(path)}`, request.url));
+            }
+          }
+
+          // Disabled public module checks
+          if (moduleDef && !moduleDef.enabled && !path.startsWith('/admin')) {
+            if (role < 2) {
+              return NextResponse.redirect(new URL(`/403?from=${encodeURIComponent(path)}&req=disabled`, request.url));
+            }
+          }
+
+          // Authenticated via Better Auth, allow pass-through
+          return supabaseResponse;
+        }
+      }
+    } catch (baErr) {
+      console.warn('[Middleware] Better Auth edge resolution non-fatal warning:', baErr);
     }
   }
 
@@ -38,8 +129,25 @@ export async function middleware(request: NextRequest) {
       url.searchParams.set('next', path);
       return NextResponse.redirect(url);
     }
-    if (path.startsWith('/api/reconcile')) {
+    const isOrdersAdminApi =
+      path.startsWith('/api/orders') &&
+      (request.method === 'PUT' ||
+        request.method === 'DELETE' ||
+        (request.method === 'GET' && !request.nextUrl.searchParams.has('code')));
+
+    if (
+      path.startsWith('/api/admin') ||
+      path.startsWith('/api/reconcile') ||
+      (path.startsWith('/api/roster') && !path.startsWith('/api/roster/link')) ||
+      (path.startsWith('/api/links') && request.method !== 'GET') ||
+      isOrdersAdminApi ||
+      (path === '/api/telemetry' && request.method === 'GET')
+    ) {
       return NextResponse.json({ error: 'Unauthorized: Committee access required' }, { status: 403 });
+    }
+
+    if (moduleDef && !moduleDef.enabled) {
+      return NextResponse.redirect(new URL('/dashboard?module_disabled=1', request.url));
     }
     return supabaseResponse;
   }
@@ -59,7 +167,7 @@ export async function middleware(request: NextRequest) {
             ...options,
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            sameSite: 'lax',
           })
         );
       },
@@ -72,9 +180,18 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // 3. Server-side middleware protection for Admin API endpoints
+  const isOrdersAdminApi =
+    path.startsWith('/api/orders') &&
+    (request.method === 'PUT' ||
+      request.method === 'DELETE' ||
+      (request.method === 'GET' && !request.nextUrl.searchParams.has('code')));
+
   const isAdminApi =
+    path.startsWith('/api/admin') ||
     path.startsWith('/api/reconcile') ||
-    path === '/api/roster' ||
+    (path.startsWith('/api/roster') && !path.startsWith('/api/roster/link')) ||
+    (path.startsWith('/api/links') && request.method !== 'GET') ||
+    isOrdersAdminApi ||
     (path === '/api/telemetry' && request.method === 'GET');
 
   if (isAdminApi) {

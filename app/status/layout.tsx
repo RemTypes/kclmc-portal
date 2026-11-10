@@ -1,7 +1,6 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { getAuthenticatedUserRole } from '@/lib/auth';
+import { getAuthenticatedUser } from '@/lib/auth/server';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -15,15 +14,13 @@ export default async function StatusLayout({
   children: React.ReactNode;
 }) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getAuthenticatedUser();
 
     if (!user) {
       redirect('/login?next=/status');
     }
 
-    const role = await getAuthenticatedUserRole(supabase, user);
-    if (role < 1) {
+    if (user.role < 1) {
       redirect('/403?req=committee&from=/status');
     }
 

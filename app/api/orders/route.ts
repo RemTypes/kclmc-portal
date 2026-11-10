@@ -1,7 +1,17 @@
 import { NextResponse } from 'next/server';
-import { createClient, createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
-import { getUserRole, getAuthenticatedUserRole } from '@/lib/auth';
+import { createAdminClient, isSupabaseConfigured } from '@/lib/supabase/server';
+import { getAuthenticatedUser } from '@/lib/auth/server';
+import { modulesConfig } from '@/config/modules.config';
 import type { MerchOrder } from '@/types/database';
+
+function isModuleEnabled(moduleKey: string): boolean {
+  if (moduleKey === 'gearMerch' || moduleKey === 'dropsKclmc') {
+    return Boolean(modulesConfig.dropsKclmc?.enabled);
+  }
+  return Boolean(modulesConfig[moduleKey]?.enabled);
+}
+
+
 
 // In-memory fallback cache for development when Supabase is not configured
 let fallbackOrders: MerchOrder[] = [
@@ -38,15 +48,14 @@ export async function GET(request: Request) {
   const code = searchParams.get('code');
 
   try {
-    if (isSupabaseConfigured()) {
-      const adminClient = createAdminClient();
+    if (code) {
+      const cleanCode = typeof code === 'string' ? code.trim().toUpperCase() : '';
+      if (!cleanCode || cleanCode.length > 32 || !/^[A-Z0-9_-]{3,32}$/.test(cleanCode)) {
+        return NextResponse.json({ error: 'Invalid order code format' }, { status: 400 });
+      }
 
-      if (code) {
-        const cleanCode = typeof code === 'string' ? code.trim().toUpperCase() : '';
-        if (!cleanCode || cleanCode.length > 32 || !/^[A-Z0-9_-]{3,32}$/.test(cleanCode)) {
-          return NextResponse.json({ error: 'Invalid order code format' }, { status: 400 });
-        }
-
+      if (isSupabaseConfigured()) {
+        const adminClient = createAdminClient();
         const { data, error } = await adminClient
           .from('merch_orders')
           .select('*')
@@ -68,17 +77,33 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Order not found' }, { status: 404 });
       }
 
-      // Restrict unauthenticated listing of customer PII: require committee role
-      const userClient = await createClient();
-      const { data: { user } } = await userClient.auth.getUser();
-      const role = await getAuthenticatedUserRole(userClient, user);
-      if (role < 1) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Committee access required to list all orders' },
-          { status: 403 }
-        );
+      // Supabase not configured: fallback cache
+      const fallback = fallbackOrders.find(o => o.order_code === cleanCode);
+      if (fallback) {
+        return NextResponse.json({
+          id: fallback.id,
+          orderCode: fallback.order_code,
+          customerName: fallback.customer_name,
+          customerEmail: fallback.customer_email,
+          items: fallback.items,
+          status: fallback.status.toUpperCase(),
+          total: fallback.total_pence / 100,
+        });
       }
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
 
+    // Restrict unauthenticated listing of customer PII: require committee role before any data retrieval
+    const user = await getAuthenticatedUser(request);
+    if (!user || user.role < 1) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Committee access required to list all orders' },
+        { status: 403 }
+      );
+    }
+
+    if (isSupabaseConfigured()) {
+      const adminClient = createAdminClient();
       const { data, error } = await adminClient
         .from('merch_orders')
         .select('*')
@@ -100,23 +125,7 @@ export async function GET(request: Request) {
       return NextResponse.json([]);
     }
 
-    // Supabase not configured: fallback cache
-    if (code) {
-      const fallback = fallbackOrders.find(o => o.order_code === code);
-      if (fallback) {
-        return NextResponse.json({
-          id: fallback.id,
-          orderCode: fallback.order_code,
-          customerName: fallback.customer_name,
-          customerEmail: fallback.customer_email,
-          items: fallback.items,
-          status: fallback.status.toUpperCase(),
-          total: fallback.total_pence / 100,
-        });
-      }
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-    }
-
+    // Fallback cache
     return NextResponse.json(fallbackOrders.map(d => ({
       id: d.id,
       orderCode: d.order_code,
@@ -137,7 +146,24 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const brand = body.brand === 'LUBE' ? 'LUBE' : 'KCL';
+    const rawBrand = String(body.brand || '').toUpperCase().trim();
+    const isLube = rawBrand === 'LUBE';
+    const brand = isLube ? 'LUBE' : 'KCL';
+
+    // Module enablement defense-in-depth gate
+    if (isLube && !isModuleEnabled('dropsLube')) {
+      return NextResponse.json(
+        { error: 'LUBE drops module is currently disabled' },
+        { status: 403 }
+      );
+    }
+    if (!isLube && !isModuleEnabled('gearMerch')) {
+      return NextResponse.json(
+        { error: 'KCLMC merch drops module is currently disabled' },
+        { status: 403 }
+      );
+    }
+
     const orderCode = `${brand}-${Math.floor(Math.random() * 9000 + 1000).toString()}`;
 
     // Validate amount to prevent price tampering
@@ -217,16 +243,14 @@ export async function PUT(request: Request) {
     }
 
     const normalizedStatus = String(status).toLowerCase().trim();
-    const allowedStatuses = ['pending', 'paid', 'fulfilled', 'cancelled'];
+    const allowedStatuses = ['pending', 'paid', 'fulfilled', 'cancelled', 'collected', 'refunded'];
     if (!allowedStatuses.includes(normalizedStatus)) {
       return NextResponse.json({ error: 'Invalid order status' }, { status: 400 });
     }
 
     // Require committee privileges to modify order statuses
-    const userClient = await createClient();
-    const { data: { user } } = await userClient.auth.getUser();
-    const role = await getAuthenticatedUserRole(userClient, user);
-    if (role < 1) {
+    const user = await getAuthenticatedUser(request);
+    if (!user || user.role < 1) {
       return NextResponse.json(
         { error: 'Unauthorized: Committee privileges required to modify orders' },
         { status: 403 }
